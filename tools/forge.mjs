@@ -46,6 +46,11 @@
   for one afternoon this runner reported 72 passing tests while executing
   no EVM code at all.
 
+  INTACT (U0) found one more gap of the same shape and closed it: an
+  `expectRevert` whose call then succeeded was never checked, so "this
+  must revert" assertions were vacuous. See the afterMessage handler. The
+  env cheats (`envString`, `envOr`) were added for the INTACT_IMPL switch.
+
   What this is NOT: forge. There is no invariant campaign, no coverage
   guidance, no gas snapshotting, no trace on failure beyond a revert
   string. It runs the stated tests and reports which pass. When Foundry is
@@ -99,10 +104,13 @@ const rand = (bits) => {
 const STD = path.join(ROOT, "lib", "forge-std", "src");
 function provisionStd() {
   if (fs.existsSync(path.join(STD, "Test.sol")) &&
-      fs.readFileSync(path.join(STD, "Test.sol"), "utf8").includes("REAL-ASSERTIONS-SHIM")) {
+      fs.readFileSync(path.join(STD, "Test.sol"), "utf8").includes("REAL-ASSERTIONS-SHIM v2")) {
     return "reused";
   }
-  if (fs.existsSync(path.join(STD, "Test.sol"))) return "found an installed forge-std";
+  if (fs.existsSync(path.join(STD, "Test.sol")) &&
+      !fs.readFileSync(path.join(STD, "Test.sol"), "utf8").includes("REAL-ASSERTIONS-SHIM")) {
+    return "found an installed forge-std";
+  }
   fs.mkdirSync(STD, { recursive: true });
 
   const cmp = (t) => `
@@ -124,6 +132,10 @@ interface Vm {
     function etch(address, bytes calldata) external;
     function prevrandao(bytes32) external;
     function assume(bool) external;
+    function label(address, string calldata) external;
+    function envString(string calldata) external view returns (string memory);
+    function envOr(string calldata, string calldata) external view returns (string memory);
+    function envBool(string calldata) external view returns (bool);
     function readFile(string calldata) external view returns (string memory);
     function envAddress(string calldata) external view returns (address);
     function toString(uint256) external pure returns (string memory);
@@ -133,7 +145,7 @@ interface Vm {
 `);
   fs.writeFileSync(path.join(STD, "Test.sol"), `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
-// REAL-ASSERTIONS-SHIM — written by tools/forge.mjs when forge-std is not
+// REAL-ASSERTIONS-SHIM v2 — written by tools/forge.mjs when forge-std is not
 // installed. Every assertion below actually reverts on failure, which the
 // previous type-check-only stub did not.
 import {Vm} from "./Vm.sol";
@@ -244,11 +256,35 @@ const CHEATS = {
   [sel("deal(address,uint256)")]: "deal",
   [sel("etch(address,bytes)")]: "etch",
   [sel("prevrandao(bytes32)")]: "prevrandao",
-  [sel("assume(bool)")]: "assume"
+  [sel("assume(bool)")]: "assume",
+  /*  INTACT: the suite runs twice, against the monolith and the diamond,
+      switched by INTACT_IMPL. forge reads it with vm.envString; so does
+      this. `label` is accepted as a no-op so a suite written for forge's
+      traces still runs here.                                             */
+  [sel("label(address,string)")]: "label",
+  [sel("envString(string)")]: "envString",
+  [sel("envOr(string,string)")]: "envOr",
+  [sel("envBool(string)")]: "envBool",
+  [sel("envAddress(string)")]: "envAddress"
+};
+
+/*  ABI helpers for the env cheats: a `string` argument is an offset word
+    pointing at (length, bytes); a `string` return is the same shape. */
+const readStringArg = (data, i) => {
+  const off = Number(BigInt("0x" + data.slice(10 + i * 64, 10 + (i + 1) * 64))) * 2 + 10;
+  const len = Number(BigInt("0x" + data.slice(off, off + 64)));
+  return Buffer.from(data.slice(off + 64, off + 64 + len * 2), "hex").toString("utf8");
+};
+const encString = (s) => {
+  const b = Buffer.from(s, "utf8");
+  return hexToBytes("0x" + (32n).toString(16).padStart(64, "0") +
+    BigInt(b.length).toString(16).padStart(64, "0") +
+    b.toString("hex").padEnd(Math.ceil(b.length / 32) * 64, "0"));
 };
 
 /*═══════════════════ the runner ═══════════════════*/
-console.log("\n  \x1b[1mIPSEITY · the Foundry suite, without Foundry\x1b[0m");
+console.log("\n  \x1b[1mINTACT · the Foundry suite, without Foundry\x1b[0m" +
+  (process.env.INTACT_IMPL ? `  \x1b[2m(INTACT_IMPL=${process.env.INTACT_IMPL})\x1b[0m` : ""));
 console.log(`  \x1b[2mcheatcodes at ${VM_ADDR}\x1b[0m`);
 console.log(`  \x1b[2m${provisionStd()}\x1b[0m`);
 
@@ -266,7 +302,7 @@ const failures = [];
 async function freshWorld() {
   const state = {
     prank: null, prankPersistent: false, prankUsed: false,
-    expect: null, expectSatisfied: false, assumeFailed: false,
+    expect: null, expectSatisfied: false, expectMissed: null, assumeFailed: false,
     unknownCheat: null
   };
 
@@ -318,6 +354,30 @@ async function freshWorld() {
         case "assume":
           if (BigInt(word(0)) === 0n) state.assumeFailed = true;
           return done;
+        case "label":
+          return done;
+        case "envString": {
+          const k = readStringArg(data, 0);
+          if (process.env[k] === undefined) {
+            return { executionGasUsed: 0n, returnValue: new Uint8Array(),
+                     exceptionError: { error: "revert", errorType: "EvmError" } };
+          }
+          return { executionGasUsed: 0n, returnValue: encString(process.env[k]) };
+        }
+        case "envOr": {
+          const k = readStringArg(data, 0);
+          const v = process.env[k] === undefined ? readStringArg(data, 1) : process.env[k];
+          return { executionGasUsed: 0n, returnValue: encString(v) };
+        }
+        case "envBool": {
+          const v = String(process.env[readStringArg(data, 0)] || "").toLowerCase();
+          return { executionGasUsed: 0n,
+                   returnValue: hexToBytes("0x" + (v === "true" || v === "1" ? "1" : "0").padStart(64, "0")) };
+        }
+        case "envAddress": {
+          const v = String(process.env[readStringArg(data, 0)] || "0x" + "00".repeat(20)).replace(/^0x/, "");
+          return { executionGasUsed: 0n, returnValue: hexToBytes("0x" + v.toLowerCase().padStart(64, "0")) };
+        }
 
         /*  deal and etch have to land in state here and now. Recording an
             intention and applying it later is the same as not applying it:
@@ -400,13 +460,30 @@ async function freshWorld() {
       block of zeroes for this; so does this. A zero word decodes as 0 for
       any static type, and as offset 0 / length 0 for any dynamic one.  */
   const DUMMY = new Uint8Array(8192);
-  const depths = [];
-  vm.evm.events.on("beforeMessage", (msg) => { depths.push(msg.depth); });
+  const frames = [];
+  vm.evm.events.on("beforeMessage", (msg) => {
+    frames.push({ depth: msg.depth,
+                  cheat: !!(msg.to && msg.to.toString().toLowerCase() === VM_ADDR.toLowerCase()) });
+  });
   vm.evm.events.on("afterMessage", (res) => {
-    const d = depths.pop();
+    const f = frames.pop() || {};
     if (!state.expect || !res.execResult) return;
-    if (d !== 1) return;
-    if (!res.execResult.exceptionError) return;
+    if (f.depth !== 1 || f.cheat) return;
+    if (!res.execResult.exceptionError) {
+      /*  INTACT: the call `expectRevert` was issued in front of returned
+          successfully. In forge that fails the test on the spot. Here it
+          used to do nothing at all — the expectation simply stayed armed
+          for whatever reverted next, or for nothing — so an assertion of
+          the form "this must revert" passed whether or not it did. A
+          one-character mutation in Ratchet (`<=` to `<`) went green under
+          five tests that each said it could not. The expectation is now
+          consumed by the call it was armed for, and a success is a
+          failure of the test.                                            */
+      state.expectMissed = state.expect.data ? `a call expected to revert ${state.expect.data} returned instead`
+                                             : "a call expected to revert returned instead";
+      state.expect = null;
+      return;
+    }
     const got = bytesToHex(res.execResult.returnValue || new Uint8Array());
     if (state.expect.data && !got.startsWith(state.expect.data)) return;
     res.execResult.exceptionError = undefined;
@@ -740,6 +817,14 @@ for (const file of files) {
           failed = "unimplemented cheatcode " + state.unknownCheat; break;
         }
         if (state.assumeFailed) { ran--; continue; }   // forge discards the run
+        if (state.expectMissed) {
+          failed = state.expectMissed;
+          if (isFuzz) failed += `  (run ${r + 1}, seed ${SEED})`;
+          break;
+        }
+        if (!res.execResult.exceptionError && state.expect) {
+          failed = "expectRevert was armed and no call followed it"; break;
+        }
         if (res.execResult.exceptionError) {
           const got = bytesToHex(res.execResult.returnValue || new Uint8Array());
 

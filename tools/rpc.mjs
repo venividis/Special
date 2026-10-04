@@ -1,5 +1,5 @@
 /*───────────────────────────────────────────────────────────────────────────
-  IPSEITY · a Chain that lives on the other side of a wire
+  INTACT · a Chain that lives on the other side of a wire (from IPSEITY)
 
   Every harness in tools/ runs the EVM in-process. This one signs real
   transactions and speaks JSON-RPC to a node it does not contain — a local
@@ -16,7 +16,7 @@ import { createCustomCommon, Mainnet, Hardfork } from "@ethereumjs/common";
 import { hexToBytes, bytesToHex, privateToAddress } from "@ethereumjs/util";
 import fs from "node:fs";
 import path from "node:path";
-import { enc } from "./evm.mjs";
+import { enc, TX_GAS_CAP } from "./evm.mjs";
 
 /*  Node's global fetch does not read HTTP(S)_PROXY, so in an environment
     whose only road out is a proxy, a request to a public endpoint dies at
@@ -121,7 +121,16 @@ export class RpcChain {
         from: this.from.toString(), to: to || undefined,
         data, value: "0x" + BigInt(value).toString(16)
       }]);
+      /*  EIP-7825: a transaction over 2^24 gas is not includable on a
+          Fusaka chain. The estimate is the honest number; refuse it rather
+          than send something the chain will reject or, worse, a chunk a
+          pre-Fusaka testnet accepts and mainnet never will. The padded
+          limit is clamped to the cap so the padding itself never trips it. */
+      if (BigInt(est) > TX_GAS_CAP) {
+        throw new Error(`${label || "tx"} needs ${est} gas, over the EIP-7825 cap of ${TX_GAS_CAP}`);
+      }
       gasLimit = (BigInt(est) * 13n) / 10n;
+      if (gasLimit > TX_GAS_CAP) gasLimit = TX_GAS_CAP;
     } catch (e) {
       /*  estimateGas replays the call and reports the revert here, which is
           a better error than a mined failure — surface it.              */

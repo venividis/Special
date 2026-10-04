@@ -32,6 +32,15 @@ const mkBlock = (number, timestamp) => createBlock(
 
 export const GENESIS_TIME = 1_733_000_000n;
 
+/*  EIP-7825 (Fusaka): no transaction may use more than 2^24 gas, and the
+    chains this protocol lands on either have it or will. A harness that
+    let a deployment or a wiring call use 40 M would pass locally and fail
+    on the first public band — so every transaction this harness sends is
+    asserted under the cap, and a caller who genuinely wants to simulate
+    something larger says so with `allowOverCap: true`. Views are capped
+    separately, in tools/gas.mjs.                                        */
+export const TX_GAS_CAP = 16_777_216n;
+
 /* A block header is frozen once built, so moving time means building a new
    one. `export let` is a live binding, so importers that reach through the
    module namespace see the change without re-importing. */
@@ -54,74 +63,150 @@ export function warp(timestamp) {
   return BLOCK;
 }
 
-/*──────────────── tiny ABI coder (enough for the harness) ────────────────*/
+/*──────────────── the ABI coder ────────────────*/
+/*  IPSEITY's harness coder encoded flat argument lists; INTACT's calls
+    carry tuples (`SwapRequest`, `TypedCall`, `LaunchParams`, `FacetCut[]`
+    for the diamond's constructor), so this is the whole static/dynamic
+    head-and-tail rule of the ABI spec, over a parsed type tree. Two
+    refusals are kept from the original because each cost a day:
+
+      · `bytes` is a hex string, never a Buffer — a Buffer stringified to
+        its own text and re-read as hex encodes an EMPTY argument, and the
+        contract then reverts for a reason that has nothing to do with the
+        test;
+      · a `bytes32` given as a number is the VALUE (77 is 0x4d), not the
+        digits.
+
+    A tuple value is an array in field order, or an object whose keys are
+    the field names when the type names them (`(address to,uint256 v)`). */
 const pad = (h) => h.replace(/^0x/, "").padStart(64, "0");
 
 export function sel(sig) {
   return "0x" + Buffer.from(keccak256(Buffer.from(sig, "utf8"))).toString("hex").slice(0, 8);
 }
 
+/// @dev Split a comma list at depth zero, honouring parentheses.
+function splitTop(s) {
+  const out = []; let depth = 0, cur = "";
+  for (const ch of s) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth--;
+    if (ch === "," && depth === 0) { out.push(cur.trim()); cur = ""; } else cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/// @dev "(address to,uint256 v)[]" → { kind:"array", len:null, inner:{kind:"tuple", components:[...]}}
+export function parseType(t) {
+  t = t.trim();
+  const arr = t.match(/^(.*)\[(\d*)\]$/);
+  if (arr) return { kind: "array", len: arr[2] === "" ? null : Number(arr[2]), inner: parseType(arr[1]) };
+  if (t.startsWith("(")) {
+    const inner = t.slice(1, t.lastIndexOf(")"));
+    const components = inner.trim() === "" ? [] : splitTop(inner).map((c) => {
+      // an optional name after the type: "uint256 amount"
+      const m = c.match(/^(\(.*\)(?:\[\d*\])*|[\w$]+(?:\[\d*\])*)\s+([\w$]+)$/);
+      return m ? { ...parseType(m[1]), name: m[2] } : parseType(c);
+    });
+    return { kind: "tuple", components };
+  }
+  return { kind: "base", type: t };
+}
+
+/// @dev The canonical signature text of a parsed type — names dropped.
+export function canonical(t) {
+  if (t.kind === "array") return canonical(t.inner) + "[" + (t.len === null ? "" : t.len) + "]";
+  if (t.kind === "tuple") return "(" + t.components.map(canonical).join(",") + ")";
+  return t.type;
+}
+
+export function isDynamic(t) {
+  if (t.kind === "array") return t.len === null || isDynamic(t.inner);
+  if (t.kind === "tuple") return t.components.some(isDynamic);
+  return t.type === "bytes" || t.type === "string";
+}
+
+function encodeBase(type, v) {
+  if (type === "address") return pad(String(v).slice(2).toLowerCase());
+  if (type === "bool") return pad(v ? "1" : "0");
+  if (type === "bytes32") {
+    if (typeof v === "number" || typeof v === "bigint") return pad(BigInt(v).toString(16));
+    return pad(String(v).replace(/^0x/, ""));
+  }
+  if (/^bytes([1-9]|[12]\d|3[0-1])$/.test(type)) {
+    // a fixed-size bytesN is LEFT-aligned in its word
+    return String(v).replace(/^0x/, "").padEnd(64, "0");
+  }
+  if (/^u?int(\d+)?$/.test(type)) {
+    let n = BigInt(v);
+    if (n < 0n) n = (1n << 256n) + n;
+    return pad(n.toString(16));
+  }
+  if (type === "bytes" || type === "string") {
+    if (type === "bytes") {
+      if (Buffer.isBuffer(v) || v instanceof Uint8Array)
+        throw new Error("harness wants bytes as a hex string, not a Buffer — " +
+                        'use "0x" + buf.toString("hex")');
+      if (v !== "" && !/^(0x)?([0-9a-fA-F]{2})*$/.test(String(v)))
+        throw new Error("not hex, so this would encode as empty: " + String(v).slice(0, 40));
+    }
+    const b = type === "string" ? Buffer.from(String(v), "utf8")
+                                : Buffer.from(String(v).replace(/^0x/, ""), "hex");
+    return pad(b.length.toString(16)) + b.toString("hex").padEnd(Math.ceil(b.length / 32) * 64, "0");
+  }
+  throw new Error("harness cannot encode " + type);
+}
+
+/// @dev Head/tail encoding of a list of (type, value) pairs — the rule for
+///      a tuple body, a function's arguments, and a fixed array.
+function encodeSequence(types, values) {
+  const headLen = types.reduce((n, t) => n + (isDynamic(t) ? 32 : staticSize(t)), 0);
+  let head = "", tail = "";
+  types.forEach((t, i) => {
+    const e = encodeValue(t, values[i]);
+    if (isDynamic(t)) { head += pad((headLen + tail.length / 2).toString(16)); tail += e; }
+    else head += e;
+  });
+  return head + tail;
+}
+
+function staticSize(t) {
+  if (t.kind === "array") return t.len * staticSize(t.inner);
+  if (t.kind === "tuple") return t.components.reduce((n, c) => n + staticSize(c), 0);
+  return 32;
+}
+
+function tupleValues(t, v) {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === "object" && t.components.every((c) => c.name)) return t.components.map((c) => v[c.name]);
+  throw new Error("a tuple value must be an array in field order (or an object when the fields are named)");
+}
+
+export function encodeValue(t, v) {
+  if (t.kind === "base") return encodeBase(t.type, v);
+  if (t.kind === "tuple") return encodeSequence(t.components, tupleValues(t, v));
+  const arr = v || [];
+  if (t.len !== null && arr.length !== t.len) throw new Error(`expected ${t.len} elements, got ${arr.length}`);
+  const body = encodeSequence(arr.map(() => t.inner), arr);
+  return t.len === null ? pad(arr.length.toString(16)) + body : body;
+}
+
+/// @notice ABI-encode `values` against a comma list of types (tuples allowed).
+export function encodeParams(typeList, values) {
+  const types = splitTop(typeList).map(parseType);
+  if (types.length !== values.length) throw new Error(`${types.length} types, ${values.length} values`);
+  return encodeSequence(types, values);
+}
+
 export function enc(sig, args = []) {
   const m = sig.match(/^([\w$]+)\((.*)\)$/);
-  const types = m[2].trim() ? m[2].split(",").map((s) => s.trim()) : [];
-  let head = "", tail = "";
-  const headLen = types.length * 32;
-  const word = (t, v) => {
-    if (t === "address") return pad(String(v).slice(2).toLowerCase());
-    if (t === "bool") return pad(v ? "1" : "0");
-    if (t === "bytes32") {
-      // a number means the value, not the digits: 77 is 0x4d, not 0x77
-      if (typeof v === "number" || typeof v === "bigint") return pad(BigInt(v).toString(16));
-      return pad(String(v).replace(/^0x/, ""));
-    }
-    if (/^bytes([1-9]|[12]\d|3[0-2])$/.test(t)) {
-      // a fixed-size bytesN is LEFT-aligned in its word
-      return String(v).replace(/^0x/, "").padEnd(64, "0");
-    }
-    if (/^u?int/.test(t)) {
-      let n = BigInt(v);
-      if (n < 0n) n = (1n << 256n) + n;
-      return pad(n.toString(16));
-    }
-    throw new Error("harness cannot encode " + t);
-  };
-  for (let i = 0; i < types.length; i++) {
-    const t = types[i], v = args[i];
-    if (t === "bytes" || t === "string") {
-      /*  `bytes` means a hex string here, and anything else used to be
-          coerced silently: a Buffer was stringified to its own text and
-          then re-read as hex, which for "the commons" parses to nothing
-          and encodes an EMPTY argument. The contract then reverted for a
-          reason that had nothing to do with the test, and the test looked
-          like it had found a bug. Refuse it instead.                    */
-      if (t === "bytes") {
-        if (Buffer.isBuffer(v) || v instanceof Uint8Array)
-          throw new Error("harness wants bytes as a hex string, not a Buffer — " +
-                          'use "0x" + buf.toString("hex")');
-        if (v !== "" && !/^(0x)?([0-9a-fA-F]{2})*$/.test(String(v)))
-          throw new Error("not hex, so this would encode as empty: " + String(v).slice(0, 40));
-      }
-      const b = t === "string" ? Buffer.from(String(v), "utf8") : Buffer.from(String(v).replace(/^0x/, ""), "hex");
-      head += pad((headLen + tail.length / 2).toString(16));
-      tail += pad(b.length.toString(16)) + b.toString("hex").padEnd(Math.ceil(b.length / 32) * 64, "0");
-    } else if (t === "address[]") {
-      const arr = v || [];
-      head += pad((headLen + tail.length / 2).toString(16));
-      tail += pad(arr.length.toString(16)) +
-              arr.map((x) => pad(String(x).slice(2).toLowerCase())).join("");
-    } else if (/^bytes([1-9]|[12]\d|3[0-1])\[\]$/.test(t)) {
-      // elements of a fixed-size bytesN array are LEFT-aligned in their words
-      const arr = v || [];
-      head += pad((headLen + tail.length / 2).toString(16));
-      tail += pad(arr.length.toString(16)) +
-              arr.map((x) => String(x).replace(/^0x/, "").padEnd(64, "0")).join("");
-    } else if (t === "bytes32[]") {
-      const arr = v || [];
-      head += pad((headLen + tail.length / 2).toString(16));
-      tail += pad(arr.length.toString(16)) + arr.map((x) => pad(String(x).replace(/^0x/, ""))).join("");
-    } else head += word(t, v);
-  }
-  return sel(sig) + head + tail;
+  if (!m) throw new Error("not a signature: " + sig);
+  const types = m[2].trim() ? splitTop(m[2]).map(parseType) : [];
+  // the selector is over the canonical text, so a signature written with
+  // field names still hashes to what the contract dispatches on
+  const canon = m[1] + "(" + types.map(canonical).join(",") + ")";
+  return sel(canon) + encodeSequence(types, args);
 }
 
 export const decUint = (hex, i = 0) => BigInt("0x" + (hex.replace(/^0x/, "").substr(i * 64, 64) || "0"));
@@ -222,7 +307,7 @@ export class Chain {
     return acct ? acct.balance : 0n;
   }
 
-  async send({ to = null, data = "0x", value = 0n, label = "", gasLimit = 400_000_000n }) {
+  async send({ to = null, data = "0x", value = 0n, label = "", gasLimit = 400_000_000n, allowOverCap = false }) {
     // read the nonce back from state rather than tracking it: a tx that
     // reverts still consumes one, and a tx rejected at validation does not
     const sender = await this.vm.stateManager.getAccount(this.from);
@@ -253,6 +338,10 @@ export class Chain {
       throw new Error(
         `${label || "tx"} reverted: ${err.error}` + (ret && ret !== "0x" ? ` data=${ret.slice(0, 138)}` : "")
       );
+    }
+    if (res.totalGasSpent > TX_GAS_CAP && !allowOverCap) {
+      throw new Error(`${label || "tx"} used ${res.totalGasSpent} gas, over the EIP-7825 transaction cap ` +
+                      `of ${TX_GAS_CAP} — it would not be includable on a Fusaka chain`);
     }
     if (label) this.gas[label] = (this.gas[label] || 0n) + res.totalGasSpent;
     this._record(res, tx);
