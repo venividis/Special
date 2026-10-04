@@ -16,6 +16,14 @@ and has been seen to fail under a one-character mutation. Until then it is
 **pending** and names the unit that owns it. Counts and gas numbers are
 written here only after a run.
 
+The wave-1 integration flipped the unit rows below on two things: the
+units' own mutation evidence, recorded in their commit bodies, and the
+integrated runs (237 tests on each build; verify-vault 168, verify-parley
+81, verify-launch 123, verify-steward 91, verify-timelock 35 against the
+real hub; verify-pool 144 on its stand-in). The `test/Bundle.t.sol`
+citations it added beside them are further evidence, not yet mutation-
+gated — that gate, with E1/E3's, is U12's.
+
 ---
 
 ## 0. The foundation (wave 0 — live)
