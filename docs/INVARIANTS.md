@@ -114,9 +114,9 @@ before any suite is reported on.**
 
 | # | Invariant | Enforced by | Status |
 |---|---|---|---|
-| E1 | `mayActAs` on every Parley write; a renter cannot speak; keys/cooldowns epoch-keyed | `test/Parley.t.sol` · `test_aRenterCannotSpeak`, `test_aBuyerIsNotRateLimitedByTheSeller`, `test_aSoldTokenHasNoKey` | pending U4 |
-| E2 | Body caps; single-block walks; heads ring | `tools/verify-parley.mjs` · *"the second walker reads 405 blocks of history in 3 single-block queries"* | pending U4 |
-| E3 | `expectedKeyId` pinned; postage one-of-settled/refunded; pull settlement | `test/Postage.t.sol` · `test_aRotatedKeyRefusesTheWhisper`, `test_exactlyOneOfSettledOrRefunded`, `test_aHookedFeeTokenCannotReenterParley` | pending U4 |
+| E1 | `mayActAs` on every Parley write; a renter cannot speak; keys/cooldowns epoch-keyed | `test/Parley.t.sol` · `test_aRenterCannotSpeak`, `test_aBuyerIsNotRateLimitedByTheSeller`, `test_aSoldTokenHasNoKey` | live (U4; the (token, epoch) bucket mutation seen to fail; the full 16-mutation gate was interrupted and is rerun by U12) |
+| E2 | Body caps; single-block walks; heads ring | `tools/verify-parley.mjs` · *"the second walker reads 405 blocks of history in 3 single-block queries"*; `test/Parley.t.sol` · `test_theRingShiftsOnANewBlockAndNotWithinOne`, `test_aSealedBodyMayBeFourTimesLonger` | live (U4) |
+| E3 | `expectedKeyId` pinned; postage one-of-settled/refunded; pull settlement | `test/Parley.t.sol` · `test_aRotatedKeyRefusesTheWhisper`; `test/Postage.t.sol` · `test_exactlyOneOfSettledOrRefunded`, `test_aHookedFeeTokenCannotReenterParley`, `test_settlementIsPulledNotPushed` | live (U4; mutation gate pending, see E1) |
 
 ## F. The site
 
