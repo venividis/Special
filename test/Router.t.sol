@@ -190,10 +190,21 @@ contract RouterTest is IntactFixture {
     }
 
     /// @dev alice → Reach.executeTyped → rt.swap, with the Reach's own receive floor.
+    ///      A swap returns one word. The one call that returns none is a revert the
+    ///      test armed `expectRevert` for: forge, and tools/forge.mjs after it, hand
+    ///      the caller a block of zeroes in place of the revert, which decodes as an
+    ///      empty `bytes` — and a word read out of nothing is a second revert, from
+    ///      THIS frame, with no data, that the runner reported as the test failing.
+    ///      Ten sentences in this file read red under a correct Router that way, in
+    ///      the wave-1 integration. The expectation itself is the harness's to
+    ///      enforce (a call that returns instead fails the test); every consumer of
+    ///      `out` asserts on it, and a zero satisfies none of them.
     function viaReachOn(Router rt, SwapRequest memory r, uint256 floor) internal returns (uint256 out) {
         TypedCall memory c = typed(rt, r, floor);
         vm.prank(alice);
-        out = abi.decode(reach.executeTyped(c), (uint256));
+        bytes memory ret = reach.executeTyped(c);
+        if (ret.length == 0) return 0;
+        out = abi.decode(ret, (uint256));
     }
 
     function viaReach(SwapRequest memory r, uint256 floor) internal returns (uint256) {
