@@ -638,11 +638,11 @@ contract ParleyTest is Test {
         say(0, 1, "a question");
         vm.roll(b1 + 2);
 
-        vm.expectRevert(Parley.BadReply.selector);
+        vm.expectRevert(IParleyEvents.BadReply.selector);
         parley.speak(0, 1, 0, b1, 0, "half a pointer");
-        vm.expectRevert(Parley.BadReply.selector);
+        vm.expectRevert(IParleyEvents.BadReply.selector);
         parley.speak(0, 1, 0, 0, 1, "the other half");
-        vm.expectRevert(Parley.BadReply.selector);
+        vm.expectRevert(IParleyEvents.BadReply.selector);
         parley.speak(0, 1, 0, b1, 2, "a reply to a message not yet said");
 
         parley.speak(0, 1, 0, b1, 1, "an answer");

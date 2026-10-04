@@ -36,6 +36,7 @@ import { createRequire } from "node:module";
 import { compile, artifact, ROOT } from "./compile.mjs";
 import { Chain, enc, encodeParams, decUint, decAddr, decBool } from "./evm.mjs";
 import { createAddressFromString, hexToBytes, bytesToHex } from "@ethereumjs/util";
+import { deployHub, etchRegistry } from "./hub.mjs";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
 
@@ -122,13 +123,14 @@ const me = c.from.toString();
 const T0 = evm.GENESIS_TIME;
 
 head("deploy");
-const tmpReg = await c.deploy(A("test/mocks/MockRegistry6551.sol", "MockRegistry6551").bytecode);
-await c.vm.stateManager.putCode(createAddressFromString(REGISTRY),
-  await c.vm.stateManager.getCode(createAddressFromString(tmpReg)));
+/*  The real hub since the wave-1 integration: the ship build (tools/hub.mjs)
+    behind the canonical registry's own runtime, with a mint price of zero so
+    the walk's free mints stay free. The accounts it makes are the real
+    forwarders, verified by the real `isCanonicalAccount`.               */
+await etchRegistry(c);
 const impl = await c.deploy(A("src/Reach.sol", "Reach").bytecode, "", "Reach");
 const gripImpl = await c.deploy(A("src/Grip.sol", "Grip").bytecode, "", "Grip");
-const hub = await c.deploy(A("test/mocks/AccountsHub.sol", "AccountsHub").bytecode,
-  encodeParams("address,address", [impl, gripImpl]));
+const { hub } = await deployHub(c, out, { reachImpl: impl, gripImpl }, { price: 0n });
 const drainer = await c.deploy(A("test/mocks/Drainer.sol", "Drainer").bytecode);
 const mkToken = (name, sym) => c.deploy(A("test/mocks/MockERC20.sol", "MockERC20").bytecode,
   encodeParams("string,string,uint8,uint256,bool", [name, sym, 18, 0, false]));

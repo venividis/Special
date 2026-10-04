@@ -39,6 +39,11 @@ interface IParleyEvents {
     error NoKey();
     error NotHolder();
     error Reentrancy();
+    /*── added in the wave-1 integration (docs/INTERFACE-CHANGES.md, additive) ──*/
+    /// @notice The recipient prices its inbox and the sender came without a stamp.
+    error PostageDue(uint256 to, uint128 postage);
+    /// @notice A reply pointer that names no message in this room.
+    error BadReply();
 }
 
 interface IParley is IParleyEvents {

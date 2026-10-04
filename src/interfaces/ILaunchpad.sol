@@ -97,6 +97,10 @@ interface ILaunchpadEvents {
     error TransferFailed();
     error Reentrancy();
     error Expired();
+    /*── added in the wave-1 integration (docs/INTERFACE-CHANGES.md, additive) ──*/
+    error NotKiln();
+    error NotEnoughCredit(uint256 have, uint256 want);
+    error Insolvent();
 }
 
 interface ILaunchpad is ILaunchpadEvents {
@@ -109,6 +113,9 @@ interface ILaunchpad is ILaunchpadEvents {
     function fail(uint256 launchId) external;                                                                   // anyone, after deadline short of target
     function refund(uint256 launchId, address buyer) external;                                                  // anyone; recipient fixed
     function claim(uint256 launchId, address buyer) external;                                                   // anyone; recipient fixed
+    /// @notice The Kiln made a coin for `id`: apply the launch rules and remember the share it minted here.
+    ///         Added in the wave-1 integration (additive; docs/INTERFACE-CHANGES.md). KILN only.
+    function recordLaunch(uint256 id, address by, address coin, uint256 raiseShare) external;                  // KILN
 
     /*── reading ──*/
     function launchOf(uint256 launchId) external view returns (Launch memory);

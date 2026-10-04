@@ -241,6 +241,33 @@ contract ReachTest is ReachFixture {
         assertEq(r.sealedUntil(), T0 + 1 days + 365 days, "only ever later");
     }
 
+    /// @dev The hub's `panic` calls `sealMax()` then `revokeAllSessions()`
+    ///      unconditionally (CoreLogic.panic), so a token panicked twice in
+    ///      one block — by the holder, then by the guardian — must find a
+    ///      seal that is idempotent at its cap, never `RatchetOnly`.
+    function test_aSecondPanicDoesNotRevertOnTheSeal() public {
+        (uint256 id, Reach r) = _mint(alice);
+        vm.prank(alice);
+        hub.setGuardian(id, guardian);
+        vm.prank(alice);
+        hub.panic(id);
+        assertEq(r.sealedUntil(), T0 + 365 days);
+        assertEq(hub.custodyEpoch(id), 2);
+        uint256 s = r.state();
+        vm.prank(guardian);
+        hub.panic(id);                                   // the same block, the same cap
+        assertEq(r.sealedUntil(), T0 + 365 days, "the cap is a fixed point, not a refusal");
+        assertEq(hub.custodyEpoch(id), 3);
+        assertEq(r.state(), s + 1, "revokeAllSessions still bumped; sealMax at the cap did not");
+        vm.prank(alice);
+        hub.panic(id);                                   // and a third, by the holder again
+        assertEq(r.sealedUntil(), T0 + 365 days);
+        vm.warp(T0 + 2 days);
+        vm.prank(guardian);
+        hub.panic(id);
+        assertEq(r.sealedUntil(), T0 + 2 days + 365 days, "later, the seal follows the clock");
+    }
+
     function test_aPromisedAssetHearsOnlyTransferWords() public {
         (, Reach r) = _mint(alice);
         _guard(r, alice, address(gold));

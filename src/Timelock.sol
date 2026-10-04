@@ -19,12 +19,15 @@ pragma solidity ^0.8.24;
   and is handed to a 2-of-3 multisig, or renounced, through this contract's
   own queue. After `sealPricing` there is nothing left to curate.
 
-  One discrepancy, recorded rather than resolved here: DESIGN.md §3 row 27
-  says "admin queues; anyone executes", and the donor's `execute` is
-  `onlyAdmin`. The plan says verbatim and pins the size, so the donor's
-  rule stands; dropping `onlyAdmin` from `execute` is a one-word change if
-  the integrator wants the open form. tools/verify-timelock.mjs asserts the
-  donor's rule ("a stranger executing" is refused) so the choice is visible.
+  One departure from the donor, decided in the wave-1 integration: DESIGN.md
+  §3 row 27 says "admin queues; anyone executes", and the donor's `execute`
+  was `onlyAdmin`. DESIGN wins — a stranger executing a ripe operation does
+  exactly what the admin would have done a week after announcing it, and
+  an admin who must also press the button is a liveness dependency the
+  delay was meant to remove. `execute` below is the one word that changed;
+  tools/verify-timelock.mjs asserts the open form ("a stranger executing a
+  ripe operation lands it") and records the size (1,634 B before, measured
+  again after in the integration commit).
 ───────────────────────────────────────────────────────────────────────────*/
 /*───────────────────────────────────────────────────────────────────────────
   TIMELOCK — a delay between an intention and its effect
@@ -107,8 +110,10 @@ contract Timelock {
         emit Queued(op, target, value, data, when);
     }
 
+    /// @notice Land a ripe operation. Anyone may: the admin's intention was
+    ///         announced a week ago and nothing about who presses changes it.
     function execute(address target, uint256 value, bytes calldata data, bytes32 salt)
-        external payable onlyAdmin returns (bytes memory out)
+        external payable returns (bytes memory out)
     {
         bytes32 op = opHash(target, value, data, salt);
         uint256 t = eta[op];

@@ -221,7 +221,7 @@ contract PostageTest is Test {
         priceInbox(address(usdc), POSTAGE, true);
 
         vm.prank(other);
-        vm.expectRevert(Parley.PostageDue.selector);
+        vm.expectRevert(IParleyEvents.PostageDue.selector);
         parley.whisper(2, 1, 0, bytes32(0), "for free");
 
         stampFrom2(POSTAGE);
@@ -232,7 +232,7 @@ contract PostageTest is Test {
         // consent is the holder's own word in the pair, stamped or not
         hub.mint(carol);                                    // #4
         vm.prank(carol);
-        vm.expectRevert(Parley.PostageDue.selector);
+        vm.expectRevert(IParleyEvents.PostageDue.selector);
         parley.whisper(4, 1, 0, bytes32(0), "a stranger");
         parley.whisper(1, 4, 0, bytes32(0), "hello stranger");
         vm.prank(carol);
@@ -266,7 +266,7 @@ contract PostageTest is Test {
         vm.prank(carol);
         postage.configureInbox(1, address(usdc), POSTAGE, WINDOW, true);
         vm.prank(other);
-        vm.expectRevert(Parley.PostageDue.selector);
+        vm.expectRevert(IParleyEvents.PostageDue.selector);
         parley.whisper(2, 1, 0, bytes32(0), "free, as agreed with the last holder");
     }
 

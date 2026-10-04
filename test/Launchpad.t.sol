@@ -116,7 +116,7 @@ contract LaunchpadTest is Test {
         kiln.launch(id, "x", "X", 18, SUPPLY, bytes32(0), SUPPLY + 1);
 
         vm.prank(alice);
-        vm.expectRevert(Kiln.BadDecimals.selector);
+        vm.expectRevert(IKilnEvents.BadDecimals.selector);
         kiln.launch(id, "x", "X", 37, SUPPLY, bytes32(0), 0);
 
         vm.prank(alice);
@@ -383,7 +383,7 @@ contract LaunchpadTest is Test {
         pad.sell(launchId, held, type(uint256).max, uint64(block.timestamp));
 
         vm.prank(bob);
-        vm.expectRevert(abi.encodeWithSelector(Launchpad.NotEnoughCredit.selector, held, held + 1));
+        vm.expectRevert(abi.encodeWithSelector(ILaunchpadEvents.NotEnoughCredit.selector, held, held + 1));
         pad.sell(launchId, held + 1, 0, uint64(block.timestamp));
 
         vm.prank(bob);
@@ -567,7 +567,7 @@ contract LaunchpadTest is Test {
         vm.expectRevert(ILaunchpadEvents.NothingToClaim.selector);
         pad.refund(launchId, bob);
         vm.prank(alice);
-        vm.expectRevert(Launchpad.NotEnoughCredit.selector);
+        vm.expectRevert(ILaunchpadEvents.NotEnoughCredit.selector);
         pad.sell(launchId, 1, 0, uint64(block.timestamp));
         assertEq(address(pad).balance, 1.5 ether, "every wei is still there");
     }

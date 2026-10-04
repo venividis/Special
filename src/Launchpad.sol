@@ -119,11 +119,9 @@ contract Launchpad is ILaunchpad {
     ///         none exists in the MVB, so that target is `NotYet`.
     address public constant CUSTODIAN = address(0);
 
-    /*═══════════════════ errors of this contract's own ═══════════════════*/
-
-    error NotKiln();
-    error NotEnoughCredit(uint256 have, uint256 want);
-    error Insolvent();
+    /*  `NotKiln`, `NotEnoughCredit` and `Insolvent` were this contract's own
+        until the wave-1 integration moved them into ILaunchpadEvents, so the
+        Catalog's error table sees them (docs/INTERFACE-CHANGES.md).      */
 
     /*═══════════════════ storage ═══════════════════*/
 

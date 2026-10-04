@@ -45,7 +45,7 @@ contract DiamondTest is IntactFixture {
 
     function test_partitionsTheMonolithAbiEveryFunctionRoutedOnce() public {
         bytes4[] memory all = allSelectors();
-        assertEq(all.length, 92, "IIntact declares 92 functions");
+        assertEq(all.length, 93, "IIntact declares 93 functions");
         bytes4[][4] memory parts = _parts();
 
         // every function of the interface is routed, to the facet the design assigns it

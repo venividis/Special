@@ -22,6 +22,7 @@
 ───────────────────────────────────────────────────────────────────────────*/
 import { compile, artifact } from "./compile.mjs";
 import { Chain, sel, enc, decUint, decBool, decAddr, encodeParams, roll, BLOCK, TX_GAS_CAP } from "./evm.mjs";
+import { deployHub, etchRegistry } from "./hub.mjs";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
 
 let pass = 0, fail = 0;
@@ -60,7 +61,13 @@ const alice = c;
 const bob = await c.as("0x" + "b0".repeat(32));
 const carol = await c.as("0x" + "ca".repeat(32));
 
-const hub = await c.deploy(A("test/mocks/SocialHub.sol", "SocialHub").bytecode, "", "SocialHub");
+/*  The real hub since the wave-1 integration (the ship build, tools/hub.mjs,
+    price zero): every token's account is the real Reach forwarder, which is
+    what Postage pays and refunds.                                        */
+await etchRegistry(c);
+const reachImpl = await c.deploy(A("src/Reach.sol", "Reach").bytecode, "", "Reach");
+const gripImpl = await c.deploy(A("src/Grip.sol", "Grip").bytecode, "", "Grip");
+const { hub } = await deployHub(c, out, { reachImpl, gripImpl }, { price: 0n });
 const keys = await c.deploy(A("src/KeyRegistry.sol", "KeyRegistry").bytecode, "", "KeyRegistry");
 const deployer = await c.deploy(A("test/mocks/SocialHub.sol", "SocialDeploy").bytecode,
   encodeParams("address,address", [hub, keys]), "SocialDeploy");
