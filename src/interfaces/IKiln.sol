@@ -29,6 +29,8 @@ interface IKilnEvents {
     error DeployFailed();
     error WrongFlags(uint16 wanted, uint16 got);
     error UnknownRecipe(uint8 kind);
+    /// @dev `decimals` above MAX_DECIMALS (36). Added in the wave-1 integration (additive).
+    error BadDecimals();
 }
 
 interface IKiln is IKilnEvents {

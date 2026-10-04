@@ -5,7 +5,8 @@
   Origin: IPSEITY tools/verify-vault.mjs (97 assertions), ported to the
   Reach and the Grip of DESIGN.md §9 against the in-process EVM, plus the
   INTACT cases: the custody-epoch rule on every key (sale, buy-back, panic),
-  the open-approval ledger, `executeTyped` with a receive floor, the ERC-7739
+  the open-approval ledger, `executeTyped` with a receive floor (and the same
+  shape through the Router, U8), the ERC-7739
   attestation as a Safe owner, the Grip's ABI against IGrip, and the Reach's
   frozen storage layout against docs/ACCOUNTS.md.
 
@@ -36,6 +37,7 @@ import { createRequire } from "node:module";
 import { compile, artifact, ROOT } from "./compile.mjs";
 import { Chain, enc, encodeParams, decUint, decAddr, decBool } from "./evm.mjs";
 import { createAddressFromString, hexToBytes, bytesToHex } from "@ethereumjs/util";
+import { deployHub, etchRegistry } from "./hub.mjs";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
 
@@ -122,13 +124,14 @@ const me = c.from.toString();
 const T0 = evm.GENESIS_TIME;
 
 head("deploy");
-const tmpReg = await c.deploy(A("test/mocks/MockRegistry6551.sol", "MockRegistry6551").bytecode);
-await c.vm.stateManager.putCode(createAddressFromString(REGISTRY),
-  await c.vm.stateManager.getCode(createAddressFromString(tmpReg)));
+/*  The real hub since the wave-1 integration: the ship build (tools/hub.mjs)
+    behind the canonical registry's own runtime, with a mint price of zero so
+    the walk's free mints stay free. The accounts it makes are the real
+    forwarders, verified by the real `isCanonicalAccount`.               */
+await etchRegistry(c);
 const impl = await c.deploy(A("src/Reach.sol", "Reach").bytecode, "", "Reach");
 const gripImpl = await c.deploy(A("src/Grip.sol", "Grip").bytecode, "", "Grip");
-const hub = await c.deploy(A("test/mocks/AccountsHub.sol", "AccountsHub").bytecode,
-  encodeParams("address,address", [impl, gripImpl]));
+const { hub } = await deployHub(c, out, { reachImpl: impl, gripImpl }, { price: 0n });
 const drainer = await c.deploy(A("test/mocks/Drainer.sol", "Drainer").bytecode);
 const mkToken = (name, sym) => c.deploy(A("test/mocks/MockERC20.sol", "MockERC20").bytecode,
   encodeParams("string,string,uint8,uint256,bool", [name, sym, 18, 0, false]));
@@ -686,6 +689,77 @@ head("executeTyped drives a swap with a receive floor");
   eq("a session drives the same shape, under its caps", decUint(await c.read(SILVER, "balanceOf(address)", [v])), 20n * WAD);
   await refuses("and the cap is charged by the swap", () =>
     asAgent(v, TYPED, [[VENUE, 0n, swap(10n * WAD), [[GOLD, 10n * WAD]], [[SILVER, 10n * WAD]], T0 + 60n]]), "an executeTyped swap escaped the session's cap");
+}
+
+/*════════════ the Router: the Reach's one door to a venue (U8) ════════════*/
+head("executeTyped drives a swap with a receive floor through the Router");
+{
+  const t = await mintTo(me);
+  const v = t.vault;
+  const ZERO = "0x" + "00".repeat(20);
+  const DEAD = "0x" + "dead".padStart(40, "0");
+  const POOL = await c.deploy(A("src/Pool.sol", "Pool").bytecode, encodeParams("address,address", [hub, DEAD]), "Pool");
+  const WETH = await c.deploy(A("test/mocks/MockWETH.sol", "MockWETH").bytecode);
+  const V3 = await c.deploy(A("test/mocks/MockSwapRouter02.sol", "MockSwapRouter02").bytecode);
+  const ROUTER = await c.deploy(A("src/Router.sol", "Router").bytecode,
+    encodeParams("address,address,address,address,address,bytes32", [hub, POOL, V3, ZERO, WETH, "0x" + "00".repeat(32)]), "Router");
+  const routerBytes = await c.codeSize(ROUTER);
+  console.log(`      Router ${ROUTER}  ${routerBytes} B`);
+  ok("the Router is under its 12,000-byte budget", routerBytes <= 12000, `${routerBytes} B`);
+
+  // the holder opens the token's own market, gold against ether, and the v3 venue holds silver
+  await c.exec(GOLD, "mint(address,uint256)", [me, 1000n * WAD]);
+  await c.exec(GOLD, "approve(address,uint256)", [POOL, MAX]);
+  await c.exec(POOL, "openMarket(uint256,address,address,uint16,uint24,uint16,uint32)", [t.id, GOLD, ZERO, 30, 0, 0, 0], { label: "openMarket" });
+  await c.exec(POOL, "deposit(uint256,uint256,uint256)", [t.id, 500n * WAD, 500n * WAD], { value: 500n * WAD, label: "deposit" });
+  await c.exec(SILVER, "mint(address,uint256)", [V3, 1000n * WAD]);
+  await c.exec(GOLD, "mint(address,uint256)", [v, 100n * WAD]);
+
+  const REQ = "(uint8,address,address,uint256,uint256,uint64,uint256,bytes,(address,address,uint24,int24,address),uint160)";
+  const SWAP = "swap(" + REQ + ")";
+  const QUOTE = "quoteExactIn(" + REQ + ")";
+  const SEL_SWAP = "0x" + Buffer.from(keccak256(Buffer.from(SWAP))).toString("hex").slice(0, 8);
+  const SEL_QUOTE_RESULT = "0x" + Buffer.from(keccak256(Buffer.from("QuoteResult(uint256,uint256,uint160)"))).toString("hex").slice(0, 8);
+  const noKey = [ZERO, ZERO, 0, 0, ZERO];
+  const req = (venue, tin, tout, amountIn, minOut, path) => [venue, tin, tout, amountIn, minOut, T0 + 60n, t.id, path, noKey, 0n];
+  const path = (a, b) => a.toLowerCase() + "000bb8" + b.slice(2).toLowerCase();
+  const typed = (r, spendAsset, spend, recvAsset, floor) => [[ROUTER, 0n, enc(SWAP, [r]), [[spendAsset, spend]], [[recvAsset, floor]], T0 + 60n]];
+
+  // quote is a settlement: the pool's own pricing, by revert
+  const r0 = req(0, GOLD, ZERO, 10n * WAD, 0n, "0x");
+  let quoted = 0n;
+  try { await callFrom(me, ROUTER, QUOTE, [r0]); ok("quoteExactIn reverts", false, "it returned"); }
+  catch (e) {
+    eq("quoteExactIn reverts QuoteResult", String(e.data).slice(0, 10), SEL_QUOTE_RESULT);
+    quoted = decUint("0x" + String(e.data).slice(10), 1);
+    ok("and names what the pool would pay for ten gold", quoted > 0n, String(quoted));
+  }
+
+  await refuses("the Reach's floor above the quote undoes the whole swap", () => c.exec(v, TYPED, typed(r0, GOLD, 10n * WAD, ZERO, quoted + 1n)),
+    "the receive floor is not enforced on a Router swap");
+  eq("and no gold left the Reach", decUint(await c.read(GOLD, "balanceOf(address)", [v])), 100n * WAD);
+  const ethBefore = await c.balanceOf(v);
+  const swap1 = await c.exec(v, TYPED, typed(r0, GOLD, 10n * WAD, ZERO, quoted), { label: "executeTyped→Router.swap(OwnPool)" });
+  eq("exactly ten gold for exactly the quote, in the same block", (await c.balanceOf(v)) - ethBefore, quoted);
+  eq("ten gold left", decUint(await c.read(GOLD, "balanceOf(address)", [v])), 90n * WAD);
+  eq("no allowance from the Reach to the Router survives", decUint(await c.read(GOLD, "allowance(address,address)", [v, ROUTER])), 0);
+  eq("none from the Router to the Pool", decUint(await c.read(GOLD, "allowance(address,address)", [ROUTER, POOL])), 0);
+  eq("the Router keeps nothing", decUint(await c.read(GOLD, "balanceOf(address)", [ROUTER])) + (await c.balanceOf(ROUTER)), 0);
+  console.log(`      executeTyped → Router.swap(OwnPool): ${swap1.gas} gas`);
+
+  const r3 = req(1, GOLD, SILVER, 10n * WAD, 10n * WAD, path(GOLD, SILVER));
+  const swap3 = await c.exec(v, TYPED, typed(r3, GOLD, 10n * WAD, SILVER, 10n * WAD), { label: "executeTyped→Router.swap(UniswapV3)" });
+  eq("the v3 venue pays the Reach through the Router", decUint(await c.read(SILVER, "balanceOf(address)", [v])), 10n * WAD);
+  eq("and leaves no allowance behind", decUint(await c.read(GOLD, "allowance(address,address)", [ROUTER, V3])), 0);
+  console.log(`      executeTyped → Router.swap(UniswapV3): ${swap3.gas} gas`);
+
+  await refuses("the holder cannot use the Router except through the Reach", () => c.exec(ROUTER, SWAP, [r0]), "an EOA swapped through the Router");
+  await c.exec(v, GRANT, [agent, day, 0n, [[GOLD, 10n * WAD]], [ROUTER], [SEL_SWAP], 0, 0], { label: "grantSession" });
+  await asAgent(v, TYPED, typed(r3, GOLD, 10n * WAD, SILVER, 10n * WAD));
+  eq("a session key swaps through the Router under its gold cap", decUint(await c.read(SILVER, "balanceOf(address)", [v])), 20n * WAD);
+  await refuses("and the cap is charged by what actually left", () => asAgent(v, TYPED, typed(r3, GOLD, 10n * WAD, SILVER, 10n * WAD)),
+    "a Router swap escaped the session's cap");
+  await refuses("the key is not a Reach: the Router refuses it directly", () => asAgent(ROUTER, SWAP, [r3]), "a session key swapped through the Router directly");
 }
 
 /*════════════ the frozen layout ════════════*/

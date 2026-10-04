@@ -178,10 +178,9 @@ contract Parley is IParley {
     struct Binding { address owner; uint64 epoch; }
     mapping(uint256 => Binding) private _bound;
 
-    /// @notice The recipient prices its inbox and the sender came without a stamp.
-    error PostageDue(uint256 to, uint128 postage);
-    /// @notice A reply pointer that names no message in this room.
-    error BadReply();
+    /*  `PostageDue` and `BadReply` were this contract's own until the wave-1
+        integration moved them into IParleyEvents, so the Catalog's error
+        table sees them (docs/INTERFACE-CHANGES.md).                      */
 
     constructor(address hub, address keys, address postage) {
         HUB = hub;

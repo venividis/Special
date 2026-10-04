@@ -25,6 +25,7 @@
 ───────────────────────────────────────────────────────────────────────────*/
 import { compile, artifact } from "./compile.mjs";
 import { Chain, decUint, decAddr, decBool, enc, encodeParams, sel, warp } from "./evm.mjs";
+import { deployHub, etchRegistry } from "./hub.mjs";
 import * as evm from "./evm.mjs";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
 
@@ -69,7 +70,14 @@ const CURVE = 700_000_000n * E;
 /*═══════════════ deploy: the mutual immutables ═══════════════*/
 
 head("deploy");
-const hub = await c.deploy(A("test/mocks/LaunchFixtures.sol", "LaunchHub").bytecode, "", "LaunchHub");
+/*  The real hub since the wave-1 integration (the ship build, tools/hub.mjs,
+    price zero); the Pool and Locks beside it are still the U6 fixtures so
+    `shortBy` and the exact-delta checks keep their walk — the real Pool is
+    met in test/Bundle.t.sol.                                             */
+await etchRegistry(c);
+const reachImpl = await c.deploy(A("src/Reach.sol", "Reach").bytecode, "", "Reach");
+const gripImpl = await c.deploy(A("src/Grip.sol", "Grip").bytecode, "", "Grip");
+const { hub } = await deployHub(c, out, { reachImpl, gripImpl }, { price: 0n });
 const pm = await c.deploy(A("test/mocks/MockPoolManager.sol", "MockPoolManager").bytecode, "", "MockPoolManager");
 const wiring = await c.deploy(A("test/mocks/LaunchFixtures.sol", "LaunchWiring").bytecode,
   encodeParams("address,address,uint256", [hub, pm, 0]), "LaunchWiring");
@@ -353,7 +361,7 @@ eq("stamped with the custody epoch", decUint(approvedLog.data, 0), 1n);
 await refusesWith("it does not let a stranger launch",
   () => asReach2.exec(kiln, "launch(uint256,string,string,uint8,uint256,bytes32,uint256)",
     [ID2, "Mine", "MINE", 18, SUPPLY, SALT, 0n]), "NotActor()");
-await bob.exec(hub, "transfer(uint256,address)", [ID2, carol.from.toString()]);
+await bob.exec(hub, "transferFrom(address,address,uint256)", [bob.from.toString(), carol.from.toString(), ID2]);
 eq("a sale voids it", decBool(await c.read(pad, "firstLaunchApproved(uint256)", [ID2])), false);
 await carol.exec(kiln, "launch(uint256,string,string,uint8,uint256,bytes32,uint256)",
   [ID2, "Mine", "MINE", 18, SUPPLY, SALT, 0n], { label: "launch" });

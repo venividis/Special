@@ -31,7 +31,7 @@
 import { compile, artifact } from "./compile.mjs";
 import * as evm from "./evm.mjs";
 import { Chain, enc, sel, decUint, decAddr, decBool, encodeAddressArg, warp } from "./evm.mjs";
-import { createAddressFromString } from "@ethereumjs/util";
+import { deployHub, etchRegistry, predictNext } from "./hub.mjs";
 
 let pass = 0, fail = 0;
 const ok = (n, cond, d) => {
@@ -63,15 +63,20 @@ const me = c.from.toString();
 const S = { NO_PLAN: 0n, SOLD: 1n, SPEAKING: 2n, SUMMONABLE: 3n, WAITING: 4n, LOCKED: 5n, BAD_HANDS: 6n, OK: 7n };
 
 head("deploy");
-const tmpReg = await c.deploy(A("test/mocks/MockRegistry6551.sol", "MockRegistry6551").bytecode);
-await c.vm.stateManager.putCode(createAddressFromString(REGISTRY),
-  await c.vm.stateManager.getCode(createAddressFromString(tmpReg)));
-const impl = await c.deploy(A("test/mocks/MockHubForVault.sol", "StubAccountImpl").bytecode);
-const hub = await c.deploy(A("test/mocks/MockHubForVault.sol", "MockHubForVault").bytecode,
-  encodeAddressArg(impl) + encodeAddressArg(impl));
+/*  The real hub (the ship build, tools/hub.mjs) with the Steward pinned as
+    its STEWARD before the Steward exists: four facets and the diamond
+    land first, so the Steward is the deployer's sixth creation from here,
+    predicted by CREATE's arithmetic and asserted after. `market` is a key
+    standing in for the other pinned module (U15).                      */
+await etchRegistry(c);
+const reachImpl = await c.deploy(A("src/Reach.sol", "Reach").bytecode, "", "Reach");
+const gripImpl = await c.deploy(A("src/Grip.sol", "Grip").bytecode, "", "Grip");
+const market = await c.as("0x" + "aa".repeat(32));
+const stewardP = await predictNext(c, 5);
+const { hub } = await deployHub(c, out, { reachImpl, gripImpl, steward: stewardP, market: market.from.toString() }, { price: 0n });
 const steward = await c.deploy(A("src/Steward.sol", "Steward").bytecode, encodeAddressArg(hub), "Steward");
-const market = await c.as("0x" + "aa".repeat(32));        // stands in for another pinned module
-await c.exec(hub, "wire(address,address,address)", [steward, market.from.toString(), ZERO]);
+eq("the Steward landed where the hub pins it", steward.toLowerCase(), stewardP.toLowerCase());
+eq("and the hub says so", decAddr(await c.read(hub, "STEWARD()")).toLowerCase(), steward.toLowerCase());
 const bytes = A("src/Steward.sol", "Steward").deployed.length / 2 - 1;
 ok(`deployed (Steward runtime ${bytes} B)`, steward.length === 42);
 for (const name of ["NO_PLAN", "SOLD", "SPEAKING", "SUMMONABLE", "WAITING", "LOCKED", "BAD_HANDS", "OK"]) {
@@ -93,7 +98,7 @@ const addr = (actor) => actor.from.toString().toLowerCase();
 
 for (let i = 0; i < 8; i++) await c.exec(hub, "mint(address)", [me]);
 const reach1 = decAddr(await c.read(hub, "account(uint256)", [1]));
-await c.exec(hub, "createReach(uint256)", [1]);
+ok("the mint made the Reach (the real forwarder, 173 bytes)", (await c.codeSize(reach1)) === 173);
 const ownerOf = async (id) => decAddr(await c.read(hub, "ownerOf(uint256)", [id])).toLowerCase();
 const status = async (id) => decUint(await c.read(steward, "wouldPass(uint256)", [id]));
 const locked = async (id) => decBool(await c.read(hub, "locked(uint256)", [id]));
@@ -169,11 +174,15 @@ head("two clocks, and what resets them");
 
   /*  The attack that defeated the donor's feature, run as the attack: a
       stranger's call against the token (IPSEITY's `embody`) must not be a
-      sign of life. The mock's `touch` is that call.                    */
-  await thief.exec(hub, "touch(uint256)", [id]);
-  eq("a stranger touching the token does not reset the silence", await status(id), S.SUMMONABLE);
-  await thief.exec(hub, "touch(uint256)", [id]);
-  eq("nor does doing it again", await status(id), S.SUMMONABLE);
+      sign of life. On the real hub a stranger has two kinds of call: one
+      that names the token and is refused (a transfer they are not
+      authorised for), and one the hub accepts from anybody (their own
+      approval epoch). Neither is the holder speaking.                 */
+  await refuses("a stranger's grab at the token is refused",
+    () => agent.exec(hub, "transferFrom(address,address,uint256)", [me, addr(agent), id]), "NotAuthorized()");
+  eq("and does not reset the silence", await status(id), S.SUMMONABLE);
+  await agent.exec(hub, "revokeAllApprovals()", []);
+  eq("nor does a write the hub accepts from a stranger", await status(id), S.SUMMONABLE);
   eq("and the hub did not move the custody epoch for it", decUint(await c.read(hub, "custodyEpoch(uint256)", [id])), 1n);
 
   await refuses("the wrong preimage opens nothing", () => thief.exec(steward, SUMMON, [id, addr(thief), SALT]), "WrongHeir()");

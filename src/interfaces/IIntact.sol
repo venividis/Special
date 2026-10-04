@@ -226,6 +226,10 @@ interface IIntact is IIntactEvents {
     function hasPinnedTokenURI(uint256 id) external view returns (bool);
     function contractURI() external view returns (string memory);
     function scriptURI() external view returns (string[] memory);
+    /// @dev ERC-5169's setter, so the claimed interface id is honest: always reverts `NotTimelock`
+    ///      (the script is the site and the site is a contract; nobody sets it). Added in the
+    ///      wave-1 integration (additive; docs/INTERFACE-CHANGES.md).
+    function setScriptURI(string[] calldata newScriptURI) external;
     function getTraitValue(uint256 id, bytes32 traitKey) external view returns (bytes32);
     function getTraitValues(uint256 id, bytes32[] calldata traitKeys) external view returns (bytes32[] memory);
     function getTraitMetadataURI() external view returns (string memory);

@@ -13,6 +13,19 @@ import {RightsFacet} from "../../src/hub/facets/RightsFacet.sol";
 import {MintFacet} from "../../src/hub/facets/MintFacet.sol";
 import {SiteFacet} from "../../src/hub/facets/SiteFacet.sol";
 import "./HubMocks.sol";
+import {Reach} from "../../src/Reach.sol";
+import {Grip} from "../../src/Grip.sol";
+import {KeyRegistry} from "../../src/KeyRegistry.sol";
+import {Timelock} from "../../src/Timelock.sol";
+import {Locks} from "../../src/Locks.sol";
+import {Postage} from "../../src/Postage.sol";
+import {Parley} from "../../src/Parley.sol";
+import {Roster} from "../../src/Roster.sol";
+import {Steward} from "../../src/Steward.sol";
+import {Pool} from "../../src/Pool.sol";
+import {Kiln} from "../../src/Kiln.sol";
+import {Launchpad} from "../../src/Launchpad.sol";
+import {MockPoolManager} from "../mocks/MockPoolManager.sol";
 
 /*───────────────────────────────────────────────────────────────────────────
   The test world, for either build (INTACT U1, NEW)
@@ -221,7 +234,7 @@ abstract contract IntactFixture is Test {
     }
 
     function siteSelectors() internal pure returns (bytes4[] memory s) {
-        s = new bytes4[](14);
+        s = new bytes4[](15);
         uint256 i;
         s[i++] = IIntact.tokenURI.selector;
         s[i++] = IIntact.tokenURIAt.selector;
@@ -231,6 +244,7 @@ abstract contract IntactFixture is Test {
         s[i++] = IIntact.hasPinnedTokenURI.selector;
         s[i++] = IIntact.contractURI.selector;
         s[i++] = IIntact.scriptURI.selector;
+        s[i++] = IIntact.setScriptURI.selector;
         s[i++] = IIntact.getTraitValue.selector;
         s[i++] = IIntact.getTraitValues.selector;
         s[i++] = IIntact.getTraitMetadataURI.selector;
@@ -240,7 +254,7 @@ abstract contract IntactFixture is Test {
         require(i == s.length, "site count");
     }
 
-    /// @dev Every selector of IIntact, in cut order: 92.
+    /// @dev Every selector of IIntact, in cut order: 93.
     function allSelectors() internal pure returns (bytes4[] memory all) {
         bytes4[][4] memory parts = [coreSelectors(), rightsSelectors(), mintSelectors(), siteSelectors()];
         uint256 n;
@@ -279,5 +293,137 @@ abstract contract IntactFixture is Test {
         if (ok) return true;
         if (ret.length < 4) return false;
         return bytes4(ret) != IIntactEvents.FunctionNotFound.selector;
+    }
+}
+
+/*───────────────────────────────────────────────────────────────────────────
+  The bundle: the real hub with every real wave-1 satellite (integration)
+
+  Six units were built against frozen interfaces with their own stand-ins
+  for one another. This fixture is where they first meet: the hub in the
+  build INTACT_IMPL names, the real Reach and Grip implementations behind
+  the canonical registry, Pool, Parley with Roster, Postage and KeyRegistry,
+  Locks, Steward, Timelock, Kiln and Launchpad — every one pinned to the
+  others by its immutables, through one IntactConfig, before any of them
+  exists.
+
+  The pinning is mutual: the hub's constructor takes the satellites, each
+  satellite's constructor takes the hub, Pool and Kiln take the Launchpad
+  and the Launchpad takes them back, Postage takes Parley and Parley takes
+  Postage. On a live chain CREATE3 settles every address up front (DESIGN.md
+  §12). Here the same thing is done with CREATE's own arithmetic from the
+  TEST CONTRACT: its next nonce is discovered by deploying a probe and
+  matching it against the formula (there is no nonce cheatcode), every
+  later address is predicted from that, and every prediction is asserted
+  after the fact — a wrong count reverts `Mispredicted`, never deploys a
+  hub that pins a satellite it does not have. One deployer contract would
+  have been simpler, and is impossible: its initcode would embed every
+  creation code below, ~110 KB against EIP-3860's 49,152.
+
+  The Renderer is still the hub-suite mock (the site is wave 2); MARKET and
+  ROLES are unpinned (post-MVB), so `_isModule` admits only the Steward.
+───────────────────────────────────────────────────────────────────────────*/
+contract NonceProbe {}
+
+abstract contract BundleFixture is IntactFixture {
+    Reach theReach;                 // the implementation; every Reach is a forwarder to it
+    Grip theGrip;
+    KeyRegistry theKeys;
+    Timelock theTimelock;
+    Locks theLocks;
+    Postage thePostage;
+    Parley theParley;
+    Roster theRoster;
+    Steward theSteward;
+    Pool thePool;
+    Kiln theKiln;
+    Launchpad theLaunchpad;
+    MockPoolManager poolManager;
+    address admin = address(0xAD314);
+
+    error Mispredicted(string which, address predicted, address actual);
+    error NonceNotFound();
+
+    function setUpBundle() internal {
+        vm.warp(T0);
+        vm.roll(1000);
+        vm.etch(REGISTRY, REGISTRY_RUNTIME);
+        diamondBuild = keccak256(bytes(vm.envOr("INTACT_IMPL", "monolith"))) == keccak256("diamond");
+
+        // nothing below needs a prediction
+        theReach = new Reach();
+        theGrip = new Grip();
+        renderer = new MockRenderer();
+        poolManager = new MockPoolManager();
+        theKeys = new KeyRegistry();
+        theTimelock = new Timelock(admin);
+
+        // from here every creation is counted: the hub lands after eight
+        // satellites (monolith) or after eight, four facets and the diamond
+        uint256 n = _nextNonce();
+        address parleyP = _predict(address(this), n + 2);
+        address padP = _predict(address(this), n + 7);
+        address hubP = _predict(address(this), n + 8 + (diamondBuild ? 4 : 0));
+
+        theLocks = new Locks(hubP);                                                   // n
+        thePostage = new Postage(hubP, parleyP);                                      // n + 1
+        theParley = new Parley(hubP, address(theKeys), address(thePostage));          // n + 2
+        theRoster = new Roster(address(theParley), hubP);                             // n + 3
+        theSteward = new Steward(hubP);                                               // n + 4
+        thePool = new Pool(hubP, padP);                                               // n + 5
+        theKiln = new Kiln(hubP, padP, address(poolManager));                         // n + 6
+        theLaunchpad = new Launchpad(hubP, address(theKiln), address(thePool), address(theLocks));   // n + 7
+        IntactConfig memory c = bundleConfig();
+        hub = diamondBuild ? deployDiamond(c, PRICE) : deployMonolith(c, PRICE);     // n + 8 (+ 4)
+
+        if (address(theParley) != parleyP) revert Mispredicted("Parley", parleyP, address(theParley));
+        if (address(theLaunchpad) != padP) revert Mispredicted("Launchpad", padP, address(theLaunchpad));
+        if (address(hub) != hubP) revert Mispredicted("hub", hubP, address(hub));
+
+        vm.deal(alice, 100 ether);
+        vm.deal(bob, 100 ether);
+        vm.deal(carol, 100 ether);
+    }
+
+    function bundleConfig() internal view returns (IntactConfig memory c) {
+        c = IntactConfig({
+            reachImpl: address(theReach), gripImpl: address(theGrip),
+            band: BAND, bandLo: LO, bandHi: HI,
+            steward: address(theSteward), market: address(0), roles: address(0), pool: address(thePool),
+            parley: address(theParley), launchpad: address(theLaunchpad), locks: address(theLocks),
+            renderer: address(renderer), catalog: address(0), premises: address(0), timelock: address(theTimelock)
+        });
+    }
+
+    /// @dev The test contract's next CREATE nonce: deploy a probe, find the
+    ///      nonce whose predicted address it landed at, add one. The search
+    ///      starts at zero: a runner that installs the suite's code directly
+    ///      (this one does) leaves the account at nonce 0, where a contract
+    ///      that was created would start at 1 (EIP-161).
+    function _nextNonce() internal returns (uint256 n) {
+        address probe = address(new NonceProbe());
+        for (n = 0; n < 1 << 16; ++n) if (_predict(address(this), n) == probe) return n + 1;
+        revert NonceNotFound();
+    }
+
+    /// @dev keccak256(rlp([deployer, nonce]))[12:], for every nonce under 2^24.
+    function _predict(address d, uint256 nonce) internal pure returns (address) {
+        bytes memory rlp;
+        if (nonce == 0) rlp = abi.encodePacked(bytes1(0xd6), bytes1(0x94), d, bytes1(0x80));
+        else if (nonce <= 0x7f) rlp = abi.encodePacked(bytes1(0xd6), bytes1(0x94), d, uint8(nonce));
+        else if (nonce <= 0xff) rlp = abi.encodePacked(bytes1(0xd7), bytes1(0x94), d, bytes1(0x81), uint8(nonce));
+        else if (nonce <= 0xffff) rlp = abi.encodePacked(bytes1(0xd8), bytes1(0x94), d, bytes1(0x82), uint16(nonce));
+        else rlp = abi.encodePacked(bytes1(0xd9), bytes1(0x94), d, bytes1(0x83), uint24(nonce));
+        return address(uint160(uint256(keccak256(rlp))));
+    }
+
+    /*═══════════════════ conveniences over the real hands ═══════════════════*/
+
+    function reachAt(uint256 id) internal view returns (Reach) {
+        return Reach(payable(hub.account(id)));
+    }
+
+    function gripAt(uint256 id) internal view returns (Grip) {
+        return Grip(payable(hub.grip(id)));
     }
 }

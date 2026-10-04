@@ -17,15 +17,17 @@
   cancel and (the donor's rule, recorded because DESIGN.md §3 row 27 says
   otherwise) execute.
 
-  The hub is the U5 mock (test/mocks/MockHubForVault.sol) until U1 lands;
-  the walk is the same against the real one: swap the artifact and the
-  constructor arguments.
+  The hub is the real one since the wave-1 integration — the ship build
+  (four facets and the immutable diamond, tools/hub.mjs) with this lock
+  pinned as its TIMELOCK and a mint price of zero, so the walk reads the
+  curated surface the chain will have, not a mock of it.
 
     node tools/verify-timelock.mjs
 ───────────────────────────────────────────────────────────────────────────*/
 import { compile, artifact } from "./compile.mjs";
 import * as evm from "./evm.mjs";
 import { Chain, enc, sel, decUint, decAddr, decBool, encodeAddressArg } from "./evm.mjs";
+import { deployHub, etchRegistry } from "./hub.mjs";
 
 let pass = 0, fail = 0;
 const ok = (n, c, d) => {
@@ -52,11 +54,12 @@ const me = c.from.toString();
 const ZERO = "0x" + "00".repeat(20);
 
 head("deploy");
-const impl = await c.deploy(A("test/mocks/MockHubForVault.sol", "StubAccountImpl").bytecode);
-const hub = await c.deploy(A("test/mocks/MockHubForVault.sol", "MockHubForVault").bytecode,
-  encodeAddressArg(impl) + encodeAddressArg(impl));
+await etchRegistry(c);
+const reachImpl = await c.deploy(A("src/Reach.sol", "Reach").bytecode, "", "Reach");
+const gripImpl = await c.deploy(A("src/Grip.sol", "Grip").bytecode, "", "Grip");
 const lock = await c.deploy(A("src/Timelock.sol", "Timelock").bytecode, encodeAddressArg(me), "Timelock");
-await c.exec(hub, "wire(address,address,address)", [ZERO, ZERO, lock]);
+const { hub, cut } = await deployHub(c, out, { reachImpl, gripImpl, timelock: lock }, { price: 0n });
+ok(`the real hub: the diamond, ${cut.length} facets, ${cut.reduce((n, x) => n + x.functionSelectors.length, 0)} selectors routed`, hub.length === 42);
 const bytes = A("src/Timelock.sol", "Timelock").deployed.length / 2 - 1;
 ok(`deployed (Timelock runtime ${bytes} B)`, lock.length === 42);
 
@@ -132,19 +135,20 @@ const bobAddr = bob.from.toString();
 await refuses("a stranger queueing", () => bob.exec(lock, Q, [hub, 0, data, "0x" + "04".repeat(32)]), "NotAdmin()");
 await refuses("a stranger cancelling", () => bob.exec(lock, "cancel(bytes32)", [opHash]), "NotAdmin()");
 
-/*  The donor's rule: `execute` is `onlyAdmin`. DESIGN.md §3 row 27 reads
-    "anyone executes"; the plan says verbatim and pins the size, so this
-    assertion records which rule shipped. Flip it with the one-word change
-    in src/Timelock.sol if the open form is wanted.                     */
+/*  DESIGN.md §3 row 27: "admin queues; anyone executes". The donor's
+    `execute` was `onlyAdmin`; the wave-1 integration dropped the one word
+    (the admin announced the change a week ago, and who presses does not
+    change what lands), so a stranger may execute a ripe operation — and
+    nothing else: queueing and cancelling stay the admin's.             */
 const saltE = "0x" + "0e".repeat(32);
 const T2 = T1 + DELAY + GRACE + 10n;
 await c.exec(lock, Q, [hub, 0, enc("setPrice(uint256)", [777n]), saltE]);
 at(T2 + DELAY + 1n);
-await refuses("a stranger executing a ripe operation (the donor's rule, recorded)",
-  () => bob.exec(lock, X, [hub, 0, enc("setPrice(uint256)", [777n]), saltE]), "NotAdmin()");
-eq("so the price stayed", decUint(await c.read(hub, "price()")), 12345n);
-await c.exec(lock, "cancel(bytes32)", [await c.read(lock, "opHash(address,uint256,bytes,bytes32)",
-  [hub, 0, enc("setPrice(uint256)", [777n]), saltE])]);
+await bob.exec(lock, X, [hub, 0, enc("setPrice(uint256)", [777n]), saltE]);
+eq("a stranger executing a ripe operation lands it (DESIGN.md §3 row 27: anyone executes)",
+   decUint(await c.read(hub, "price()")), 777n);
+await refuses("and cannot land it twice",
+  () => bob.exec(lock, X, [hub, 0, enc("setPrice(uint256)", [777n]), saltE]), "NotQueued()");
 
 await refuses("the admin rotating itself directly", () => c.exec(lock, "setAdmin(address)", [bobAddr]), "NotSelf()");
 const rot0 = enc("setAdmin(address)", [ZERO]);
@@ -179,7 +183,7 @@ await refuses("cancelling what is not there", () => bob.exec(lock, "cancel(bytes
 
 /*──────────────── the failed call ────────────────*/
 head("a call the target refuses is reported, not swallowed");
-const bad = enc("touch(uint256)", [42n]);        // no such token: the hub reverts NoSuchToken
+const bad = enc("panic(uint256)", [42n]);        // no such token: the hub reverts NoSuchToken
 const saltB = "0x" + "0b".repeat(32);
 const T4 = T3 + DELAY + 1n;
 await bob.exec(lock, Q, [hub, 0, bad, saltB]);

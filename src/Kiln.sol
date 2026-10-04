@@ -8,20 +8,17 @@ pragma solidity ^0.8.24;
 // Load-bearing comments kept.
 
 import {IKiln, LaunchRecord} from "./interfaces/IKiln.sol";
+import {ILaunchpad} from "./interfaces/ILaunchpad.sol";
 import {Rights, IRightsHub} from "./lib/Rights.sol";
 import {Hook} from "./lib/Hook.sol";
 import {Transient} from "./lib/Transient.sol";
 import {Coin} from "./Coin.sol";
 
-/// @dev The half of the Launchpad the Kiln speaks to: one keeper for the
-///      per-token launch clock, the first-launch rule and the launch root,
-///      whichever contract the launch began in (DESIGN.md §8.1 "both
-///      rate-limited per token, both named in the token's launchRoot").
-///      Declared here rather than in src/interfaces because it is the
-///      Kiln↔Launchpad seam and nothing else calls it.
-interface ILaunchClock {
-    function recordLaunch(uint256 id, address by, address coin, uint256 raiseShare) external;
-}
+/*  The half of the Launchpad the Kiln speaks to — `recordLaunch`, one
+    keeper for the per-token launch clock, the first-launch rule and the
+    launch root (DESIGN.md §8.1 "both rate-limited per token, both named in
+    the token's launchRoot") — was a local `ILaunchClock` until the wave-1
+    integration added it to ILaunchpad (docs/INTERFACE-CHANGES.md).      */
 
 /*───────────────────────────────────────────────────────────────────────────
   Kiln — where a launch is made
@@ -93,10 +90,8 @@ contract Kiln is IKiln {
     ///         floor: `10 ** decimals` must stay far inside a word.
     uint8 public constant MAX_DECIMALS = 36;
 
-    /// @notice A name or symbol that is not 1–32 bytes of printable ASCII.
-    ///         (`BadName` in the interface; the decimals bound is this
-    ///         contract's own.)
-    error BadDecimals();
+    /*  `BadDecimals` (decimals above MAX_DECIMALS) was this contract's own
+        until the wave-1 integration moved it into IKilnEvents.          */
 
     /// @dev Every coin this contract has made, in order, so the page can
     ///      list them without an indexer.
@@ -158,7 +153,7 @@ contract Kiln is IKiln {
             spacing, extends the token's launch root, and remembers the
             raise share this coin brought it — so `create` can only ever
             spend a share the Kiln minted, once.                           */
-        ILaunchClock(LAUNCHPAD).recordLaunch(id, msg.sender, coin, raiseShare);
+        ILaunchpad(LAUNCHPAD).recordLaunch(id, msg.sender, coin, raiseShare);
 
         emit Launched(coin, id, msg.sender, symbol_, supply, raiseShare);
         Transient.exit(Transient.KILN_LOCK);

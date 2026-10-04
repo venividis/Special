@@ -93,6 +93,14 @@ abstract contract SiteLogic is IntactBase {
         s[0] = string.concat("web3://", LibNum.hexAddr(_PREMISES), ":", LibNum.str(block.chainid), "/");
     }
 
+    /// @notice ERC-5169's setter exists so the claimed interface id is
+    ///         honest, and refuses everyone: the script is the Premises,
+    ///         pinned at construction, and not even the Timelock can point
+    ///         the token's clients somewhere else.
+    function setScriptURI(string[] calldata) external view {
+        revert NotTimelock();
+    }
+
     /*═══════════════════ ERC-7496 traits ═══════════════════*/
 
     /// @dev `curve` and `name` are the holder's; the rest mirror state so a

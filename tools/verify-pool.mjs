@@ -71,6 +71,10 @@ const bob = await c.as("0x" + "22".repeat(32));
 const carol = await c.as("0x" + "33".repeat(32));
 const BOB = bob.from.toString(), CAROL = carol.from.toString();
 
+/*  Still the U3 stand-in after the wave-1 integration, on purpose: this walk
+    pins a contract of its own as a token's Reach (`setAccount`) to act as
+    the account without a prank, which the real hub cannot do — it derives
+    the Reach. The real hub, Reach and Pool meet in test/Bundle.t.sol.   */
 const hub = await c.deploy(A("test/mocks/PoolFixtures.sol", "PoolHub").bytecode, "", "PoolHub");
 // the deployer plays the Launchpad, so openSealed can be exercised directly
 const pool = await c.deploy(A("src/Pool.sol", "Pool").bytecode,

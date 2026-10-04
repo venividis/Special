@@ -16,6 +16,14 @@ and has been seen to fail under a one-character mutation. Until then it is
 **pending** and names the unit that owns it. Counts and gas numbers are
 written here only after a run.
 
+The wave-1 integration flipped the unit rows below on two things: the
+units' own mutation evidence, recorded in their commit bodies, and the
+integrated runs (237 tests on each build; verify-vault 168, verify-parley
+81, verify-launch 123, verify-steward 91, verify-timelock 35 against the
+real hub; verify-pool 144 on its stand-in). The `test/Bundle.t.sol`
+citations it added beside them are further evidence, not yet mutation-
+gated — that gate, with E1/E3's, is U12's.
+
 ---
 
 ## 0. The foundation (wave 0 — live)
@@ -66,28 +74,28 @@ before any suite is reported on.**
 
 | # | Invariant | Enforced by | Status |
 |---|---|---|---|
-| A1 | `_update` bumps `custodyEpoch`, clears approval/user/guardian/wallet/face/feesToGrip, forces `Paused`; no seller authority survives | `test/Update.t.sol` · `test_sellingTheTokenRevokesEverySellerAuthority`, `test_selfTransferBumpsTheEpochAndRevivesNothing`, `test_buyBackRevivesNoSession` | pending U1 |
-| A2 | Locked tokens cannot transfer; only pinned modules lock; `moduleUnlock` at zero reverts | `test/Update.t.sol` · `test_aLockedTokenCannotMove`, `test_onlyPinnedModulesMayLock`, `test_unlockingAtZeroReverts` | pending U1 |
-| A3 | `isApprovedForAll` reads the epoch store; `revokeAllApprovals` is O(1); timed approvals expire | `test/Approvals.t.sol` · `test_revokeAllApprovalsIsOneWrite`, `test_aTimedApprovalExpires` | pending U1 |
-| A4 | `Core` is append-only; the fingerprint moves for every field | `test/Fingerprint.t.sol` · `test_everyFieldMovesTheFingerprint` | pending U1 |
-| A5 | Canonical-account transfer refusal; no nesting, no strand, no cycle at any depth | `test/Update.t.sol` · `test_noIntactCanEnterAnyIntactsAccounts`, `test_aGripNeverStrandsAnIntact`, `test_sellingJLeavesKNoSellerSession` | pending U1 |
-| A6 | Mint: counters before the callback, band bounds, no `block.*` | `test/Mint.t.sol` · `test_aReentrantMinterSeesACompleteToken`, `test_theBandIsExhaustedNotWrapped`; `tools/static-audit.mjs` | pending U1 |
-| A7 | No `tx.origin`, `extcodesize == 0`, EOA-only; a 7702-delegated holder works | `tools/static-audit.mjs` (live); `test/Rights.t.sol` · `test_aDelegatedHolderStillHolds` | partial (U1) |
-| A8 | No initializer/proxy/`diamondCut`/routing owner; cut strict; config hash equal; slots 0–2 empty | `test/Diamond.t.sol` · `test_partitionsTheMonolithAbiEveryFunctionRoutedOnce`, `test_routesNoDiamondCutAnywhere`, `test_slotsZeroToTwoAreEmpty`, `test_refusesAFacetBuiltAgainstAnotherConfiguration`; `tools/facets.mjs` (live) | partial (U1) |
-| A9 | Every contract ≤ 24,576 on every band; ship rule applied | `tools/compile.mjs` (live); `deployments/*.json` `shipBuild` checked by `tools/recover-record.mjs` | partial (U10) |
-| A10 | Guardian panic never revokes the owner's operators on other tokens; holder panic may | `test/Panic.t.sol` · `test_guardianPanicLeavesOtherTokensOperatorsAlone`, `test_holderPanicKillsEveryDelegatedRight` | pending U1 |
+| A1 | `_update` bumps `custodyEpoch`, clears approval/user/guardian/wallet/face/feesToGrip, forces `Paused`; no seller authority survives | `test/Update.t.sol` · `test_sellingTheTokenRevokesEverySellerAuthority`, `test_selfTransferBumpsTheEpochAndRevivesNothing`, `test_buyBackRevivesNoSession`; `test/Bundle.t.sol` · `test_sellingTheTokenSellsTheMarketTheVoiceTheLaunchFeesAndKillsEverySession`, `test_aBuyBackRevivesNothingAnywhere` | live (U1, integration: both builds; the Bundle rows run the real Reach, Pool, Parley, Postage, Steward and Launchpad against the real hub) |
+| A2 | Locked tokens cannot transfer; only pinned modules lock; `moduleUnlock` at zero reverts | `test/Update.t.sol` · `test_aLockedTokenCannotMove`, `test_onlyPinnedModulesMayLock`, `test_unlockingAtZeroReverts`; `test/Bundle.t.sol` · `test_theStewardMovesTheWholeBundle` (the real Steward's lock) | live (U1, integration) |
+| A3 | `isApprovedForAll` reads the epoch store; `revokeAllApprovals` is O(1); timed approvals expire | `test/Approvals.t.sol` · `test_revokeAllApprovalsIsOneWrite`, `test_aTimedApprovalExpires` | live (U1) |
+| A4 | `Core` is append-only; the fingerprint moves for every field | `test/Fingerprint.t.sol` · `test_everyFieldMovesTheFingerprint`; `test/Bundle.t.sol` · `test_theHolderOpensAMarketSpeaksAndLaunchesFromOneToken` (the market, the Reach's ledger and the launch each move it, read from the real satellites) | live (U1, integration) |
+| A5 | Canonical-account transfer refusal; no nesting, no strand, no cycle at any depth | `test/Update.t.sol` · `test_noIntactCanEnterAnyIntactsAccounts`, `test_aGripNeverStrandsAnIntact`, `test_sellingJLeavesKNoSellerSession` | live (U1) |
+| A6 | Mint: counters before the callback, band bounds, no `block.*` | `test/Mint.t.sol` · `test_aReentrantMinterSeesACompleteToken`, `test_theBandIsExhaustedNotWrapped`; `tools/static-audit.mjs` | live (U1) |
+| A7 | No `tx.origin`, `extcodesize == 0`, EOA-only; a 7702-delegated holder works | `tools/static-audit.mjs` (live); `test/Rights.t.sol` · `test_aDelegatedHolderStillHolds` | live (U1) |
+| A8 | No initializer/proxy/`diamondCut`/routing owner; cut strict; config hash equal; slots 0–2 empty | `test/Diamond.t.sol` · `test_partitionsTheMonolithAbiEveryFunctionRoutedOnce`, `test_routesNoDiamondCutAnywhere`, `test_slotsZeroToTwoAreEmpty`, `test_refusesAFacetBuiltAgainstAnotherConfiguration`; `tools/facets.mjs` (live) | live (U1; `allSelectors` is 93 since `setScriptURI`) |
+| A9 | Every contract ≤ 24,576 on every band; ship rule applied | `tools/compile.mjs` (live); `deployments/*.json` `shipBuild` checked by `tools/recover-record.mjs` | partial: the size gate is live (Intact 25,402 B → the diamond ships, `out/ship.json`); the `shipBuild` record check is pending U10 |
+| A10 | Guardian panic never revokes the owner's operators on other tokens; holder panic may | `test/Panic.t.sol` · `test_guardianPanicLeavesOtherTokensOperatorsAlone`, `test_holderPanicKillsEveryDelegatedRight`; `test/Bundle.t.sol` · `test_panicRevokesAcrossEverySatellite`; `test/Reach.t.sol` · `test_aSecondPanicDoesNotRevertOnTheSeal` | live (U1, integration) |
 
 ## B. The accounts
 
 | # | Invariant | Enforced by | Status |
 |---|---|---|---|
-| B1 | Grip: every selector enumerated, none moves an asset; `0x51945447` not advertised; `state()==0` | `tools/verify-vault.mjs` · *"the Grip's ABI has no selector that moves an asset"* | pending U2 |
-| B2 | Reach `execute` op 0 only; no delegatecall path | `test/Reach.t.sol` · `test_operationOneIsRefused`; `tools/static-audit.mjs` | partial (U2) |
-| B3 | ERC-7739: `0x7739…` → `0x77390001`; session keys → `0xffffffff`; passes as a Safe ≥ 1.4.1 owner | `test/Reach7739.t.sol` · `test_attestationVerifiesAsASafeOwnerWithoutReplay`, `test_aSessionKeyNeverSigns` | pending U2 |
-| B4 | Seal ratchets only ≤ 365 d, survives sale, measurement-enforced, approval family refused | `tools/verify-vault.mjs` · *"a drainer with a function name no list has still Shrank"*; `test/Ratchet.t.sol` · `test_everyRatchetOnlyLengthens` (live) | partial (U2) |
-| B5 | Sessions epoch-stamped, `Active` required, no self-call, no sub-grant, ERC-20 delta caps, receive floors | `test/Sessions.t.sol` · `test_aSessionDiesOnSale`, `test_aPausedTokenFreezesItsKeys`, `test_aSessionCannotGrantASession`, `test_anErc20CapIsMeasuredByDelta`, `test_executeTypedRefusesAShortfall` | pending U2 |
-| B6 | Open-approval ledger records every approval shape; a foreign revert never blocks revoke | `test/Ledger.t.sol` · `test_permit2ApproveIsRecorded`, `test_aRevertingAssetDoesNotBlockRevokeAll` | pending U2 |
-| B7 | Steward: `stewardTransfer` only; void on transfer; ≥ 2 guardians; one count per guardian per nonce; a stranger is not life | `test/Steward.t.sol` · `test_aStrangerCannotResetSilence`, `test_aPlanIsVoidAfterSale`, `test_oneGuardianCannotRecoverAlone`, `test_anHeirWaitsOutASeal` | pending U5 |
+| B1 | Grip: every selector enumerated, none moves an asset; `0x51945447` not advertised; `state()==0` | `tools/verify-vault.mjs` · *"the Grip's ABI has no selector that moves an asset"* | live (U2; verify-vault runs against the real hub since the integration) |
+| B2 | Reach `execute` op 0 only; no delegatecall path | `test/Reach.t.sol` · `test_operationOneIsRefused`; `tools/static-audit.mjs` | live (U2) |
+| B3 | ERC-7739: `0x7739…` → `0x77390001`; session keys → `0xffffffff`; passes as a Safe ≥ 1.4.1 owner | `test/Reach7739.t.sol` · `test_attestationVerifiesAsASafeOwnerWithoutReplay`, `test_aSessionKeyNeverSigns` | live (U2) |
+| B4 | Seal ratchets only ≤ 365 d, survives sale, measurement-enforced, approval family refused | `tools/verify-vault.mjs` · *"a drainer with a function name no list has still Shrank"*; `test/Ratchet.t.sol` · `test_everyRatchetOnlyLengthens` (live); `test/Bundle.t.sol` · `test_sellingTheTokenSellsTheMarketTheVoiceTheLaunchFeesAndKillsEverySession` (the seal survives the sale) | live (U2, integration) |
+| B5 | Sessions epoch-stamped, `Active` required, no self-call, no sub-grant, ERC-20 delta caps, receive floors | `test/Sessions.t.sol` · `test_aSessionDiesOnSale`, `test_aPausedTokenFreezesItsKeys`, `test_aSessionCannotGrantASession`, `test_anErc20CapIsMeasuredByDelta`, `test_executeTypedRefusesAShortfall`; `test/Bundle.t.sol` · `test_aBuyBackRevivesNothingAnywhere` | live (U2, integration) |
+| B6 | Open-approval ledger records every approval shape; a foreign revert never blocks revoke | `test/Ledger.t.sol` · `test_permit2ApproveIsRecorded`, `test_aRevertingAssetDoesNotBlockRevokeAll` | live (U2) |
+| B7 | Steward: `stewardTransfer` only; void on transfer; ≥ 2 guardians; one count per guardian per nonce; a stranger is not life | `test/Steward.t.sol` · `test_aStrangerCannotResetSilence`, `test_aPlanIsVoidAfterSale`, `test_oneGuardianCannotRecoverAlone`, `test_anHeirWaitsOutASeal`; `tools/verify-steward.mjs` (91 assertions, against the real hub); `test/Bundle.t.sol` · `test_theStewardMovesTheWholeBundle` | live (U5, integration) |
 
 ## C. The market
 
@@ -96,27 +104,27 @@ before any suite is reported on.**
 | C1 | Curve anchors only on liquidity/curve change; never a live read in `swap`; a round trip never profits in either direction, through exact-out, over native legs and at dust | `test/Pool.t.sol` · `testFuzz_roundTripNeverProfits`, `testFuzz_invariantNeverFalls`, `testFuzz_exactOutIsTheInverseOfExactIn`; `tools/fuzz.mjs` · *"a round trip never profits, at any concentration, at any size, in either direction"*, *"buying and selling straight back never comes out ahead"*; `tools/verify-pool.mjs` · *"a trade moves along the curve and never moves the curve"*, *"k never decreased across 200 random trades"* | live (U3: 47 tests, 144 verifier assertions, 9 properties at 0/1/2/9 wei and 2^64/2^112; every mutation in the commit body failed the named test) |
 | C2 | C1/C2/C5 regressions: one lock on every door, reads before the pull, no phantom reserve, no market paid with another's reserves, fail closed on a downward rebase until `writeDown` | `test/PoolReenter.t.sol` · `test_aMarketCannotBeReopenedOverAPhantomReserve`, `test_aSyncInsideThePullReverts`, `test_theOneLockHoldsEveryDoor`, `test_aMarketCannotPayWithAnotherMarketsReserves`, `test_aDownwardRebaseFailsClosedUntilWriteDown`, `test_aNativeMarketNeverPaysAnotherMarketsEther`; `tools/verify-pool.mjs` · *"C1: closeMarket re-entered from inside deposit's pull is refused"*, *"C2: a sync from inside the pull, by the token that IS the Reach, is refused"*, *"no market pays with another market's reserves"* | live (U3) |
 | C3 | Seal never shortens and survives the sale; `withdraw` never pausable; no admin selector exists; the sniper fee is armed only at open | `tools/verify-pool.mjs` · *"no selector on Pool names an admin"*, *"the state-changing surface is exactly the twelve DESIGN.md names"*; `test/Pool.t.sol` · `test_withdrawCannotBePaused`, `testFuzz_sealOnlyRatchets`, `test_sealSurvivesTheSaleAndBindsTheBuyer`, `test_theSniperFeeCannotBeReArmedByADeposit` | live (U3) |
-| C4 | Router: Reach-only, `extcodehash` pinned, exact-then-zero, delta `minOut`, no standing allowance | `test/Router.t.sol` · `test_anEoaCannotUseTheRouter`, `test_anUpgradedVenueFailsClosed`, `test_anUnderDeliveringVenueIsCaught`, `test_noAllowanceSurvivesACall` | pending U8 |
-| C5 | `syncCurve(expected)` refuses a moved curve; `curve` trait is `holds`-only; every holder operation is `acts` (holder or Reach, never a renter); sealed markets never withdraw principal and `collect` conserves value to `feeSink` | `test/Pool.t.sol` · `test_aMovedCurveRefusesTheSync`, `test_theReachMayDepositIntoItsOwnMarket`, `test_aSealedMarketNeverWithdrawsPrincipal`, `test_collectConservesValue`, `test_collectPaysTheGripWhenTheBitIsSet`; `test/Rights.t.sol` · `test_aRenterCannotSetATrait` | live (U3) / pending U1 for the trait half |
+| C4 | Router: Reach-only, `extcodehash` pinned, exact-then-zero, delta `minOut`, no standing allowance | `test/Router.t.sol` · `test_anEoaCannotUseTheRouter`, `test_anUpgradedVenueFailsClosed`, `test_anUnderDeliveringVenueIsCaught`, `test_noAllowanceSurvivesACall` | live (U8) |
+| C5 | `syncCurve(expected)` refuses a moved curve; `curve` trait is `holds`-only; every holder operation is `acts` (holder or Reach, never a renter); sealed markets never withdraw principal and `collect` conserves value to `feeSink` | `test/Pool.t.sol` · `test_aMovedCurveRefusesTheSync`, `test_theReachMayDepositIntoItsOwnMarket`, `test_aSealedMarketNeverWithdrawsPrincipal`, `test_collectConservesValue`, `test_collectPaysTheGripWhenTheBitIsSet`; `test/Rights.t.sol` · `test_aRenterCannotSetATrait`; `test/Bundle.t.sol` · `test_aGraduationOpensASealedMarketWhoseCollectPaysTheReach` (the real Launchpad's graduation into the real Pool, `collect` paid to the real `feeSink`) | live (U3, U1, integration) |
 
 ## D. The launchpad
 
 | # | Invariant | Enforced by | Status |
 |---|---|---|---|
-| D1 | No withdraw/pause over curve funds; `graduate` permissionless and locked | `test/Launchpad.t.sol` · `test_nobodyCanWithdrawCurveFunds`, `test_anyoneMayGraduate` | pending U6 |
+| D1 | No withdraw/pause over curve funds; `graduate` permissionless and locked | `test/Launchpad.t.sol` · `test_nobodyCanWithdrawCurveFunds`, `test_anyoneMayGraduate`; `test/Bundle.t.sol` · `test_aGraduationOpensASealedMarketWhoseCollectPaysTheReach` | live (U6, integration) |
 | D2 | Pre-existing pool price within 1 % or revert/resalt; both prices emitted | `tools/verify-launch.mjs` · *"a pre-initialised pool at the wrong price is refused"* | pending U14 |
-| D3 | Credits never move ERC-20 pre-graduation; `fail` refunds exact | `test/Launchpad.t.sol` · `test_noTokenMovesBeforeGraduation`, `test_aFailedRaiseRefundsEveryWei` | pending U6 |
-| D4 | Snipe tax decays, no exemptions, clamp; fees immutable per launch ≤ 1.25 % | `test/Launchpad.t.sol` · `test_theTaxHasNoExemptionList`, `test_aPayoutNeverExceedsOneHundredPercent`, `test_feeTermsCannotChangeMidLaunch` | pending U6 |
-| D5 | First launch `holds` or guardian co-sign; 7-day spacing; session launch needs the scope | `test/Launchpad.t.sol` · `test_anAgentsFirstLaunchNeedsTheGuardian`, `test_launchesAreSevenDaysApart` | pending U6 |
+| D3 | Credits never move ERC-20 pre-graduation; `fail` refunds exact | `test/Launchpad.t.sol` · `test_noTokenMovesBeforeGraduation`, `test_aFailedRaiseRefundsEveryWei` | live (U6) |
+| D4 | Snipe tax decays, no exemptions, clamp; fees immutable per launch ≤ 1.25 % | `test/Launchpad.t.sol` · `test_theTaxHasNoExemptionList`, `test_aPayoutNeverExceedsOneHundredPercent`, `test_feeTermsCannotChangeMidLaunch` | live (U6) |
+| D5 | First launch `holds` or guardian co-sign; 7-day spacing; session launch needs the scope | `test/Launchpad.t.sol` · `test_anAgentsFirstLaunchNeedsTheGuardian`, `test_launchesAreSevenDaysApart`; `tools/verify-launch.mjs` (against the real hub) | live (U6, integration) |
 | D6 | Hooks: `onlyPoolManager` on every entry, foreign `PoolKey` refused, bits asserted | `tools/verify-launch.mjs` · *"every hook entry refuses a caller that is not the manager"*, *"`getHookPermissions` equals the address bits"* | pending U14 |
 
 ## E. Speech
 
 | # | Invariant | Enforced by | Status |
 |---|---|---|---|
-| E1 | `mayActAs` on every Parley write; a renter cannot speak; keys/cooldowns epoch-keyed | `test/Parley.t.sol` · `test_aRenterCannotSpeak`, `test_aBuyerIsNotRateLimitedByTheSeller`, `test_aSoldTokenHasNoKey` | live (U4; the (token, epoch) bucket mutation seen to fail; the full 16-mutation gate was interrupted and is rerun by U12) |
+| E1 | `mayActAs` on every Parley write; a renter cannot speak; keys/cooldowns epoch-keyed | `test/Parley.t.sol` · `test_aRenterCannotSpeak`, `test_aBuyerIsNotRateLimitedByTheSeller`, `test_aSoldTokenHasNoKey` | live (U4, integration: `test/Bundle.t.sol` · `test_sellingTheTokenSellsTheMarketTheVoiceTheLaunchFeesAndKillsEverySession` adds the real hub; the (token, epoch) bucket mutation was seen to fail; the full 16-mutation gate was interrupted in U4, its script did not survive the worktree, and it is still owed by U12) |
 | E2 | Body caps; single-block walks; heads ring | `tools/verify-parley.mjs` · *"the second walker reads 405 blocks of history in 3 single-block queries"*; `test/Parley.t.sol` · `test_theRingShiftsOnANewBlockAndNotWithinOne`, `test_aSealedBodyMayBeFourTimesLonger` | live (U4) |
-| E3 | `expectedKeyId` pinned; postage one-of-settled/refunded; pull settlement | `test/Parley.t.sol` · `test_aRotatedKeyRefusesTheWhisper`; `test/Postage.t.sol` · `test_exactlyOneOfSettledOrRefunded`, `test_aHookedFeeTokenCannotReenterParley`, `test_settlementIsPulledNotPushed` | live (U4; mutation gate pending, see E1) |
+| E3 | `expectedKeyId` pinned; postage one-of-settled/refunded; pull settlement | `test/Parley.t.sol` · `test_aRotatedKeyRefusesTheWhisper`; `test/Postage.t.sol` · `test_exactlyOneOfSettledOrRefunded`, `test_aHookedFeeTokenCannotReenterParley`, `test_settlementIsPulledNotPushed` | live (U4, integration: verify-parley runs against the real hub; mutation gate pending, see E1) |
 
 ## F. The site
 
@@ -133,7 +141,7 @@ before any suite is reported on.**
 
 | # | Invariant | Enforced by | Status |
 |---|---|---|---|
-| G1 | Receiving a token grants no authority; no `onERC*Received` grants anything | `test/Rights.t.sol` · `test_receivingATokenGrantsNothing` | pending U1 |
+| G1 | Receiving a token grants no authority; no `onERC*Received` grants anything | `test/Rights.t.sol` · `test_receivingATokenGrantsNothing` | live (U1) |
 | G2 | Catalog hashes on chain; the bridge refuses a mismatch | `sdk/mcp.test.mjs` · *"a catalog whose hash drifted is refused"* | pending U17 |
 
 ## H. Everywhere
@@ -141,5 +149,5 @@ before any suite is reported on.**
 | # | Invariant | Enforced by | Status |
 |---|---|---|---|
 | H1 | Transient slots hashed, single-purpose, cleared on every exit incl. revert | `test/Transient.t.sol` · `test_everySlotIsRegisteredAndClearedOnRevert` | **live** |
-| H2 | All signatures EIP-712 with chainId + verifyingContract + nonce + tokenId + epoch | `test/Reach7739.t.sol` · `test_aSignatureFromOneBandIsInvalidOnAnother` | pending U2 |
+| H2 | All signatures EIP-712 with chainId + verifyingContract + nonce + tokenId + epoch | `test/Reach7739.t.sol` · `test_aSignatureFromOneBandIsInvalidOnAnother` | live (U2) |
 | H3 | Deployment records hold salts, facet hashes, shard addresses, gas assumptions; burner deployer | `tools/recover-record.mjs` · *"0 disagreeing"* | pending U10 |
