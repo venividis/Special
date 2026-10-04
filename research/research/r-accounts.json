@@ -1,0 +1,300 @@
+{
+  "topic": "Account abstraction and token-bound accounts in 2026: ERC-6551, ERC-4337 (EntryPoint v0.9), EIP-7702 after Pectra, ERC-7579/6900, ERC-7710/7715, session keys, ERC-7739/7913, P-256 passkeys (RIP-7212/EIP-7951) — what an NFT-owned wallet should look like",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/r-accounts.md",
+  "searches_made": 20,
+  "pages_fetched": 16,
+  "findings": [
+    {
+      "claim": "ERC-6551 (status Review, created 2023-02-23) mandates a single ownerless registry at 0x000000006551c19487814612e58FE06813775758 deployed via Nick's Factory 0x4e59b44847b379578588920cA78FbF26c0B4956C with salt 0x0000000000000000000000000000000000000000fd8eb4e1dca713016c518e31; accounts are 181-byte ERC-1167 proxies with salt/chainId/tokenContract/tokenId appended; isValidSigner magic 0x523e3260; execute(to,value,data,operation) with operation 0-3.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-6551",
+      "verified": true,
+      "relevance": "The derivation primitive for 'the wallet lives inside the NFT'; the footer design is why a TBA cannot be an EIP-7702 delegate."
+    },
+    {
+      "claim": "erc6551/reference README recommends v0.3.1 for production and notes 0.3.x broke IERC6551Registry; Tokenbound AccountV3 is deployed at AccountProxy 0x55266d75D1a14E4572138116aF39863Ed6596E7F, implementation 0x41C8f39463A868d3A88af00cd0fe7102F30E44eC, AccountGuardian 0x2FE5ccb0d7Ea195FEb87987d3573F9fcCE2b5D57 across Ethereum, Polygon, OP, Base, Linea, Klaytn, Monad.",
+      "source_url": "https://deploy.tokenbound.org/",
+      "verified": true,
+      "relevance": "Reference addresses if we interoperate with existing TBAs; AccountV3 is upgradeable via Guardian, which our immutability stance rejects."
+    },
+    {
+      "claim": "Tokenbound states a preliminary 0xMacro audit and planned Certik audit; the reports themselves were not retrievable in this session.",
+      "source_url": "https://docs.tokenbound.org/faq",
+      "verified": false,
+      "relevance": "Do not cite Tokenbound audit results until the PDFs are read."
+    },
+    {
+      "claim": "ERC-7656 (Final, 2024-03-15) generalizes 6551 to any contract-linked service with create/compute(implementation, salt, chainId, bytes12 mode, linkedContract, linkedId), a 183-byte proxy, interface id 0x9e23230a, and a canonical factory at 0x76565d90eeB1ce12D05d55D142510dBA634a128F on mainnet.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7656",
+      "verified": true,
+      "relevance": "Lets per-token Pool/Vault/Launch satellites be deterministic counterfactual services rather than hub mappings."
+    },
+    {
+      "claim": "ERC-4337 EntryPoint addresses: v0.6 0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789, v0.7 0x0000000071727De22E5E9d8BAf0edAc6f37da032, v0.8 0x4337084d9e255ff0702461cf8895ce9e3b5ff108 (native EIP-7702, EIP-712 userOp hash, Simple7702Account), v0.9 0x433709009B8330FDa32311DF1C2AFA402eD8D009 with SenderCreator 0x0A630a99Df908A81115A3022927Be82f9299987e (paymasterSignature, block-number validity, initCode ignored if account exists, getCurrentUserOpHash, EIP7702AccountInitialized event).",
+      "source_url": "https://github.com/eth-infinitism/account-abstraction/releases",
+      "verified": true,
+      "relevance": "Pin the Reach's optional 4337 path to v0.9; do not assume initCode implies first op."
+    },
+    {
+      "claim": "v0.8.0 was tagged 26 Mar and v0.9.0 16 Nov; GitHub shows day/month only. Year 2025 for both is inferred from ordering plus the ERC-4337 team's 'EntryPoint v0.8 Released' post dated 2025-03-31 and Candide's v0.9 support post dated 2026-02-26.",
+      "source_url": "https://erc4337.substack.com/p/entrypoint-v08-released",
+      "verified": false,
+      "relevance": "Dates are inferred, not read from a timestamped primary field."
+    },
+    {
+      "claim": "On 2026-02-05 the ERC-4337 team disclosed a high-severity griefing issue (TrustSec via HackenProof) where visible UserOps could be forced to revert while paying gas; EntryPoint v0.9 fixes it by allowing handleOps/handleAggregatedOps only from an EOA in a top-level transaction.",
+      "source_url": "https://erc4337.substack.com/p/improving-useroperation-execution",
+      "verified": true,
+      "relevance": "Upgrade to v0.9; note a contract (e.g. a launchpad) can never call handleOps itself."
+    },
+    {
+      "claim": "BundleBear (fetched 2026-10): 1,299,023,473 UserOps, 856,481,360 bundle txns, $14,406,802 paymaster volume, 67,916,918 accounts with >=1 UserOp; factories: Alchemy 13,748,620, ZeroDev Kernel 5,805,959, SimpleAccount 4,386,003, Coinbase Smart Wallet 4,102,572, Biconomy 2,281,894; Alchemy bundled 797.5M UserOps.",
+      "source_url": "https://www.bundlebear.com/erc4337-overview/all",
+      "verified": true,
+      "relevance": "4337 infrastructure is mature enough to rely on for sponsored gas; Alchemy/ZeroDev/Coinbase dominate."
+    },
+    {
+      "claim": "Pectra (EIP-7702) activated on mainnet 2025-05-07 10:05 UTC at epoch 364032; Fusaka activated 2025-12-03 21:49:11 UTC at epoch 411392 and includes EIP-7951 (secp256r1 precompile).",
+      "source_url": "https://blog.ethereum.org/2025/11/06/fusaka-mainnet-announcement",
+      "verified": true,
+      "relevance": "Both the 7702 holder case and the L1 passkey case are live today."
+    },
+    {
+      "claim": "EIP-7702 (Final): authorization tuple [chain_id, address, nonce, y_parity, r, s]; code becomes 0xef0100||address (23 bytes); PER_AUTH_BASE_COST 12,500, PER_EMPTY_ACCOUNT_COST 25,000; delegations are not rolled back on tx failure; delegating to 0x0 clears; spec warns about init front-running, storage collisions (use ERC-7201) and that tx.origin==msg.sender no longer implies top level.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7702",
+      "verified": true,
+      "relevance": "Owner EOAs may carry code; signature checks and tx.origin heuristics must be rewritten."
+    },
+    {
+      "claim": "BundleBear EIP-7702 page (cited as early Sept 2026 figures): 54,585,411 live delegated accounts, 238,265,031 total authorizations, 99,665,705 set-code transactions across chains; Wintermute's Dune dataset shows 10,953,648 cumulative authorizations on Ethereum mainnet by 2026-03-29.",
+      "source_url": "https://www.bundlebear.com/eip7702-overview/all",
+      "verified": true,
+      "relevance": "Scale of 7702 holders our site must handle; totals inflated by sweeper bots."
+    },
+    {
+      "claim": "Wintermute reported >97% of EIP-7702 delegations at end of May 2025 went to copy-pasted 'CrimeEnjoyor' sweepers (one address received 52,000 of ~79,000 authorizations bought for 2.88 ETH) and by 2025-09-22 48% (768,275 of 1,580,930) of authorizations were crime-tagged.",
+      "source_url": "https://www.coindesk.com/tech/2025/06/02/post-pectra-upgrade-malicious-ethereum-contracts-are-trying-to-drain-wallets-but-to-no-avail-wintermute",
+      "verified": false,
+      "relevance": "Secondary reporting of Wintermute's X/Dune research; direction is corroborated by the USENIX paper."
+    },
+    {
+      "claim": "USENIX Security '26 paper measured 3,664,166 EIP-7702 authorization transactions on seven chains before 2025-07-15: >63% malicious EOA-targeted, 793+124+7 malicious contracts, $2,362,848 lost, ~$10.14M at risk in contracts whose tx.origin assumptions broke.",
+      "source_url": "https://www.usenix.org/system/files/conference/usenixsecurity26/sec26_prepub_huang-mingyuan.pdf",
+      "verified": true,
+      "relevance": "Justifies refusing to be a 7702 delegate and warning on unknown holder delegations."
+    },
+    {
+      "claim": "2025-05-24: a MetaMask-delegated EOA lost $146,551 to Inferno Drainer through a malicious batch executed by the legitimate MetaMask delegator 0x63c0c19a282a1B52b07dD5a65b58948A07DAE32B (EIP7702StatelessDeleGatorImpl in delegation-framework v1.3.0); 2025-08-24 a single victim lost ~$1.54M via a fake-Uniswap 7702 batch; cohort losses $12M+ across 15,000+ wallets May-Dec 2025 (OAK corpus).",
+      "source_url": "https://onchainattack.org/document/examples/2025-05-eip7702-crimeenjoyor-delegation-phishing-cohort/",
+      "verified": true,
+      "relevance": "Batch signing through a trusted delegate is itself a phishing surface; clear-signing from chain is the mitigation."
+    },
+    {
+      "claim": "MetaMask Delegation Framework v1.3.0 (2025-07-24): DelegationManager 0xdb9B1e94B5b69Df7e401DDbedE43491141047dB3, HybridDeleGatorImpl 0x48dBe696A4D990079e039489bA2053B36E8FFEC4, MultiSigDeleGatorImpl 0x56a9EdB16a0105eb5a4C54f4C062e2868844f3A7, ERC20PeriodTransferEnforcer 0x474e3Ae7E169e940607cC624Da8A15Eb120139aB, with Diligence and Cyfrin audits Feb-May 2025.",
+      "source_url": "https://github.com/MetaMask/delegation-framework/releases/tag/v1.3.0",
+      "verified": true,
+      "relevance": "Reference caveat-enforcer vocabulary and ERC-7710 manager to mirror in our grants."
+    },
+    {
+      "claim": "Consensys Diligence (2025-02-17 to 03-06) found two criticals in the Delegation Framework: NativeTokenStreamingEnforcer checked only value, allowing any target/calldata; DelegationMetaSwapAdapter.swapByDelegation was front-runnable since swap data was outside the signed delegation. Fixed with ExactCalldata(Batch)Enforcer, leaf-delegator-only swaps and signed apiData.",
+      "source_url": "https://diligence.security/audits/2025/02/metamask-delegation-framework-february-2025/",
+      "verified": true,
+      "relevance": "Every grant must bind target, selector, calldata, amount, time and redeemer; deny by default."
+    },
+    {
+      "claim": "ERC-7715 (Draft, 2024-05-24) defines wallet_requestExecutionPermissions with {chainId, from?, to, permission{type,isAdjustmentAllowed,data}, rules[]} returning {context, dependencies[{factory,factoryData}], delegationManager}; ERC-7710 (Draft, 2024-05-20) defines redeemDelegations(bytes[] permissionContexts, bytes32[] modes, bytes[] executionCallDatas) using ERC-7579 modes. Production MetaMask >= v13.23.0 supports erc20/native periodic and stream permissions, >= v13.32.1 allowances; only for MetaMask smart accounts.",
+      "source_url": "https://docs.metamask.io/smart-accounts-kit/get-started/supported-advanced-permissions/",
+      "verified": true,
+      "relevance": "Shape our on-chain session grants as 7715 permissions redeemable via a 7710-style entry; do not depend on wallet RPC support."
+    },
+    {
+      "claim": "An August 2026 survey found MetaMask is the only wallet documenting a public ERC-7715 request/redeem surface; OKX, Uniswap Wallet, Ambire, Trust, Rabby, Phantom expose EIP-5792 batching at most.",
+      "source_url": "https://peglerweb.services/blog/eip-7702-dapp-interoperability/",
+      "verified": false,
+      "relevance": "Secondary survey; supports treating 7715 as a data shape, not a required RPC."
+    },
+    {
+      "claim": "ERC-7579 is still Draft on eips.ethereum.org (created 2023-12-14) despite vendor copy calling it final; module types 1 validator, 2 executor, 3 fallback, 4 hook (Kernel adds 5 policy, 6 signer); mode word = CallType(1) ExecType(1) reserved(4) ModeSelector(4) payload(22); accounts MUST sanitize validator-selection bytes and distinguish module types; ERC-7484 registry singleton at 0x000000000069E2a187AEFFb852bF3cCdC95151B2.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7579",
+      "verified": true,
+      "relevance": "Adopt the execute(mode,data)/accountId/supportsExecutionMode shape; refuse module installation."
+    },
+    {
+      "claim": "Pashov's March 2025 Nexus review: M-01 hook bypass when modules install in enable mode inside validateUserOp; M-02 users can uninstall all validators and lock themselves out; L-10 transient-storage hook flag lets a second executeFromExecutor in one tx skip hooks; L-04 validateUserOp skipped the ERC-7484 registry check.",
+      "source_url": "https://github.com/pashov/audits/blob/master/team/md/BiconomyNexus-security-review_2025-03-21.md",
+      "verified": true,
+      "relevance": "Module-host attack surface we avoid by baking validators/hooks in."
+    },
+    {
+      "claim": "Ackee's June-July 2024 Safe7579 audit: C1 counterfactual ERC-4337 address could be stolen by front-running the launchpad; H1 initializeAccount front-run; H2 executors unusable due to wrong registry context; M4 hook overwrite; W3 hooks can block uninstall (28 findings).",
+      "source_url": "https://ackee.xyz/blog/rhinestone-erc-7579-safe-adapter-audit-summary/",
+      "verified": true,
+      "relevance": "Counterfactual account initialization must be bound to the token (6551 does this by construction)."
+    },
+    {
+      "claim": "Alchemy Modular Account v2 (ERC-6900 v0.8, ERC-4337 v0.9 target) creation gas 97,764 vs ZeroDev Kernel v3 180,465 (+84.6%) vs Safe+4337 module 289,207 (+195.8%); audited by ChainLight and Quantstamp; only SemiModularAccount7702 is a safe 7702 delegate; ERC-7821 added (+~960 bytes).",
+      "source_url": "https://www.alchemy.com/docs/wallets/smart-contracts/modular-account-v2/overview",
+      "verified": true,
+      "relevance": "6900's permission model (validation bound to execution at install) is the opposite philosophy of 7579; our fixed-authority account sidesteps both."
+    },
+    {
+      "claim": "RIP-7212 (Final): P-256 precompile at 0x100, 160-byte input hash||r||s||x||y, 3,450 gas; EIP-7951 (Final, in Fusaka): same address and I/O, 6,900 gas, adds point-at-infinity check and r' ≡ r (mod n) fix, does not reject malleable s; ethereum.org says 7951 supersedes 7212.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7951",
+      "verified": true,
+      "relevance": "Passkey signers are cheap on L1 and most L2s; reject high-s ourselves."
+    },
+    {
+      "claim": "daimo-eth/p256-verifier (Veridise audits Oct/Nov 2023) is deployed at CREATE2 address 0xc2b78104907F722DABAc4C69f826a522B2754De4 matching the EIP-7212 interface; pure-Solidity P-256 verification costs roughly 200,000-400,000 gas (ZeroDev: 300-400k) versus 3,450 at the precompile.",
+      "source_url": "https://github.com/daimo-eth/p256-verifier",
+      "verified": true,
+      "relevance": "Fallback for chains without the precompile; use a packed precompile||fallback verifier like Safe/ZeroDev."
+    },
+    {
+      "claim": "Coinbase Smart Wallet (factory v1.1 0xBA5ED110eFDBa3D005bfC882d75358ACBbB85842, same address on 248 chains) stores owners as bytes (20-byte address or 64-byte P-256 x||y), verifies via WebAuthn.verify(challenge, requireUV=false, auth, x, y), and uses REPLAYABLE_NONCE_KEY=8453 with executeWithoutChainIdValidation limited to owner-management selectors.",
+      "source_url": "https://github.com/coinbase/smart-wallet/",
+      "verified": true,
+      "relevance": "Pattern for passkey owners and for cross-chain signer sync in a multi-chain edition."
+    },
+    {
+      "claim": "ERC-7739 (Draft, 2024-05-28): nested TypedDataSign/PersonalSign rehashing prevents ERC-1271 replay across accounts sharing a signer (Permit2 is cited); signature format sig||APP_DOMAIN_SEPARATOR||contents||contentsDescription||uint16(len); probe isValidSignature(0x7739...7739,'') returns 0x77390001; contentsName must be sanitized on chain; 7739 signers cannot be nested. Implemented in OpenZeppelin 5.x draft-ERC7739.sol, Solady, Nexus, Calibur, Smart Sessions.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7739",
+      "verified": true,
+      "relevance": "Mandatory for a protocol minting thousands of accounts controlled by overlapping EOAs."
+    },
+    {
+      "claim": "ERC-7913 (Final, 2025-03-21): IERC7913SignatureVerifier.verify(bytes key, bytes32 hash, bytes signature) returns 0x024ad318; signers encoded as verifier(20)||key; empty key falls back to ERC-1271/ecrecover.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7913",
+      "verified": true,
+      "relevance": "Clean way to register P-256/WebAuthn co-signers on the NFT's wallet without per-key contracts."
+    },
+    {
+      "claim": "ERC-7821 (Draft, 2024-11-21): execute(bytes32 mode, bytes executionData) + supportsExecutionMode; modes 0x01000000000000000000... (batch), 0x01000000000078210001... (batch with opData), optional 0x01000000000078210002... (batch of batches); Call.to==address(0) means self; empty opData SHOULD require msg.sender==address(this). ERC-5792 wallet_sendCalls v2.0.0 with atomicRequired and the atomic capability (supported|ready|unsupported) is the dapp API; MetaMask supports it on nine mainnets.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7821",
+      "verified": true,
+      "relevance": "Minimal batch surface to expose so SDKs and wallets can drive the Reach."
+    },
+    {
+      "claim": "Smart Sessions (Rhinestone+Biconomy) is an ERC-7579 validator with sessions = (ISessionValidator, initData, salt, ActionData[], userOpPolicies, erc7739Policies), permissionId derived from the triple, policies ANDed (sudo/call/spending/timeframe/usage/value limits), an 'enable mode' installing sessions in the first UserOp, ERC-7739-wrapped 1271 for session keys; docs warn a session with no permissions allows any transaction and that scoped signTypedData is disabled until safe ERC-7739 emission is restored.",
+      "source_url": "https://github.com/erc7579/smartsessions",
+      "verified": true,
+      "relevance": "Policy decomposition to mirror; defaults must be deny in our version."
+    },
+    {
+      "claim": "Bybit, 2025-02-21: malicious JavaScript injected into Safe{Wallet}'s AWS S3/CloudFront bundle on 2025-02-19 (removed two minutes after the theft) targeted Bybit's Safe only; signers approved an execTransaction with operation=1 (delegatecall) to 0x96221423681A6d52E184D440a8eFCEbB105C7242 that overwrote slot 0 (masterCopy) with 0xbDd077f651EBe7f7b3cE16fe5F2b025BE2969516; 401,347 ETH (~$1.4-1.5B) drained; NCC: no-delegatecall purpose-built contracts, clear-signing and JS pinning would have mitigated.",
+      "source_url": "https://www.nccgroup.com/research/in-depth-technical-analysis-of-the-bybit-hack/",
+      "verified": true,
+      "relevance": "An on-chain, delegatecall-free website that decodes calldata on chain is the structural mitigation; our 'mint a website' design must preserve it."
+    },
+    {
+      "claim": "A token-bound account cannot serve as an EIP-7702 delegate target because token() is read from the 6551 proxy's own bytecode footer, whereas a 7702 account's code is the 23-byte delegation indicator (no footer).",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-6551",
+      "verified": false,
+      "relevance": "Inference from the two specs; no implementation attempt found. Rules out '7702 the holder into the TBA'."
+    },
+    {
+      "claim": "Dune's ERC/EIP starter kit counts 1,088 contracts emitting the ERC6551AccountCreated signature across Dune-supported EVM chains (162 in the trailing 30 days at fetch); a per-account TBA count was not obtainable.",
+      "source_url": "https://dune.com/ilemi/erc-and-eip-starter-kit",
+      "verified": true,
+      "relevance": "ERC-6551 adoption is real but orders of magnitude below 4337/7702; undated dashboard figure."
+    },
+    {
+      "claim": "The four local repos already implement epoch-bound sessions (IpseityAccount SoldOn, Pixel-Garden authorized(epoch), ANIMA approvalEpoch), no-exit vaults (GripVault/GripAccount), ownership-cycle guards, delegatecall refusal, and (ANIMA) 4337 with an immutable EntryPoint; Dave's architecture doc records that an immutable 6551 vault has no upgrade path, so fixes must land before genesis.",
+      "source_url": "file:///home/user/Most-Advanced-NFT-Possible/src/IpseityAccount.sol",
+      "verified": true,
+      "relevance": "The unified design is an interface-conformance exercise over existing primitives, not a rewrite."
+    }
+  ],
+  "recommendations": [
+    {
+      "recommendation": "Keep ERC-6551 (canonical registry only) as the identity-to-account derivation: one active Reach and one receive-only Grip per token, created and runtime-hash-verified in the mint hook; expose state() incrementing on every change.",
+      "priority": "must",
+      "rationale": "Only standard whose address is a pure function of (impl, salt, chainId, token, id); state() enables the spec's marketplace fraud mitigation. Sources: EIP-6551; Pixel-Garden ACCOUNT-FOUNDATION.md."
+    },
+    {
+      "recommendation": "Bind every authority (sessions, seals, approvals, ERC-1271 validity) to a custody epoch that rolls on transfer, including self-transfer.",
+      "priority": "must",
+      "rationale": "Kills approval carry-over and listing-time drains without marketplace cooperation. Sources: EIP-6551 security section; IpseityAccount SoldOn; ReachAccount authorized(epoch); AnimaAgent _update."
+    },
+    {
+      "recommendation": "Implement ERC-7739 nested typed-data rehashing for all ERC-1271 validation, with the 0x77390001 probe and on-chain contentsName sanitization; skip only when the hash already contains the account address.",
+      "priority": "must",
+      "rationale": "Thousands of accounts share signers; a Permit2-style signature would replay across every Reach the same EOA owns. Source: ERC-7739; OpenZeppelin draft-ERC7739.sol."
+    },
+    {
+      "recommendation": "Verify holder signatures in ERC-6492 order (6492 wrapper, then ERC-1271, then ecrecover) and never infer contract-vs-EOA from code.length; include chainId, account and epoch in every digest; reject chain-agnostic constructs.",
+      "priority": "must",
+      "rationale": "7702-delegated holders have code; chain_id=0 authorizations replay across chains. Sources: EIP-7702; ERC-6492; USENIX Sec '26 measurement."
+    },
+    {
+      "recommendation": "Expose the ERC-7579/ERC-7821 execution shape (execute(bytes32 mode, bytes data), supportsExecutionMode, accountId) supporting only CallType 0x00/0x01 and ExecType 0x00; keep IERC6551Executable.execute with operation 0 only; return false for delegatecall modes and for every supportsModule type.",
+      "priority": "should",
+      "rationale": "Known calling convention for wallets/SDKs at near-zero cost while declaring explicitly that the account is not a module host. Sources: ERC-7579, ERC-7821, ERC-5792."
+    },
+    {
+      "recommendation": "Offer ERC-4337 as an optional path on EntryPoint v0.9 (0x433709009B8330FDa32311DF1C2AFA402eD8D009), immutable per implementation, ERC-7562-clean validation, EIP-712 userOp hashing; do not assume initCode implies first op.",
+      "priority": "should",
+      "rationale": "Sponsored gas and passkey flows through any bundler; v0.9 closes the handleOps griefing bug. Sources: eth-infinitism releases; erc4337 substack 2026-02-05; AnimaAgent.sol."
+    },
+    {
+      "recommendation": "Store session grants in ERC-7715 vocabulary ({type, data, rules, expiry, redeemer}: erc20/native periodic, stream, allowance, contract-call with target/selector/calldata caveats) and expose an ERC-7710-style redeemDelegations(bytes[] ctx, bytes32[] modes, bytes[] calls) entry; grants with no action list are invalid.",
+      "priority": "should",
+      "rationale": "Portable, human-legible permissions for agents and dapps; reuse MetaMask's audited caveat semantics; avoid Smart Sessions' sudo-by-default. Sources: ERC-7715, ERC-7710, delegation-framework v1.3.0, Diligence Feb 2025."
+    },
+    {
+      "recommendation": "Add passkey co-signers as ERC-7913 verifier||key entries with a P-256 verifier that calls precompile 0x100 and falls back to daimo's verifier (packed precompile||fallback), session-scoped by default.",
+      "priority": "should",
+      "rationale": "Phone-native use of the on-chain website without an extension; 6,900 gas on L1 post-Fusaka, 3,450 on RIP-7212 L2s. Sources: ERC-7913, EIP-7951, RIP-7212, Safe passkey docs, Coinbase smart-wallet."
+    },
+    {
+      "recommendation": "For the multi-chain edition, allow chain-agnostic replay only for signer-management selectors under a reserved nonce key (Coinbase pattern); never for spending.",
+      "priority": "should",
+      "rationale": "Key sync across bands without cross-chain spend replay. Source: CoinbaseSmartWallet.sol REPLAYABLE_NONCE_KEY."
+    },
+    {
+      "recommendation": "Derive per-token Pool, Vault and Launch slots as ERC-7656 token-linked services (mode LINKED_ID) from the canonical factory.",
+      "priority": "could",
+      "rationale": "Counterfactual, self-describing satellite addresses let buyers verify a token's contents before purchase. Source: ERC-7656."
+    },
+    {
+      "recommendation": "If any post-genesis extensibility is required, limit it to holder opt-in of implementations whose code hash carries >=N ERC-7484 attestations from attesters fixed at construction, after a timelock, with no delegatecall.",
+      "priority": "could",
+      "rationale": "The only extension model that survives the 2024-2025 module-host audit record. Sources: ERC-7484; Nexus and Safe7579 audits; Dave V2 architecture C0."
+    },
+    {
+      "recommendation": "Make the on-chain website decode calldata on chain and render human-readable intents for every Desk selector; show the holder's 7702 delegate (code starting 0xef0100) and warn when its code hash is not a known wallet implementation.",
+      "priority": "should",
+      "rationale": "Bybit showed the UI is the attack surface; 7702 phishing used a legitimate delegator. Sources: NCC Bybit analysis; OAK 7702 cohort; MetaMask delegator address."
+    },
+    {
+      "recommendation": "Do not make any TBA an EIP-7702 delegate, host arbitrary ERC-7579/6900 modules, permit delegatecall, accept chain_id=0 authorizations, let approvals outlive the epoch, or install anything during validation (enable mode).",
+      "priority": "avoid",
+      "rationale": "Footer incompatibility, majority-malicious delegation space, and every audited install-path bypass. Sources: EIP-6551, EIP-7702, USENIX Sec '26, Pashov Nexus, Ackee Safe7579."
+    },
+    {
+      "recommendation": "Do not depend on wallet-side ERC-7715 RPC support for core UX.",
+      "priority": "avoid",
+      "rationale": "Only MetaMask ships it (>= v13.23.0) and only for its own smart accounts. Sources: MetaMask docs; Pegler Aug 2026 survey."
+    }
+  ],
+  "special_ideas": [
+    "Self-describing authority: the token's wallet exposes supportsExecutionMode/supportsModule(false)/accountId plus a view equivalent of wallet_getSupportedExecutionPermissions, so any wallet or agent can introspect what the NFT will refuse without our site.",
+    "Permissions as inventory: list live grants with caveats and remaining budget in the on-chain site and fold their hash into state(), so a buyer sees 'zero open permissions' at sale time.",
+    "Passkey mint: the mint transaction registers an ERC-7913 P-256 signer on the Reach so the NFT is usable from a phone before any extension is installed (6,900 gas on L1 post-Fusaka).",
+    "Clear-signing from chain: an on-chain calldata decoder for every Desk selector renders the exact intent ('swap 1.0 ETH -> >= 2,400 USDC via this token's pool, 0.5% slippage') from the same contract that executes it, the Bybit mitigation as a product.",
+    "7702 hygiene on connect: read holder.code, show the delegate when it starts 0xef0100, match its code hash against known wallet implementations (MetaMask 0x63c0..., Simple7702Account, SMA7702, Calibur) and hide spend actions behind an unknown delegate until acknowledged.",
+    "One signature, five chains, zero replay: replayable path only for signer management (reserved nonce key), with a test proving a spending signature from one band is invalid on every other band.",
+    "Succession as a recognisable delayed executor: express the existing inheritance flow in the OpenZeppelin ERC7579DelayedExecutor shape (schedule, delay, cancel window) without becoming a module host.",
+    "Agent-grade grants: ANIMA agents receive 7715-shaped erc20-token-periodic budgets against the Reach with LimitedCalls and Redeemer caveats, in the same format a human sees in MetaMask, so delegated authority is legible to the granter.",
+    "Counterfactual everything: 6551/7656 compute() gives accounts, pool, vault and launch slot addresses before mint, so the site can render a token's future contents and an ERC-6492 wrapper lets the unminted account sign a listing."
+  ],
+  "open_questions": [
+    "ERC-6551 is Review and ERC-7579/6900/7710/7715/7739/7821 are Draft: which breaking changes are plausible before Final, and do we pin to the EIP text at a specific commit?",
+    "Should the Reach implement validateUserOp at all (ANIMA yes with immutable EntryPoint; IPSEITY no), given holder-signed transactions need no bundler and 4337 widens the storage-rule and simulation surface?",
+    "How much ERC-7715 vocabulary to freeze at genesis: the six MetaMask types plus contract-call, or a generic caveat-enforcer interface?",
+    "ERC-7739 cannot nest: if the NFT's holder is itself a 7739 smart account, how does it sign our account's rehash (accept ERC-7803 signingDomains later, provide a raw-hash escape now)?",
+    "Passkeys and requireUV: require biometric user verification for spends and presence-only for reads, and how is that surfaced in the on-chain site?",
+    "Tokenbound's audit reports and the real population of TBAs could not be retrieved; verify before citing externally.",
+    "EntryPoint v0.9 restricts handleOps to top-level EOAs; does a launchpad that wants to submit operations on users' behalf need a different path?",
+    "Which bands of the five-chain edition lack the P-256 precompile, and is the ~300k-gas Solidity fallback acceptable there or should passkeys be L2-only?",
+    "Secondary sources mention Fusaka-era proposals for scoped 7702 delegations; no EIP text could be verified, so do not plan around them."
+  ]
+}

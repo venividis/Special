@@ -1,0 +1,301 @@
+{
+  "repo": "MASTER-NFT-PROJECT (ANIMA v7 Master) at /home/user/MASTER-NFT-PROJECT, branch main (ccr-931fe287-ijyztq), version 7.0.0, last upstream commit f65fb2c 2026-09-23",
+  "area": "docs and pipeline overview (light): docs/CAPABILITIES.md, docs/MODULES-IMPLEMENTATION.md, docs/genesis/*, CHANGELOG.md, SECURITY.md, CLEANUP.md, Makefile, package.json scripts, scripts/, test/ (launchpad entry)",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/master-docs-pipeline.md",
+  "summary": "ANIMA MASTER v7 is the maximal ANIMA lineage: an ERC-721 (IDontFuckingBelieveIt, 20,940 bytes) whose tokens each get a deterministic CREATE2 SovereignAccount (custom, explicitly not canonical ERC-6551), a ConfluenceRenderer whose tokenURI emits a data:text/html boot page that recovers an entire 7,952,983-byte web application from immutable AppChunk contracts (101 chunks in 20 gzip feature archives under an OnchainModuleDirectory), and since v7 an owner-installable module system (ModuleArchiveFactory, ExtensionReleaseRegistry, TokenModuleRegistry, ModuleStateStore, ModuleWorkbench, ChunkedCartridgeRegistry). Around that core it bundles 204 compiled artifacts covering a Uniswap v4 launchpad, an internal AMM (NativeMarket), a community sale (GenesisLaunchpad), streaming auctions, TimeVault/VestedExitVault, EpochGroupChat/MLSGroupChat, LayerZero witnesses, RAILGUN shielded execution, governance, experimental markets and more; system-manifest.json lists 56 modules, several marked LOCAL_SERVICE_AND_CONTRACTS or RESEARCH_NOT_IMPLEMENTED.\n\nThe pipeline is Node-only: scripts/compile.mjs (solc-js 0.8.30, viaIR, optimizer 1000, Cancun default / Shanghai for local fixtures, EIP-170 gate, atomic artifact swap, contract-sizes.json), scripts/build-confluence.mjs (16 generator scripts + 3 package builds composing dist/index.html and dist/modules.html from authored web/ modules), scripts/archive-confluence.mjs (schema 3 modular-gzip archive) and scripts/verify-confluence.mjs (byte-exact recovery, data:-only import map, node --check). scripts/master-local.mjs is the v7 entry: persistent Ganache 31337 (Shanghai, 100M block gas), deployGenesis (approx. 40 contracts, commit/reveal mint with 25 ETH endowment, sealed GenesisManifest, seeded market, recoverArchive round-trip), deployModuleSystem, three example modules installed through SovereignAccount.execute, a 48 KiB cartridge acquired by the NFT account, and recovery verified before printing the workbench URL. scripts/validate-release.mjs runs a 24-stage gate with candidate-input fingerprinting and 'incomplete is not pass' test-summary parsing; CI has three jobs (complete local suite, Chromium browser, native Forge). Deployment to public chains is planner-based and unsigned (genesis-deployment, modules-deployment, extensions-deployment, v4-deployment) except scripts/sepolia.mjs, a Sepolia-only resumable runner with journaled receipts, ArchiveCreated postcondition checks and literal --confirm tokens.\n\nClaimed verification (GitHub Actions run 35172184548 on commit 84961c3): 24/24 stages, 760/760 root JS tests, 11 official-launch, 1 MLS, 9 Rust, 51 module tests, 7 native Forge tests + 64 fuzz runs, 17 Chromium scenarios (Chromium 151.0.7922.34) including a full minted-runtime acceptance with 7 reviewed transactions, 32 KiB state writes at 7,871,459 gas under the 16,777,216 EIP-7825 cap, workbench 707,014 bytes / 31 chunks. On main the only deployment is local chain 31337; packaging.json says publicChainDeployed:false. A side branch (origin/codex/deploy-on-testnet-and-mint-3-nfts-pj8cqs, commit 33f1034) records a live Ethereum Sepolia deployment: collection 0xCB8Dc18d3Ca5C9c2aeA16c94fa0af6EF4dfc0aC6, three minted tokens, full module system, 37 module transactions in blocks 11742089-11742148. No audit, no funded RAILGUN/LayerZero, no mainnet.\n\nFor the GOAL: the website is delivered from chain through tokenURI's animation_url (loader stored in an AppChunk created by the renderer constructor and copied with extcodecopy; hand-rolled SHA-256 because SubtleCrypto is unavailable in opaque data: origins; pinned-block eth_call recovery; document.write). There is no web3:// (ERC-4804/6860) resolver; the project's own standards review says so. Ownership gating is a client-side check (ownerOf == signer at one block, bound to the token's embedded AWE_CHAIN_IDENTITY, re-checked with sessionEpoch before every send, workbench additionally requires SovereignAccount.currentOwner == ownerOf) plus contract-side enforcement (Bound-mode execute resolves ownerOf at call time; TokenModuleRegistry requires the canonical account, catalog root and custody epoch). Reads are open to anyone with an RPC.",
+  "components": [
+    {
+      "name": "ConfluenceRenderer + ConfluenceLoader + chain-loader.mjs (tokenURI website delivery)",
+      "path": "contracts/src/confluence/ConfluenceRenderer.sol; contracts/src/confluence/ConfluenceLoader.sol (generated); web/confluence/chain-loader.mjs; web/confluence/module-loader.mjs; scripts/build-chain-loader.mjs",
+      "purpose": "tokenURI returns data:application/json;base64 with image (GenesisSVG) and animation_url = data:text/html;base64 boot page: window.AWE_CHAIN_IDENTITY {seed,genome,root,chainId,collection,tokenId,manifest,privacyResource,runtime,sha256,archiveVersion} + loader HTML that recovers the whole app from chain via wallet or read-only HTTPS RPC.",
+      "key_functions": [
+        "render(address collection, uint256 tokenId) external view returns (string)",
+        "constructor(address runtime_, address manifest_, address privacy_) — reads contentSha256(), schemaVersion() (1|2|3), creates loaderStore = new AppChunk(bytes(ConfluenceLoader.html()))",
+        "_boot(): extcodecopy(loaderStore, 1, len-1) appended after the identity script",
+        "immutables: runtime, runtimeSha256, archiveVersion, deploymentManifest, privacyResource, loaderStore",
+        "JS: recoverArchive(request, config, progress) — eth_chainId check, eth_blockNumber pin, chunkCount() 0xf91f0937, schemaVersion() 0x4e2ce6d3, byteLength() 0x02823108, readChunk(i) 0x8f5281bf, SHA-256 verify, TextDecoder fatal",
+        "JS: archiveSha256(bytes) hand-rolled SHA-256; decodeArchiveChunk(hex)",
+        "JS: unfold button → document.open(); document.write(html); document.close(); window.AWE_CHAIN_RPC = request"
+      ],
+      "design_decisions": [
+        "\"Keeping the recovery program in immutable data avoids embedding its complete executable text in every renderer runtime (EIP-170). No URL or mutable loader.\" (ConfluenceRenderer.sol:43-44)",
+        "\"Bound each packing operation's live values. One large encodePacked call exceeds the Yul stack after adding the complete onchain resource identity.\" (ConfluenceRenderer.sol:58-59)",
+        "\"SHA-256 works in opaque data URLs, where SubtleCrypto may be unavailable.\" (chain-loader.mjs:2)",
+        "Loader accepts only HTTPS or loopback RPC; no signature or transaction during recovery",
+        "Schema 3: eager recovery of all 20 feature archives at one block before boot; import map of data:text/javascript;base64 modules only"
+      ],
+      "standards": ["ERC-721 metadata (data: URIs)", "no ERC-4804/6860 web3:// resolver"],
+      "security_invariants": [
+        "Archive digest, chain id and block pinned before document.write",
+        "Minted edition cannot be changed by hosted updates; renderer/resources are immutable per deployment"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep loader-in-AppChunk/extcodecopy and the SHA-256 loader; drop ANIMA identity fields and GenesisSVG; add a web3:// manual-mode resolver (IPSEITY Premises style) in front of readChunk/readAll; make feature loading lazy. ConfluenceRenderer is 14,772 bytes."
+    },
+    {
+      "name": "OnchainApp / AppChunk / OnchainAppDirectory / OnchainModuleDirectory / ShardedResource",
+      "path": "contracts/src/protocol/OnchainApp.sol; contracts/src/protocol/OnchainAppDirectory.sol; contracts/src/protocol/OnchainModuleDirectory.sol; contracts/src/protocol/ShardedResource.sol",
+      "purpose": "Immutable byte storage: AppChunk = STOP byte + <=23,000 payload bytes as runtime code; OnchainApp pins <=64 chunks and a SHA-256; directory tiers reach 512 chunks; module directory pins up to 32 named feature archives with versions, stored/expanded hashes and dependency versions.",
+      "key_functions": [
+        "AppChunk.constructor(bytes payload) — require(payload.length>0 && <=23000,'CHUNK_SIZE'); returns 0x00||payload as runtime",
+        "OnchainApp.constructor(address[] chunks_, bytes32 expectedSha) — require 1..64 chunks, each code size 2..23001 with first byte 0, sha256(assembled)==expectedSha",
+        "OnchainApp.chunkCount() / readChunk(uint256) / readAll(); immutable contentSha256, byteLength; constant mimeType='text/html;charset=utf-8'",
+        "OnchainModuleDirectory(entries, shellIndex, sha256) — content commitment excludes addresses so unchanged feature archives can be reused"
+      ],
+      "design_decisions": [
+        "\"Immutable, complete HTML/Wasm/shader archive. Not a mutable URL or an IPFS-only pointer.\" / \"Browsers still execute the recovered code offchain; storage being onchain is not execution.\" (OnchainApp.sol:13-14)",
+        "Stored bytes 2,072,940 (modular gzip) expand to 7,952,983; 101 chunks across 20 archives in the current manifest"
+      ],
+      "standards": ["SSTORE2-style code-as-data"],
+      "security_invariants": ["SHA-256 of assembled bytes checked in constructor; chunks must be STOP-prefixed data code"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Solid, small (OnchainApp 1,027 bytes, directory 2,333). Add a web3:// facade; consider CREATE2 for chunk dedupe across publishers."
+    },
+    {
+      "name": "scripts/master-local.mjs (v7 local mint + module playground)",
+      "path": "scripts/master-local.mjs; scripts/lib/genesis-stack.mjs; scripts/lib/modules-stack.mjs; scripts/serve-confluence.mjs",
+      "purpose": "Persistent Ganache 31337 (Shanghai, blockGasLimit 100,000,000, public dev mnemonic): deploys the full Genesis stack, mints NFT #1 (commit/reveal, 25 ETH endowment), seeds a market, adds the module system, publishes shared score + 3 example modules and installs them via SovereignAccount.execute, acquires a padded 49,152-byte legacy cartridge through the NFT account, verifies recoverRelease/recoverToken/contentOf, writes .local-genesis/<MASTER_INSTANCE>/deployment.json (schema anima.master-local/1), serves dist on 127.0.0.1:4173 and prints modules.html?registry=&collection=&chainId=31337&tokenId=1.",
+      "key_functions": [
+        "deployGenesis({rpc,provider,signer,seedMarket=true,onPreview}) — chain 31337 only; returns anima.genesis/deployment/1 with codeHashes",
+        "deployModuleSystem({provider,signer,collection,workbenchBytes,journal}) — chains 31337/11155111/84532; createArchive (<=64 chunks → createArchive schema 1, else 32-chunk leaves + createDirectory schema 2); publish(packaged); install(tokenId, release, state)",
+        "receiptJournal(file, chainId) — anima.module-deployment-receipt/1 lines, mode 0o600, fsync",
+        "--once flag; MASTER_INSTANCE regex ^[a-z0-9][a-z0-9-]{0,63}$; restart validates saved code hashes and workbench source hash"
+      ],
+      "design_decisions": [
+        "\"The market must be installed BEFORE sealing, otherwise completed sales cannot record activity.\" (genesis-stack.mjs:51)",
+        "\"Deployment manifest must be immutable after publication.\" — publish.staticCall must revert after the one-time GenesisManifest.publish (genesis-stack.mjs:66)",
+        "Post-deploy asserts the minted animation contains the privacy resource, directory, manifest sha and 'recoverArchive', then runs the browser loader against the local chain and requires byte equality with onchain-app/confluence/runtime.html",
+        "\"This capacity fixture is confined to the local chain. Its extra bytes are never a deployment default.\" (master-local.mjs:62)",
+        "Refuses to proceed if an unfinished module-receipts.jsonl exists: \"no transactions were repeated\""
+      ],
+      "standards": [],
+      "security_invariants": ["Public networks never contacted; the public dev mnemonic is printed with a warning"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Template for a unified:local script; prune the ~40-contract roster to the four pillars; keep checkpointed records and recovery-before-print."
+    },
+    {
+      "name": "scripts/genesis-local.mjs / deploy-confluence-local.mjs / lib/deploy-stack.mjs",
+      "path": "scripts/genesis-local.mjs; scripts/deploy-confluence-local.mjs; scripts/lib/deploy-stack.mjs; scripts/deploy.mjs",
+      "purpose": "Pre-v7 local chain (no module system), the validation fixture that writes reports/implementation-6.2/local-deployment.json and docs/genesis/mint-thumbnail.svg, and the legacy 1.x core deployer (OnchainRenderer, ProofRouter, ThresholdAttestationVerifier, witness registry) used by some tests.",
+      "key_functions": ["deployStack({signer, attesterAddress, royaltyReceiver, royaltyBps=500})", "deploymentRecord(stack, provider, extra)", "writeDeployment(record) → deployments/<chainId>.json and web/deployment.json"],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Superseded by master-local; deploy-stack remains a test helper only."
+    },
+    {
+      "name": "scripts/compile.mjs + lib/compiler-artifacts.mjs",
+      "path": "scripts/compile.mjs; scripts/lib/compiler-artifacts.mjs; reports/contract-sizes.json",
+      "purpose": "solc-js 0.8.30 compile of contracts/src with viaIR, optimizer runs 1,000, evmVersion cancun (IDFBI_EVM_TARGET=shanghai for local fixtures), ipfs metadata, immutableReferences + methodIdentifiers; EIP-170 gate; atomic artifact directory swap; size report.",
+      "key_functions": ["IDFBI_EVM_TARGET env (cancun|shanghai only)", "emitCompilerArtifacts({output,input,compiler,artifactDirectory,buildInputs}) → sizes", "throws 'One or more contracts exceed the EIP-170 runtime size limit'", "verifyCompilation(root) used by build/serve/tests to reject stale artifacts"],
+      "design_decisions": ["\"Publish only a complete, size-checked set; a failed compile keeps the previous artifacts.\" (compile.mjs:82)", "Regenerates ConfluenceLoader.sol from chain-loader.mjs before compiling"],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Directly reusable; 204 artifacts today, largest OperatingNFTGovernance 24,192 bytes."
+    },
+    {
+      "name": "scripts/build-confluence.mjs + archive-confluence.mjs + verify-confluence.mjs (app build/archive/verify)",
+      "path": "scripts/build-confluence.mjs; scripts/lib/runtime-build.mjs; scripts/lib/runtime-graph.mjs; scripts/archive-confluence.mjs; scripts/lib/runtime-modules.mjs; scripts/lib/runtime-archive.mjs; scripts/verify-confluence.mjs; onchain-app/confluence/manifest.json",
+      "purpose": "Compose dist/index.html + dist/modules.html from authored web/ modules after running 16 artifact generators and 3 package builds; archive as schema 3 awe.onchain-runtime/3 (20 gzip feature archives, 23,000-byte chunks); verify byte-exact recovery, data:-only import map and syntax.",
+      "key_functions": ["composeRuntime(root)", "discoverModules(root,[MODULE_ENTRY])", "atomicDirectory(dir, fn)", "verifyBuild(root[, stage])", "writeRuntimeModules(stage, expanded, {previous})", "--legacy producer: gzip level 9 inside a DecompressionStream boot HTML, 64/512-chunk limits"],
+      "design_decisions": ["\"One deliberate visual comparison fixture. It is never an active build input.\" (original.html, build-confluence.mjs:136)", "verify-confluence throws on any non-data: embedded module and runs node --check on every embedded script", "Unchanged feature bytes retain version and digest; only changed features increment"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep manifest/dedupe/verification; the unified app will have fewer features."
+    },
+    {
+      "name": "scripts/validate-release.mjs + lib/local-validation.mjs + test-all.mjs (release gate)",
+      "path": "scripts/validate-release.mjs; scripts/lib/local-validation.mjs; scripts/test-all.mjs; .github/workflows/ci.yml",
+      "purpose": "24-stage local gate (integrity, setup, syntax, static, compile-core, compile-v4, v4-encoder, build, verify-compilation, javascript, archive, verify-archive, local-mint, master-mint, fee-router, v4-launch, v4-hooks, v4-normal, v4-strategies, official-launch, communication, privacy-offline, native-keccak, rust) with prerequisites, per-stage timeouts, process-group kill, candidate-input fingerprinting before/after, node:test summary parsing where skipped/todo/cancelled => incomplete, evidence under .local-genesis/validation/<run>/status.json.",
+      "key_functions": ["validationStages(root, integrityRoot)", "candidateInputPolicy / candidateInputSnapshot(root) / candidateInputChanges(before, after)", "executeValidationStage(stage, opts)", "runLocalValidation({...}) → status passed-local-validation | passed-partial | failed | interrupted", "test-all.mjs --suite=javascript|ui [--list]; refuses to run without linkedom/snarkjs/@x402/core"],
+      "design_decisions": ["\"Unexpected input drift invalidates the result even if every command exits successfully.\"", "\"Required test execution was missing, empty, truncated, inconsistent, skipped, TODO or cancelled; exit zero is insufficient.\"", "\"A release gate must fail explicitly if its real DOM coverage cannot run.\" (test-all.mjs:25)", "CI: \"CI never creates an inventory to erase a mismatch.\""],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Best gate in the four repos; rewrite only the stage list. CI shape (local suite 240 min / browser 150 min / native Forge 20 min) is right."
+    },
+    {
+      "name": "scripts/sepolia.mjs (resumable Sepolia deploy + commit/reveal mint)",
+      "path": "scripts/sepolia.mjs; docs/SEPOLIA.md; test/sepolia.test.mjs; test/build/sepolia-cli.test.mjs",
+      "purpose": "prepare (reads chain id + pending nonce, chains Genesis plan then module plan), deploy (journal anima.sepolia-deployment-journal/1, per-step nonce/factory-nonce/address checks, estimateGas*120%, hash journaled before wait, ArchiveCreated and workbench postcondition verification), mint (recovery file with random secret written before commitAwakening, reveal at commitBlock+2, Awakened event parsed).",
+      "key_functions": ["normalizedSteps(bundle)", "verifyStepPostconditions(provider, step, receipt)", "--confirm DEPLOY_ANIMA_TO_SEPOLIA / MINT_ANIMA_ON_SEPOLIA", "SEPOLIA_DEPLOYER_PRIVATE_KEY env only; must match plan deployer", "CHAIN_ID = 11155111 hard-coded"],
+      "design_decisions": ["\"A recorded pending transaction is never resent automatically. If the nonce or predicted address differs, the runner stops instead of improvising a new deployment.\" (docs/SEPOLIA.md:56)", "PR #5 'factory nonce vulnerability': postconditions compare ArchiveCreated.archive/schema/digest/byteLength/codeHash to the plan"],
+      "security_invariants": ["Key never written; plan/journal/recovery files gitignored"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Generalise to a chain allowlist; keep everything else."
+    },
+    {
+      "name": "Unsigned deployment planners (genesis / modules / extensions / v4)",
+      "path": "scripts/genesis-deployment.mjs; scripts/lib/genesis-deployment.mjs; scripts/modules-deployment.mjs; scripts/lib/modules-deployment.mjs; scripts/extensions-deployment.mjs; scripts/lib/extensions-deployment.mjs; scripts/v4-deployment.mjs; scripts/modules-plan-package.mjs; docs/genesis/GENESIS-DEPLOYMENT.md; docs/MODULES-DEPLOYMENT.md; docs/genesis/extensions/DEPLOYMENT.md",
+      "purpose": "Offline plans with exact calldata, predicted CREATE addresses across configuration nonces, EIP-170/EIP-3860 checks, planSha256; --verify reconstructs from current artifacts/archives; extensions 'inspect' compares deployed runtime to the template allowing only immutable byte ranges.",
+      "key_functions": ["prepareGenesisDeployment(config) / verifyGenesisDeploymentPlan(plan)", "prepareModuleDeployment({chainId, deployer, startingNonce, collection}) / verifyModuleDeploymentPlan", "extensions: prepare|verify|inspect with $Name references and {address, contractName, runtimeCodeHash} pins", "v4: ANIMA_V4_RPC plan; explicit --broadcast --plan with ANIMA_V4_DEPLOYER_KEY"],
+      "design_decisions": ["Mainnet rejected; Sepolia 11155111, Base Sepolia 84532, local 31337", "\"Gas and fees as unestimated\"; zero-value; no RPC in plans", "Royalty max 1,000 bps enforced by the collection constructor"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep genesis/modules planners' pattern; drop the extensions planner."
+    },
+    {
+      "name": "Module system contracts and SDK (v7)",
+      "path": "contracts/src/modules/{ModuleArchiveFactory,ExtensionReleaseRegistry,TokenModuleRegistry,ModuleStateStore,ModuleWorkbench,ChunkedCartridgeRegistry,ModuleTypes}.sol; packages/modules/{sdk,core,chain,deployment}.mjs; web/modules/{app,adapter,host,html-worker,journal,runtime,examples}.mjs; docs/MODULES-IMPLEMENTATION.md; docs/MODULE-STATE-GAS.md",
+      "purpose": "Owner-installed, independently versioned onchain programs per NFT with append-only catalog roots, custody-epoch binding, staged schema migrations, 32 KiB direct state stored as AppChunks, a recoverable 707,014-byte workbench anchored by ModuleWorkbench.services(), and a legacy 1 MiB raw-HTML cartridge registry whose acquire() mints a separate ERC-721.",
+      "key_functions": ["TokenModuleRegistry.activate(tokenId, releaseId, root, epoch, stateHead, nextStateHead) / writeState(tokenId, moduleKey, root, epoch, bytes, archive) / stageState(...) / disable(...) / installation(tokenId, moduleKey) / rootOf / stateModuleCount / stateModulesOf", "ExtensionReleaseRegistry.publish(ReleaseInput, manifestBytes) / exists / moduleKey / hashRelease = keccak256(abi.encode(keccak256('anima.extension-release/1'), publisher, ReleaseInput, manifestHash))", "ModuleArchiveFactory.createArchive(chunks, sha256) / createDirectory(leaves, sha256) / archiveSchema / archiveCodeHash; event ArchiveCreated(address indexed archive, uint8 schema, bytes32 indexed digest, uint256 byteLength, bytes32 codeHash)", "ModuleWorkbench.services() returns (chainId, collection, installations, releases, stateStore, document, documentHash); readChunk(i); MAX_DOCUMENT_BYTES = 1,048,576; errors InvalidArchive, InvalidChunk", "ChunkedCartridgeRegistry.publishRelease(manifest, chunks, contentHash) / acquire(releaseId) / contentOf(id); events ReleasePublished, CartridgeAcquired", "SDK: recoverRelease, recoverToken, readRegistry, encodeActivate/encodeWriteState/encodeStageState/encodeDisable, assertCurrentContext, planArchiveDeployment, validateDeploymentPlan, reconcileDeploymentJournal", "host profile anima.host/1 capabilities: identity.read, state.read, state.write, transaction.propose, journal.propose"],
+      "design_decisions": ["\"The registry remains the only writer. Chunk creation is part of the same atomic state transaction, and callers cannot substitute external code addresses for direct data.\" (MODULE-STATE-GAS.md:22)", "EIP-7825 16,777,216 tx gas cap forced state bytes out of storage slots (29,172,440 gas) into AppChunks (7,871,459 gas for 32 KiB)", "\"Installation grants no allowance, session or instrument privilege.\"", "\"A check before signing is not an atomic reservation\" — shared factory CREATE nonce race is detected, not prevented", "Manifest hash (SHA-256 of canonical JSON) and deployed release ID (keccak over ABI struct) are different identities; clients must cross-check"],
+      "standards": ["ERC-721 for cartridges", "custom anima.extension-release/1 manifest"],
+      "security_invariants": ["Writes only from accountOf(tokenId) with expected root and sessionEpoch", "Previous-owner permissions do not survive custody changes", "Workbench HTML modules run in a worker with a restricted DOM bridge; no wallet/RPC in frames"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Genuine differentiator for 'the NFT mints a website' (holder-installed apps); simplify dual identity and move to per-publisher factories or CREATE2 to remove the nonce race."
+    },
+    {
+      "name": "Recovery CLIs",
+      "path": "scripts/recover-runtime.mjs; scripts/modules-recover.mjs; scripts/modules-recover-workbench.mjs",
+      "purpose": "Read-only recovery of a minted NFT's application (by collection/token or explicit archive), a release closure, a token's full module history/state, or the workbench, over HTTPS/loopback RPC with bounded responses and block-hash pinning; never overwrite outputs; never execute recovered HTML.",
+      "key_functions": ["recover-runtime --rpc --chain --collection --token-id --output | --runtime --sha256 --archive-version", "modules-recover --registry --release|--token --output", "modules-recover-workbench --workbench --token-id [--expect-sha256 --expect-code-hash] --output (writes index.html + recovery.json)"],
+      "design_decisions": ["\"It trusts the selected RPC's chain data, checks one block/hash snapshot and enforces export budgets; it is not a light-client consensus proof.\"", "SDK: 10,000,000 gas per eth_call, 3 MiB per response, 30 s timeout, read methods only, no redirects"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep as the 'no server needed' proof tooling."
+    },
+    {
+      "name": "Static checks and integrity",
+      "path": "scripts/check-source.mjs; scripts/static-audit.mjs; scripts/source-manifest.mjs; scripts/lib/source-integrity.mjs; SOURCE-SHA256.json; test/confluence/vendor-storage-pins.json",
+      "purpose": "node --check on authored JS, JSON.parse on JSON; forbid tx.origin, selfdestruct, .delegatecall(, assembly sstore (three Solady files exempt by exact SHA-256); SOURCE-SHA256.json inventory verify/generate.",
+      "design_decisions": ["\"Static heuristic scan passed. … this is not a security audit.\""],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Cheap and deterministic."
+    },
+    {
+      "name": "docs/CAPABILITIES.md (generated capability inventory)",
+      "path": "docs/CAPABILITIES.md; docs/genesis/CURRENT-CAPABILITIES.md (identical); scripts/build-capabilities.mjs; system-manifest.json",
+      "purpose": "24-row generated table (capability, Open tab, required configuration, actual boundary, source) shared with the in-app Atlas; system-manifest.json lists 56 modules with states CONFIGURABLE_WALLET_AND_CONTRACTS / LOCAL_AND_COMPILED_SOURCE / LOCAL_SERVICE_AND_CONTRACTS / IMPLEMENTED_BROWSER / IMMUTABLE_ARCHIVE_SOURCE / RESTRICTED_WALLET / LOCAL_ONLY / RESEARCH_NOT_IMPLEMENTED.",
+      "design_decisions": ["\"Code presence does not establish public deployment, funding, external service availability or a security certification.\"", "A test asserts broader research must not be relabeled as deployed (BUILD-5.9.md:45)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Adopt the generated-table-with-boundary practice."
+    },
+    {
+      "name": "docs/MODULES-IMPLEMENTATION.md, MODULE-STATE-GAS.md, MODULES-DEPLOYMENT.md, MASTER-BUILD.md",
+      "path": "docs/MODULES-IMPLEMENTATION.md; docs/MODULE-STATE-GAS.md; docs/MODULES-DEPLOYMENT.md; docs/MASTER-BUILD.md; reports/master-completeness/*; reports/master-7.0/*",
+      "purpose": "22-addition implementation map with per-item boundaries, measured gas table, deployment/recovery runbook, and the exact-candidate evidence index (run 35172184548, commit 84961c3).",
+      "reuse_verdict": "drop",
+      "reuse_notes": "Reference only; mine for numbers and boundaries, do not carry forward as docs."
+    },
+    {
+      "name": "docs/genesis/PRIVACY-AND-V4.md (RAILGUN shielded execution + v4 lifecycle)",
+      "path": "docs/genesis/PRIVACY-AND-V4.md; packages/privacy/*; web/privacy/runtime-integrity.mjs; onchain-app/privacy-worker/*; scripts/v4-deployment.mjs; integrations/console/protocol/v4-hook/src/{GenesisV4Launchpad,GenesisV4Position,GenesisV4Router,GenesisV4HookLaunchpad}.sol",
+      "purpose": "Opt-in RAILGUN v2 private swaps/launches with no public fallback, encrypted local vault (AES-256-GCM, PBKDF2 600k), 15 MB integrity-pinned worker recovered from immutable shards; v4 launch atomically deploys fixed-supply ERC20, initializes a real pool and mints transferable position shares.",
+      "design_decisions": ["\"Private mode has no public fallback.\"", "\"No platform allocation, transfer tax, extra mint authority or token administrator exists.\"", "Dependency audit: 51 findings (27 low, 17 moderate, 6 high, 1 critical); high/critical not inputs to the shipped worker"],
+      "standards": ["Uniswap v4 PoolManager/hooks", "RAILGUN RelayAdapt", "Waku broadcasters"],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Requires external proof/broadcaster services and an unaudited 15 MB dependency tree; incompatible with 'no server'. The v4 contracts themselves are another reader's call."
+    },
+    {
+      "name": "docs/genesis/EXIT-AND-MINT-SANCTUARY.md + EXIT-OPERATOR.md (VestedExitVault, keeper, burner mint wallets)",
+      "path": "docs/genesis/EXIT-AND-MINT-SANCTUARY.md; docs/genesis/EXIT-OPERATOR.md; contracts/src/protocol/VestedExitVault.sol; agent/exit-keeper.mjs; web/burners/*",
+      "purpose": "Scheduled sell slices funded by the NFT account with fixed min-outs and recipients, operated by a one-shot keeper CLI; per-project encrypted EOA for restricted direct mints (mint(), mint(uint256), mint(address,uint256), publicMint(uint256), safeMint(address)).",
+      "design_decisions": ["\"Each installment has a due date, exclusive expiry, fixed input amount, fixed minimum output and a fixed artifact-account proceeds recipient.\"", "\"The keeper can submit only executeSlice(plan,index). It cannot redirect proceeds or loosen terms.\"", "VestedExitVault 8,199 bytes"],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Needs an offchain keeper; outside the four pillars."
+    },
+    {
+      "name": "CHANGELOG.md / CLEANUP.md / reports/ (history)",
+      "path": "CHANGELOG.md; CLEANUP.md; reports/README.md; reports/VALIDATION.md; reports/release-status.json; docs/genesis/BUILD-5.9.md; docs/genesis/releases/5.1-VALIDATION.md; docs/genesis/INTERIOR-AND-ONCHAIN-5.7.md",
+      "purpose": "Release history 1.4 → 5.9 (CHANGELOG stops at 5.9), the 6.0 cleanup record (principles, changes, deliberately unfinished table, 543-test validation), and retained per-version evidence.",
+      "design_decisions": ["reports/README.md: \"A filename at the directory root does not mean that the report describes the current source tree.\"", "release-status.json / protocol-status.json describe the 1.2 candidate whose Solidity was BLOCKED_MISSING_SOLC"],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Historical; keep the evidence-naming discipline."
+    },
+    {
+      "name": "SECURITY.md (root, 6.2) and docs/SECURITY.md (1.2)",
+      "path": "SECURITY.md; docs/SECURITY.md; docs/PROTOCOL.md; docs/ARCHITECTURE.md; docs/OWNER-AUTHORITY-AND-RECOVERY.md",
+      "purpose": "Current boundaries (Bound account, exact-calldata grants with net-debit budgets, irreversible Sovereign promotion requiring frozen recognized verifier code, MLS vs legacy ECDH, mint sanctuary, no automatic fixes for immutable contracts) and the historical 1.2 trust model with invariants I-01..I-15.",
+      "standards": ["ERC-165", "ERC-721 + metadata", "ERC-2981", "ERC-4907", "ERC-4906", "ERC-8048-style metadata", "ERC-1271", "ERC-6551-inspired (not canonical registry)"],
+      "security_invariants": ["Selling/transferring the NFT changes the custody epoch and invalidates sessions, reviews and room authority", "Sovereign mode: holder authority ignored; proofs bound to chain/account/nonce/window/roots/policy", "Admin powers (collection factory-once/royalties, ProofRouter, verifier, witness registry) exist until frozen"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Boundary language is good; rewrite for the unified contract set."
+    },
+    {
+      "name": "Makefile and package.json scripts",
+      "path": "Makefile; package.json; packaging.json; .env.example",
+      "purpose": "Makefile is an 8-target wrapper; package.json declares ~115 scripts; packaging.json records entry points (dist/index.html, onchain-app/confluence/runtime.html, onchain-app/module-workbench/index.html) and publicChainDeployed:false.",
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Drop the Makefile; prune scripts to ~25."
+    },
+    {
+      "name": "test/launchpad/* (v4/community/auction launchpad suite)",
+      "path": "test/launchpad/{lifecycle,chain,sale,auction,participant,private-hooks,private-range,nft-sale-auction,vault}.integration.test.mjs; test/launchpad/{desk,economics,economics-auction,scenarios,sale-ui,strategies-ui,strategy-keeper,runtime-immutables,participant-route}.test.mjs",
+      "purpose": "75 tests; integration tests spawn the pinned Anvil (Cancun) from integrations/console/protocol/v4-hook, compile PoolManager/V4Quoter with solc 0.8.26, deploy GenesisV4Launchpad/Router/HookLaunchpad + LaunchRegistry/LaunchAllocationComposer + WorldLedger/TimeVault/NativeMarket/GenesisLaunchpad, and drive the browser clients (LaunchChain, LaunchLifecycleClient, LaunchParticipant, CommunitySaleClient) through reviewed transactions.",
+      "key_functions": ["'real v4 atomic allocations, TimeVault custody, discoverable records and failure recovery' (lifecycle.integration.test.mjs:168)", "'wallet controller deploys, funds, launches, trades, exits and recovers real v4 transactions' (chain.integration.test.mjs:201)", "'actual minted NFT accounts own community-sale allocations and auction seller/bid/claim rights; transfer invalidates stale reviews' (nft-sale-auction.integration.test.mjs:37)", "'factory, hook and community public verifiers reject forged copies before any reassuring getter can run' (runtime-immutables.test.mjs:34)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Anvil-in-test and runtime-fingerprint verification patterns are reusable; the specific launch mechanics depend on which launchpad the unified design picks."
+    },
+    {
+      "name": "Browser and native acceptance",
+      "path": "test/browser/current-app.mjs; test/browser/modules.mjs; test/browser/modules-native.mjs; test/browser/master-acceptance.mjs; test/browser/README.md; scripts/test-modules-native.mjs; test/modules/fixtures/cartridges-native/Cartridges.t.sol; test/modules/native/README.md",
+      "purpose": "Playwright Chromium runs with an injected EIP-1193 provider (signing always rejects with 4001 in the original-app fixture; disposable Ganache for native/full-mint fixtures); master-acceptance deploys the full Genesis + module system, recovers both documents exactly, plays 48 KiB and 1 MiB legacy games, performs a 32 KiB migration/historical branch, public+encrypted journal inscription, and asserts every reviewed transaction's gas limit <= 16,777,216. Native Forge 1.7.1 runs 7 tests + 64 fuzz runs.",
+      "design_decisions": ["\"Forge's npm JavaScript wrapper is deliberately rejected because its child exit status is not reliably propagated in version 1.7.1.\"", "\"Passing these cases proves browser handling of those responses; it does not prove contract execution, network integration, real wallet behavior or real ownership.\""],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep the fixture shape and the gas-cap assertion."
+    },
+    {
+      "name": "Live Sepolia deployment record (side branch only)",
+      "path": "git: origin/codex/deploy-on-testnet-and-mint-3-nfts-pj8cqs commit 33f1034 → docs/deployments/sepolia-11155111.json (not on main)",
+      "purpose": "anima.public-deployment/1 record: deployer 0xc591C669162cD4da8aB9BfA2c2e68d538A312C00; collection 0xCB8Dc18d3Ca5C9c2aeA16c94fa0af6EF4dfc0aC6; SovereignAccountFactory 0xd99D2e1aee792e074ff34495627D6213737e52d2; tokenIds 1,2,3; ModuleArchiveFactory 0x7751D929adeE4Ec9AA78505d5E9E047a510e27b1; ExtensionReleaseRegistry 0x0bBdD0Ac5c95e1Bd42A620BDc5C432aBC2D76e9c; TokenModuleRegistry 0x2ECcA4AE5AE809328703c624e7E82963EF4Ad8e1; ModuleStateStore 0xf7acB81FD2610C7887bb1962bfD809a96DcF3264; ChunkedCartridgeRegistry 0xD66A2D34AFF5d71cA27A80256e0Dfc223Ba5C4E1; ArtifactBinding 0xCDd59f365788F271e73F366bC4eA2747F9B5f6D9; WorkbenchArchive 0x5867e5A3B372CC17cc34e4130FdE583DF9822bED; ModuleWorkbench 0x1d2bad62Fe47a63b7a2e51E03959a50B8767C2aD; 37 module txs blocks 11742089-11742148; explorer eth-sepolia.blockscout.com.",
+      "reuse_verdict": "drop",
+      "reuse_notes": "Evidence only; the unified protocol will deploy fresh. Note the same deployer address appears in the vendored cutting-edge Base Sepolia record."
+    }
+  ],
+  "standards_implemented": [
+    "ERC-721 + metadata (data: URI tokenURI), ERC-165, ERC-2981 royalties (max 1,000 bps), ERC-4907 users, ERC-4906 metadata update events, ERC-8048-style metadata (docs/PROTOCOL.md)",
+    "ERC-1271 on SovereignAccount; ERC-6551-inspired token()/state()/isValidSigner() but custom CREATE2 factory, NOT the canonical ERC-6551 registry (explicitly disclaimed)",
+    "ERC-8004 binding stored but unverified (bindERC8004); ERC-7401 nesting NOT implemented; ERC-7857 NOT claimed",
+    "No ERC-4804/ERC-6860 web3:// resolver (OnchainApp only exposes readChunk/readAll)",
+    "EIP-170 runtime gate, EIP-3860 initcode checks in planners, EIP-7825 16,777,216 tx gas cap respected by state writes",
+    "ERC-1967 proxy-slot pinning in the mint sanctuary; EIP-1193 wallet provider; EIP-191 threshold attestations",
+    "Uniswap v4 PoolManager/hooks (GenesisV4Launchpad, OwnerV4FeeHook, PhoenixLaunchHook), official CCA/Doppler via pinned integrations",
+    "LayerZero V2 receiver (AuthenticatedStatePortal) and OFT (AnimaOFTSource/Composer), local two-chain fixtures only",
+    "RFC 9420 MLS (MLSGroupChat + packages/communication), RAILGUN v2 RelayAdapt, x402 v2 / ERC-8183 draft adapters (agents)"
+  ],
+  "unique_ideas": [
+    "Recovery loader stored in an AppChunk created by the renderer constructor and copied with extcodecopy so tokenURI's animation_url bootstraps without spending EIP-170 runtime bytes",
+    "Hand-rolled SHA-256 in the loader because SubtleCrypto is unavailable in opaque data: URL origins",
+    "Schema-3 functional feature archives: 20 independently versioned gzip archives under an OnchainModuleDirectory whose commitment excludes addresses so unchanged features are reused across editions",
+    "Per-NFT module registry with append-only catalog roots, custody-epoch binding, staged migrations; 32 KiB state stored as AppChunk code to fit EIP-7825 (7.87 M gas measured)",
+    "Validation runner with candidate-input fingerprinting and 'skipped/todo/cancelled = incomplete, not pass' summary parsing; evidence directories outside the inventory",
+    "Unsigned plan + --verify reconstruction + journaled resumable runner with ArchiveCreated postcondition checks and literal --confirm tokens",
+    "ReviewedAction pattern: prepare/simulate/show exact calldata and gas, recheck owner+epoch+root immediately before a single send; revision counters kill stale previews",
+    "Cartridge ERC-721 acquired by the NFT's own account (nested ownership without ERC-7401)",
+    "Generated capability inventory with an 'actual boundary' column shared by docs and the in-app Atlas"
+  ],
+  "weaknesses": [
+    "No web3:// surface; the website is a data: URI opened via animation_url and recovery is eager (~8 MB expanded, 2 MB stored, 101 chunks); tokenURI reads in fixtures need gasLimit 90,000,000",
+    "Public deployment lives on an unmerged side branch; main still says publicChainDeployed:false; the three Sepolia mints are not itemised",
+    "Custom account rather than canonical ERC-6551; no ERC-7401; unverified ERC-8004 binding; supportsInterface advertises no execution interface",
+    "Enormous surface (204 artifacts, 56 modules, RAILGUN 15 MB worker with 51 advisories, LayerZero, Groth16 dev setup, Rust kernel, Python render parity) — much marked local-service or research",
+    "Shared ModuleArchiveFactory CREATE-nonce race between planning and signing is detected, not prevented",
+    "Direct module state capped at 32 KiB; all unencrypted bytes public; no key handover on NFT transfer",
+    "Workbench HTML modules run in a worker with a tiny DOM subset; arbitrary legacy HTML may not run",
+    "Toolchain fragility: hours-long viaIR builds, Ganache needs /dev/shm TMPDIR on some executors, native Forge binary required, DOM tests need linkedom from a nested package",
+    "Admin keys (collection, ProofRouter, verifier, witness registry) exist until frozen; Sepolia deployer is initial administrator",
+    "Doc numbers drift across versions; CHANGELOG stops at 5.9; several docs are flagged historical"
+  ],
+  "website_delivery": "From chain, via tokenURI only. ConfluenceRenderer.render returns data:application/json;base64 whose animation_url is data:text/html;base64 of a boot page = <script>window.AWE_CHAIN_IDENTITY={seed,genome,root,chainId,collection,tokenId,manifest,privacyResource,runtime,sha256,archiveVersion}</script> plus a ~15 KB loader HTML copied with extcodecopy from an AppChunk the renderer constructor created from ConfluenceLoader.html() (generated from web/confluence/chain-loader.mjs + module-loader.mjs). The loader offers 'Unfold my artifact' using window.ethereum or an entered HTTPS/loopback RPC, checks eth_chainId, pins eth_blockNumber, reads the OnchainModuleDirectory then each of 20 feature archives (readChunk eth_calls, 23,000-byte chunks, 101 chunks), gunzips, verifies SHA-256 with a hand-rolled implementation, builds an import map of data:text/javascript;base64 modules and document.write()s the 7,952,983-byte app. The companion module workbench (707,014 bytes, 31 chunks) is anchored by ModuleWorkbench.services()/readChunk and recovered by CLI then served from a trusted local origin (also embedded in the app as the modules@8 feature). There is NO web3:// (ERC-4804/6860) resolver, no resolveMode, no path routing — the project's own standards.md says 'has no manual resolver, raw-path fallback, index route, asset routing, or web3 client integration'. dist/index.html served by scripts/serve-confluence.mjs on 127.0.0.1:4173 (or GitHub Pages in the sibling repo) is a hosted convenience, not the delivery path. The RAILGUN worker, circuits, RPC, Waku, keepers and world servers remain external.",
+  "wallet_gating": "Reads are open to anyone with an RPC (unfold the artifact, participant launch pages, module/state recovery). Access to owner actions is gated client-side and enforced contract-side. Original app (web/confluence/wallet.mjs:47-100): assertMintBinding(window.AWE_CHAIN_IDENTITY, collection, tokenId[, chainId]) refuses another collection/token/chain; eth_requestAccounts; at one block ownerOf/accountOf/renderSnapshot; owner !== signer => 'This wallet does not own the selected NFT.'; account must have code; refresh() re-reads ownerOf/accountOf/eth_chainId/eth_accounts at one block and invalidates on mismatch; accountsChanged/chainChanged invalidate; every prepared review captures SovereignAccount.sessionEpoch and rechecks it before signing. Workbench (web/modules/adapter.mjs:11-22): readRegistry must return collection==wallet.collection, account==wallet.account, owner==wallet.address and SovereignAccount.currentOwner()==owner, else 'Registry identity or current NFT custody does not match.'; fresh() re-asserts sameAuthority (chainId/registry/collection/tokenId/account/owner/epoch) immediately before each send and that the release is still enabled. Contracts: Bound-mode SovereignAccount.execute resolves ownerOf(tokenId) at call time (authority follows transfer); TokenModuleRegistry activate/writeState/stageState/disable require msg.sender == accountOf(tokenId), the expected catalog root and the current sessionEpoch; custody-changing callbacks roll back delegated execution. 'Authorised by the holder' exists at contract level (token approval, operator approval, narrow session keys with exact target/selector/value/window/count/epoch, exact-calldata instrument grants with net-debit budgets, SessionSponsor vouchers, AgentPolicyGuard), but the shipped UI recipes require the exact owner in Bound mode and 'Proof-authorized account mode ... is intentionally rejected by this adapter'. Browser fixtures use an injected EIP-1193 provider and explicitly do not prove real ownership.",
+  "tests_and_tooling": "Node 24.19.0 / npm 11 pinned in CI (package.json engines >=22.13); solc-js 0.8.30 (core Shanghai for fixtures, Cancun default), v4 solc 0.8.26 Cancun with pinned @foundry-rs/anvil 1.7.1; Forge 1.7.1 native binary (FORGE_BIN) for test/modules/fixtures/cartridges-native/Cartridges.t.sol; Rust 1.98.1 for proof-kernel; Playwright 1.62.1 Chromium 151; ganache 7.9.2; linkedom 0.18.12 for DOM tests; Python+NumPy+Pillow+Mesa for native render parity. node:test suites under test/** (static count 734 test( declarations: launchpad 75, extensions 84, genesis 69, modules 51, operating 48, memory 44, kingdom 41, privacy 41, confluence 38, instruments 36, build 31, exit 24, …; CI reports 760 including loop-generated cases). Entry commands: npm test (= scripts/test-all.mjs --suite=javascript), test:modules, test:modules:native, test:launchpad, test:launchpad:hooks, test:v4, test:privacy, test:browser, test:modules:browser, test:master:browser, test:validation-runner, validate:release (24 stages). Telling tests: 'real v4 atomic allocations, TimeVault custody, discoverable records and failure recovery'; 'native NFT owns module selection, atomic state migration, stale reviews and transfer revocation'; 'a real minted NFT embeds the immutable schema3 loader and its exact onchain feature edition'; 'the unsigned sequence executes on an isolated EVM with exact archives, complete constructor wiring and immutable manifest'; 'Sepolia archive receipt verification rejects a front-run address substitution'; 'maximum direct state and chunk boundaries recover exactly within the transaction gas cap'; 'minted owners cannot substitute another token, collection or network'. CI: .github/workflows/ci.yml with complete-local-suite (240 min), current-browser (150 min), module-solidity (20 min).",
+  "measured_numbers": [
+    "Contract deployed bytes (solc 0.8.30, viaIR, runs 1000): OperatingNFTGovernance 24,192; SovereignAccountFactory 23,423; SovereignAccount 21,506; IDontFuckingBelieveIt 20,940; EstateExchange 14,847; ConfluenceRenderer 14,772; WorldLedger 14,233; GenesisLaunchpad 12,964; ChunkedCartridgeRegistry 10,969; OnchainRenderer 10,463; MLSGroupChat 10,124; ModuleArchiveFactory 8,251; VestedExitVault 8,199; TokenModuleRegistry 8,084; EpochGroupChat 7,031; TimeVault 6,517; ExtensionReleaseRegistry 5,922; NativeMarket 5,344; ModuleStateStore 4,951; OnchainAppDirectory 2,333; ModuleWorkbench 1,800; ShardedResource 1,244; OnchainModuleDirectory 1,152; OnchainApp 1,027; GenesisManifest 965; 204 artifacts total; EIP-170 limit 24,576",
+    "Onchain app (schema 3): 20 feature archives, byteLength 2,072,940, expandedBytes 7,952,983, 101 chunks, sha256 479d97b6…2e13, runtimeHtmlSha256 7ca876f3…5fb0; feature sizes core-shell 241,043, launchpad 561,363, modules 381,399, extensions 289,227, vendor 211,487, commons 111,543",
+    "Module workbench: 707,014 bytes, 31 chunks, sha256 ec2a47d8…dcb6 (v7.0 earlier: 705,642 bytes); MAX_DOCUMENT_BYTES 1,048,576",
+    "Module state gas (Shanghai, 20% headroom, cap 16,777,216): stageState 32,768 B = 7,713,661 gas (limit 9,461,092); 23,001 B = 5,476,498; 23,000 B = 5,442,605; 1 B = 323,341; 0 B = 244,430; writeState 32,768 B = 7,871,459 (limit 9,602,817); old storage-slot design needed 29,172,440",
+    "Cartridge reads: 48 KiB edition 49,216 ABI bytes / 328,234 view gas; 1 MiB edition 1,048,640 ABI bytes / 13,798,118 view gas / 46 chunk refs; full workbench + Genesis app recovered in 6,080 ms locally; max sampled JS heap 11,830,216 bytes",
+    "CI run 35172184548 (commit 84961c3, 2026-09-17, 1,536 s): 24/24 stages; 760/760 JS; 11/11 official-launch; 1/1 MLS; 9 Rust; 51 module; 7 native + 64 fuzz; 17 browser cases (7+5+1+4); 7 reviewed full-runtime transactions; Chromium 151.0.7922.34; 3,462 inventory files; 117 embedded modules; 20 archive groups",
+    "Earlier v7.0 run 35159655831 (commit 5ac5550): 755 JS tests; 13 browser; local mint 116.9 s; restart 2.3 s; cold recovery 3,323 ms (workbench) + 615 ms (token, 4 releases, 3 states, 3,346 bytes); unsigned plan 37 txs, 36 external + 3 internal creations",
+    "Local 31337 fixture addresses (reports/master-7.0): collection 0x4DAf17c8142A483B2E2348f56ae0F2cFDAe22ceE, account 0x1795cD5F166392a061Dc944f44824cB2d5077c66, workbench 0x67baFF31318638F497f4c4894Cd73918563942c8, registry 0x2d13826359803522cCe7a4Cfa2c1b582303DD0B4",
+    "Sepolia (side branch 33f1034): collection 0xCB8Dc18d3Ca5C9c2aeA16c94fa0af6EF4dfc0aC6; factory 0xd99D2e1aee792e074ff34495627D6213737e52d2; TokenModuleRegistry 0x2ECcA4AE5AE809328703c624e7E82963EF4Ad8e1; ModuleWorkbench 0x1d2bad62Fe47a63b7a2e51E03959a50B8767C2aD; tokens 1,2,3; 37 module txs in blocks 11,742,089–11,742,148; deployer 0xc591C669162cD4da8aB9BfA2c2e68d538A312C00",
+    "Historical: 6.0 cleanup 543 JS tests, 163 artifacts, app 1,123,901 B / 49 chunks / 66 modules, factory 23,142 B, worker 15,012,667 B pinned f99adbb7…; 5.9: 497 tests, 160 contracts, 1,111,273 B / 49 chunks → 2,689,512 B; 5.7: 406 tests, 787,529 B / 35 chunks, worker 15,010,237 B → 4,570,220 B in 199 chunks / 7 shards, renderer 21,635 B; 5.1: 250 tests, 110 compilation entries, 673,101 B / 30 chunks; 1.2: 59 UI + 49 browser tests, Solidity not compiled",
+    "Privacy dependency audit: 51 findings (27 low, 17 moderate, 6 high, 1 critical); worker ~15 MB; journal crypto AES-256-GCM + PBKDF2-SHA256 600,000 rounds; journal text ≤3,000 bytes, packet ≤16 KiB; SDK bounds: manifest 16 KiB, 512 files, 16 MiB expanded package, 16 direct deps, closure 64 releases/depth 16/64 MiB, pages 64, state 32 KiB, shared file 64 KiB, eth_call gas 10,000,000, 3 MiB response, 30 s"
+  ],
+  "pitfalls": [
+    "reports/release-status.json, protocol-status.json and reports/VALIDATION.md describe the 1.2 candidate (Solidity BLOCKED_MISSING_SOLC) — not current (reports/README.md)",
+    "docs/SECURITY.md, ARCHITECTURE.md, PROTOCOL.md, DEPLOYMENT.md are flagged 'Historical research architecture'; current boundaries are root SECURITY.md + docs/CAPABILITIES.md",
+    "contracts/src/confluence/ConfluenceLoader.sol and ~22 web/*/artifacts.mjs files are generated (list in scripts/lib/local-validation.mjs:64-88); hand edits are overwritten by compile/build",
+    "Core fixtures compile Shanghai (compile:local) while npm run compile is Cancun and v4 is Cancun-only; a public plan must use one profile throughout",
+    "tokenURI reads in fixtures pass gasLimit 90,000,000; public RPC eth_call gas caps may reject the renderer",
+    "master:local refuses to reuse an instance after the workbench source changes — pick a new MASTER_INSTANCE",
+    "Sepolia runner halts on nonce/address mismatch; never hand-edit journals ('Never edit a saved journal's success labels to manufacture completion')",
+    "integrations/github/*/deployments/*.json are the sibling repos' records (cutting-edge, most-advanced), not MASTER's",
+    "The Sepolia record (docs/deployments/sepolia-11155111.json) exists only on origin/codex/deploy-on-testnet-and-mint-3-nfts-pj8cqs; main's fd1c283 brought the verification code but not the record",
+    "Ganache may need TMPDIR on /dev/shm; Forge must be the native 1.7.1 binary; linkedom must be installed under agent/extensions or the JS gate refuses to run",
+    "Private keys only via environment (SEPOLIA_DEPLOYER_PRIVATE_KEY, ANIMA_V4_DEPLOYER_KEY, EXIT_KEEPER_PRIVATE_KEY); .env* gitignored; .env.example lists RPC_URL/DEPLOYER_PRIVATE_KEY for the legacy deploy.mjs only"
+  ]
+}

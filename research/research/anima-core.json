@@ -1,0 +1,747 @@
+{
+  "repo": "venividis/Cutting-edge-technologically-advanced-NFT (ANIMA) — checkout /home/user/Cutting-edge-technologically-advanced-NFT @ main e345828",
+  "area": "core token + diamond build + interfaces (contracts/core, contracts/diamond, contracts/interfaces, contracts/libraries, contracts/web/AnimaWeb3Renderer.sol)",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/anima-core.md",
+  "summary": "ANIMA is an agent-native ERC-721 in which one token is one AI agent: an ERC-8004 identity with a committed off-chain manifest, a deterministic ERC-6551 wallet (accountOf is derived, never stored), encrypted private state (BrainShard[] committed by an ordered hash chain, re-keyed on transfer through a pluggable ITransferVerifier whose certified SealPolicy overwrites the mint-time claim), a declared ModelIdentity, a published AutonomyPolicy, ERC-4907 tenancy, counted ERC-5192/6454 locks that only allowlisted modules may set, a guardian that can only pause, and an ERC-5646 fingerprint over all mutable state. The token exists as two provably equivalent builds: contracts/core/AnimaAgent.sol, a 23,971-byte monolith 605 bytes under EIP-170, and contracts/diamond/, an immutable EIP-2535 diamond (AnimaDiamond is 177 bytes of runtime code: a constructor and a fallback, no diamondCut, no owner over the routing table). The cut is derived from the monolith ABI by the SDK deriveFacetCut (83 selectors over AnimaCoreFacet 38 / AnimaAgentFacet 34 / AnimaBrainFacet 11, plus 4 loupe), and the whole 279-test suite runs unmodified against either build; test/Diamond.test.ts additionally asserts byte-identical ERC-5646 fingerprints for an identically-lived agent. The diamond constructor refuses duplicate selectors, codeless facets, disagreeing per-facet immutable config (checked via animaConfigHash), an initialiser that did not take effect (nextAgentId post-condition, because delegatecall to a codeless address returns success) and an initialiser that repointed any emitted selector (RoutingTampered). Measured overhead is a flat +4,300..+5,400 gas per call, bounded by a gas test that fails the build on drift.\n\nThe load-bearing security invariants, all enforced in a sealed non-virtual _update in AnimaBase (diamond) and in AnimaAgent (monolith): selling an agent epoch-rolls operators, clears guardian/lease/policy/bound wallet and forces Paused; a locked agent cannot transfer or burn; approvals are keyed keccak256(owner, approvalEpoch[owner], operator) so revokeAllApprovals is O(1) and setApprovalForAllUntil time-boxes grants (ported from ICRC-37/CW-721); wallet binding requires the wallet's own EIP-712 signature; SealPolicy can only be weakened by the owner and strengthened by a verifier. Supporting singletons: EncryptionKeyRegistry (chain-wide, key-type-agnostic publish-your-public-key directory, keyIdOf = keccak(publicKey) bound into re-key proofs), NullTransferVerifier (honestly reports Committed), AttesterQuorumVerifier (EIP-712 M-of-N with enclave measurement in the payload, replay protection, and request.anima == msg.sender so a stranger cannot burn a proof), and libraries BrainLib (memory-only hash chain, chosen because per-data-location loop duplication blew the size limit), ERC6492 (counterfactual-account signatures, with a must-actually-deploy guard) and ExactERC20 (fee-on-transfer rejection).\n\nWebsite delivery: the NFT does not mint a website. tokenURI returns an opaque stored string; the Sanctuary client happens to set a self-contained data:application/json + inline SVG URI at mint, but nothing on-chain generates or enforces that. The on-chain UI is a separate 22,592-byte ERC-4804 manual-mode contract, AnimaWeb3Renderer (resolveMode = manual; fallback(bytes path) returns abi.encode(string html) for / and /token/{id}/live), deployed on Base Sepolia at 0x9160bE4d943516a2463Ac5f3ABAc5F5cce7975Cd against the 0xb3d92c76 diamond and reached via web3://<renderer>:84532/token/{id}/live or the hosted w3link.io gateway. Its script imports viem from https://esm.sh at runtime (a CDN dependency), hardcodes RPC URLs for only chains 11155111 and 84532, and mislabels SealPolicy values; an unmerged branch (codex/submit-blockchain-deployment-using-sepolia-key-koorbx) rewrote the client with hand-rolled selectors and raw JSON-RPC and no CDN. There is also an off-chain GitHub Pages Vite site (index.html, src/main.js) that enumerates totalMinted x ownerOf client-side to list a wallet's agents. Neither surface gates viewing; ownership verification is informational (ownerOf == connected address) and the only real authorisation is the contract's per-function checks (owner / controller / guardian / module), which the UIs surface by simulating before signing.\n\nFor the unified GOAL, the highest-value reuse is the immutable-diamond infrastructure (AnimaDiamond, DiamondStorage, IDiamond, AnimaLoupeFacet, deriveFacetCut, scripts/deploy-diamond.ts verification pass), which is exactly how swap + messaging + launchpad + vault + renderer can sit behind one NFT address without an EIP-170 ceiling or an upgrade key; the transfer-hook and epoch-approval patterns; EncryptionKeyRegistry for an encrypted messaging layer; and the ERC6492/ExactERC20 libraries. The agent-specific brain/model/seal/verifier stack is optional. The renderer concept (ERC-4804 manual mode, separate immutable contract) is right but the implementation should be rewritten dependency-free, moved into the diamond or linked from tokenURI, and its HTML stored as shards rather than string literals.",
+  "components": [
+    {
+      "name": "IAnima (types, IAnimaEvents, IAnima)",
+      "path": "contracts/interfaces/IAnima.sol",
+      "purpose": "Normative types (AgentStatus, SealPolicy, BrainShard, ShardKind, ModelIdentity, AttestationKind, AutonomyPolicy, AgentCore packed to 4 slots, Lease), every event/error, and the 26-function IAnima surface shared by both builds.",
+      "key_functions": [
+        "mintAgent(address,string,bytes32,ModelIdentity,BrainShard[],SealPolicy,MetadataEntry[]) returns (uint256)",
+        "setManifest(uint256,string,bytes32)",
+        "verifyManifest(uint256,bytes) view returns (bool)",
+        "updateBrain(uint256,BrainShard[],uint64 expectedEpoch)",
+        "transferWithBrain(address,address,uint256,BrainShard[],bytes[] sealedKeys,bytes proof)",
+        "downgradeSealPolicy(uint256,SealPolicy)",
+        "accountOf(uint256) view returns (address)",
+        "deployAccount(uint256) returns (address)",
+        "setPolicy(uint256,AutonomyPolicy)",
+        "isController(uint256,address) view returns (bool)",
+        "setOperator(uint256,address,bool)",
+        "setStatus(uint256,AgentStatus)",
+        "setGuardian(uint256,address)",
+        "guardianPause(uint256)"
+      ],
+      "design_decisions": [
+        "AgentCore and Lease declared in the interface so both builds share one byte-for-byte layout; getStateFingerprint ABI-encodes the struct wholesale, so field order is normative and append-only",
+        "IAnimaEvents split from IAnima so a facet can emit the vocabulary without claiming the whole interface",
+        "SealPolicy is an honest machine-readable guarantee level: 'a previous owner who has already decrypted the plaintext can keep a copy forever — and most standards paper over it'",
+        "Manifest URI and hash set together in one call; a URI without a hash is 'uncommitted'",
+        "Status gates what the agent may do, not who owns it, so agents stay liquid on any marketplace"
+      ],
+      "security_invariants": [
+        "AgentCore field order must never change (fingerprint domain)",
+        "Operators are the agent's staff (owner-granted, epoch-keyed); the ERC-4907 user is its tenant"
+      ],
+      "standards": [
+        "ERC-721",
+        "ERC-8004",
+        "ERC-6551",
+        "ERC-7857 (adapted)",
+        "ERC-4907",
+        "ERC-5192",
+        "ERC-2981",
+        "ERC-4906"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep the lifecycle/lock/guardian/operator vocabulary and the normative-struct-for-fingerprint idea. Brain/model/seal/autonomy types are AI-agent-specific; include only if the unified NFT keeps agent identity. If kept, preserve AgentCore layout."
+    },
+    {
+      "name": "AnimaAgent (monolith)",
+      "path": "contracts/core/AnimaAgent.sol",
+      "purpose": "Reference implementation: ERC-721 + ERC-8004 identity registry on the token + sealed brain + ERC-4907 lease + ERC-5192/6454 counted locks + ERC-5646 fingerprint + expiring/revocable approvals + ERC-2981/7572 + Ownable2Step admin pointers. 926 lines, 23,971 B runtime (605 B under EIP-170), 83 ABI functions.",
+      "key_functions": [
+        "constructor(string,string,address owner,IERC6551Registry,address accountImpl,bytes32 salt,ITransferVerifier,EncryptionKeyRegistry,address royaltyReceiver,uint96 royaltyBps)",
+        "_update(address to,uint256 tokenId,address auth) — refuses locked; on sale: operatorEpoch++, clears guardian/policy/lease/boundWallet, status=Paused (L729-755)",
+        "isController(uint256,address): owner | live lease user | operator at current epoch (L189-195)",
+        "getStateFingerprint(uint256) = keccak256(abi.encode(holder,_core,weightsRoot,boundWallet,lease,policy,account.state())) (L775-790)",
+        "setApprovalForAllUntil(address,uint64) / revokeAllApprovals() / approvalExpiryOf(address,address); isApprovedForAll reads the timed store (L817-861)",
+        "lockAgent/unlockAgent/setDisputed(uint256,bool) onlyModule (L689-723)",
+        "setStatus(uint256,AgentStatus): Disputed module-only, Retired terminal + owner-only + not locked (L584-601)",
+        "setAgentWallet(uint256,address,uint256 deadline,bytes sig) EIP-712 AgentWalletBinding signed by the wallet (L534-549)",
+        "transferWithBrain(...) nonReentrant: requires recipient key in KEY_REGISTRY, verifier.verifyReKey before state change, c.seal = verifier.sealPolicy() (L440-491)",
+        "tokenURI(uint256) returns stored _agentURI string (L360-363)",
+        "setVerifier/setModule/setContractURI/setDefaultRoyalty/setTokenRoyalty onlyOwner (L867-909)"
+      ],
+      "design_decisions": [
+        "Intentionally not upgradeable: 'an agent standard whose rules a proxy admin can rewrite is not a standard, it is a promise'",
+        "Operators stored under _operator[agentId][epoch][addr] so a sale wipes staff in O(1)",
+        "Approvals keyed keccak256(owner, approvalEpoch[owner], operator); unbounded grant recorded as type(uint64).max; enumeration left to indexers because a per-owner list 'would cost more bytecode than this contract has left'",
+        "Disputes counted not boolean: 'resolving the first dispute must not hand its spending authority back while the others are still open'",
+        "setUser refused while locked so an owner cannot evict a paying tenant; Retire refused while locked",
+        "Royalty is 'a declaration, not an entitlement'; value captured at escrow/launchpad/metering chokepoints",
+        "_writeShards takes memory: duplicating per data location pushed the contract over the size limit",
+        "Guardian may only pause: 'A kill switch that can also steal is not a safety feature'"
+      ],
+      "security_invariants": [
+        "Selling revokes all seller authority (operators, guardian, lease, policy, bound wallet; status Paused)",
+        "Locked (lockCount!=0 || disputeCount!=0) cannot transfer or burn — enforced in _update",
+        "Only modules lock/unlock/setDisputed/moduleSetUser",
+        "isApprovedForAll must read the epoch-keyed timed store (ERC-721 _isAuthorized depends on it)",
+        "brainEpoch strictly increasing; stale expectedEpoch reverts",
+        "SealPolicy strengthened only by a verifier",
+        "Sealed transfer requires a published recipient key",
+        "Wallet binding requires the wallet's signature"
+      ],
+      "standards": [
+        "ERC-165",
+        "ERC-721",
+        "ERC-2981",
+        "ERC-4906",
+        "ERC-4907",
+        "ERC-5192",
+        "ERC-5646",
+        "ERC-6454",
+        "ERC-7572",
+        "ERC-8004 IdentityRegistry",
+        "ERC-6551 consumer",
+        "ERC-7857 adapted",
+        "EIP-712",
+        "Ownable2Step",
+        "EIP-1153 transient reentrancy guard"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Port the transfer-hook semantics, epoch-keyed operator/approval store, counted locks, guardian and module allowlist, and the ERC-5646 fingerprint. Do not reuse the file: it is at the EIP-170 wall, tokenURI is an opaque string, mint is permissionless and free, and the brain/model stack is optional for the GOAL."
+    },
+    {
+      "name": "EncryptionKeyRegistry",
+      "path": "contracts/core/EncryptionKeyRegistry.sol",
+      "purpose": "Chain-wide singleton where any address publishes the public key sealed content should be encrypted to; keyIdOf = keccak256(publicKey) is bound into re-key proofs. 1,783 B, no owner.",
+      "key_functions": [
+        "setEncryptionKey(uint16 keyType,bytes publicKey)",
+        "revokeEncryptionKey()",
+        "keyOf(address) returns (KeyRecord{uint16 keyType,uint64 updatedAt,bytes publicKey})",
+        "publicKeyOf(address) returns (bytes)",
+        "keyIdOf(address) returns (bytes32)"
+      ],
+      "design_decisions": [
+        "'A blockchain address is a hash, not a public key. You cannot encrypt to it'",
+        "Standalone singleton: 'a key is a property of a person, not of any one collection'",
+        "Cryptosystem-agnostic: KEY_TYPE_X25519=1, SECP256K1_ECIES=2, P256_ECIES=3, ML_KEM_768=4; >1000 private use",
+        "Revocation makes sealed transfers to you revert: 'better to block the sale than to complete one that hands over ciphertext nobody can open'"
+      ],
+      "security_invariants": [
+        "Self-service only; msg.sender writes its own record",
+        "Empty key rejected (EmptyKey)"
+      ],
+      "standards": [
+        "ERC-7857-adjacent key publication"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Exactly the recipient-key directory an on-chain E2E encrypted messaging/social layer needs. Deployed on Base Sepolia at 0x1144308fb48D6F9dE0945cA64C1E1A652ceb1563 and 0x6B9f84C60F4cAd50589a67a4687b99f4f07E61e6."
+    },
+    {
+      "name": "ITransferVerifier / ReKeyRequest",
+      "path": "contracts/interfaces/ITransferVerifier.sol",
+      "purpose": "Pluggable adjudicator for 'was private state honestly re-keyed to the new owner'; ReKeyRequest {chainId, anima, agentId, from, to, oldBrainRoot, newBrainRoot, oldEpoch, recipientKeyId, sealedKeysHash}.",
+      "key_functions": [
+        "sealPolicy() view returns (SealPolicy)",
+        "verifyReKey(ReKeyRequest,bytes proof) returns (bool) — non-view, must burn nonces"
+      ],
+      "design_decisions": [
+        "Struct hashed by EIP-712 verifiers and used as public input by proof verifiers so both bind the same commitment",
+        "Trust model is swappable without a token migration; the achieved guarantee is published as SealPolicy"
+      ],
+      "security_invariants": [
+        "MUST be replay-safe"
+      ],
+      "standards": [
+        "EIP-712"
+      ],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Only needed if the unified NFT keeps verifier-certified private-state transfers."
+    },
+    {
+      "name": "NullTransferVerifier",
+      "path": "contracts/core/verifiers/NullTransferVerifier.sol",
+      "purpose": "Accepts any re-key; honestly reports SealPolicy.Committed so marketplaces grey out 'verified private state'. 220 B. Used by every live deployment.",
+      "key_functions": [
+        "sealPolicy() pure returns (Committed)",
+        "verifyReKey(...) pure returns (true)"
+      ],
+      "design_decisions": [
+        "Reports nothing stronger than it can certify"
+      ],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Trivial; recreate if the verifier seam is kept."
+    },
+    {
+      "name": "AttesterQuorumVerifier",
+      "path": "contracts/core/verifiers/AttesterQuorumVerifier.sol",
+      "purpose": "EIP-712 M-of-N attester quorum certifying that re-encryption happened inside an approved enclave (measurement in the signed payload); reports SealedTEE. 4,332 B. Ownable2Step governance of attesters/enclaves/threshold.",
+      "key_functions": [
+        "constructor(address owner,address[] attesters,uint256 threshold,bytes32[] enclaves)",
+        "setAttester(address,bool) — refuses to drop below threshold",
+        "setEnclave(bytes32,bool)",
+        "setThreshold(uint256)",
+        "verifyReKey(ReKeyRequest,bytes proof): proof = abi.encode(bytes32 measurement,address[] signers,bytes[] sigs); request.anima==msg.sender; chainId; enclave approved; >=threshold; digest unconsumed; signers strictly ascending; SignatureChecker (ECDSA or ERC-1271)",
+        "digestOf(ReKeyRequest,bytes32) view"
+      ],
+      "design_decisions": [
+        "Quorum instead of on-chain TEE quote: verifying TDX/SEV-SNP on-chain 'puts a hardware vendor's revocation schedule inside your token contract's liveness path'",
+        "request.anima must equal msg.sender so a stranger cannot 'permanently block a sealed transfer by front-running it with the seller's own proof, read from the mempool'",
+        "Strictly ascending signers give O(n) duplicate rejection",
+        "Honest limitations stated: threshold collusion, hardware break, prior owner who already exported plaintext"
+      ],
+      "security_invariants": [
+        "Single-use digests (consumed mapping)",
+        "Removing attesters can never leave an unsatisfiable quorum"
+      ],
+      "standards": [
+        "EIP-712",
+        "ERC-1271"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Generic replay-safe, caller-bound M-of-N EIP-712 quorum; the typed payload is re-key specific. Reusable for any attested off-chain action (moderation, vault unlock) with a new typehash."
+    },
+    {
+      "name": "IERC6551 (Registry, Account, Executable)",
+      "path": "contracts/interfaces/IERC6551.sol",
+      "purpose": "Hand-declared ERC-6551 interfaces; documents canonical registry 0x000000006551c19487814612e58FE06813775758 (Nick's Factory, salt 0x...fd8eb4e1dca713016c518e31); interfaceIds 0x6faff5f1 / 0x51945447.",
+      "key_functions": [
+        "createAccount(address impl,bytes32 salt,uint256 chainId,address tokenContract,uint256 tokenId)",
+        "account(...) view",
+        "token() view returns (chainId,tokenContract,tokenId)",
+        "state() view — nonce bumped on every state-changing execution",
+        "isValidSigner(address,bytes)",
+        "execute(address,uint256,bytes,uint8 operation) payable"
+      ],
+      "design_decisions": [
+        "state() MUST be used to detect 'sell the NFT with the assets already drained'"
+      ],
+      "security_invariants": [],
+      "standards": [
+        "ERC-6551"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Needed for the vault (token-bound account) in the unified design."
+    },
+    {
+      "name": "IERC8004 (Identity/Reputation/Validation registries, MetadataEntry)",
+      "path": "contracts/interfaces/IERC8004.sol",
+      "purpose": "Verbatim-compatible ERC-8004 Trustless Agents registry interfaces; ANIMA implements IIdentityRegistry on the token so agentId == tokenId and the global id is eip155:<chainId>:<token>+id.",
+      "key_functions": [
+        "register(string,MetadataEntry[]) / register(string) / register()",
+        "setAgentURI(uint256,string)",
+        "getMetadata/setMetadata(uint256,string,bytes)",
+        "setAgentWallet(uint256,address,uint256 deadline,bytes sig) / getAgentWallet / unsetAgentWallet",
+        "giveFeedback(...)/validationRequest(...)/validationResponse(...) (declared only)"
+      ],
+      "design_decisions": [
+        "Identity lives on the token rather than a side registry"
+      ],
+      "security_invariants": [
+        "setAgentWallet signature must come from the wallet"
+      ],
+      "standards": [
+        "ERC-8004"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Keep if the unified NFT advertises agent identity; otherwise drop."
+    },
+    {
+      "name": "IERC7432, IERC8126, IRentable (IERC4907/IERC5192/IERC6454/IERC7572)",
+      "path": "contracts/interfaces/IERC7432.sol, contracts/interfaces/IERC8126.sol, contracts/interfaces/IRentable.sol",
+      "purpose": "Hand-declared Final/Draft interfaces with the reasoning for each: 7432 roles (0xd00ca5cf, implemented externally), 8126 risk score events, 4907 rental (0xad092b5c), 5192 lock (0xb45a3c0e), 6454 transferability (0x91a6262f), 7572 contractURI (community id 0xe8a3d485).",
+      "key_functions": [
+        "setUser(uint256,address,uint64) / userOf / userExpires",
+        "locked(uint256) view",
+        "isTransferable(uint256,address from,address to) view",
+        "contractURI() view",
+        "grantRole(Role)/revokeRole/.../recipientOf (7432)",
+        "getLatestRiskScore(uint256) (8126)"
+      ],
+      "design_decisions": [
+        "5192 and 6454 are descriptive and stop nothing — the transfer path must revert as well",
+        "7432 deliberately not an ERC-721 extension; implemented as a standalone registry (AnimaRoles) so zero bytes were added to the token"
+      ],
+      "security_invariants": [],
+      "standards": [
+        "ERC-4907",
+        "ERC-5192",
+        "ERC-6454",
+        "ERC-7572",
+        "ERC-7432",
+        "ERC-8126"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "IRentable and IERC7432 directly; IERC8126 only with agent risk scoring."
+    },
+    {
+      "name": "BrainLib",
+      "path": "contracts/libraries/BrainLib.sol",
+      "purpose": "Ordered hash-chain commitment over a BrainShard[] (LEAF_TAG keccak('anima.BrainShard.v1'), ROOT_TAG keccak('anima.BrainRoot.v1')); memory-only entry points to avoid per-data-location code duplication.",
+      "key_functions": [
+        "leafOf(BrainShard memory) pure returns (bytes32)",
+        "rootOf(BrainShard[] memory) pure returns (bytes32)",
+        "hashSealedKeys(bytes[] calldata) pure returns (bytes32)"
+      ],
+      "design_decisions": [
+        "Chain not Merkle: 'the only question ever asked on-chain is are these two shard sets identical… ~30 gas per shard'",
+        "Order significant by design: shard index is part of the addressing scheme",
+        "Memory-only because 'three shard-writing call sites times two locations was enough duplicated bytecode to push the token past the 24,576-byte limit'",
+        "Moving it to a public library made the token 4 KB larger (recorded so nobody retries it)"
+      ],
+      "security_invariants": [
+        "Domain-separated leaf/root tags"
+      ],
+      "standards": [],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Generic cheap order-sensitive commitment over any shard list (vault inventory, encrypted profile blobs); rename tags if the struct changes. Off-chain reproduction in test/helpers.ts:74-98 and the SDK."
+    },
+    {
+      "name": "ERC6492",
+      "path": "contracts/libraries/ERC6492.sol",
+      "purpose": "Signature validation for not-yet-deployed signers (counterfactual ERC-6551 accounts): decodes the 0x6492... wrapper, deploys via factory, requires the signer to actually have code afterwards, then falls through to SignatureChecker. State-changing by design.",
+      "key_functions": [
+        "isValidSignatureNow(address signer,bytes32 hash,bytes memory sig) internal returns (bool)"
+      ],
+      "design_decisions": [
+        "'counterfactual accounts are not an edge case here — they are the design'",
+        "Only prepares an account that genuinely has no code (otherwise 'checking a signature' could run arbitrary factory calls)",
+        "After the factory call the signer must have code, else return false — fix 5f4dfa8 'Reject ERC-6492 wrappers that leave signer undeployed' (an EOA could otherwise attach a privileged call and pass with its ECDSA signature)"
+      ],
+      "security_invariants": [
+        "Never honours the wrapper against an already-deployed signer",
+        "Wrapper must deploy the signer"
+      ],
+      "standards": [
+        "ERC-6492",
+        "ERC-1271"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Needed wherever the swap/market accepts signatures from undeployed token-bound accounts. Tests: Regressions.test.ts 'ERC-6492 — listing from an account that is not deployed yet' (3)."
+    },
+    {
+      "name": "ExactERC20",
+      "path": "contracts/libraries/ExactERC20.sol",
+      "purpose": "Value-conserving ERC-20 transfers: measures recipient balance before/after and reverts InexactERC20Transfer(token,expected,received) so fee-on-transfer tokens cannot create unbacked balances.",
+      "key_functions": [
+        "transferFromExact(IERC20,address from,address to,uint256)",
+        "transferExact(IERC20,address to,uint256)"
+      ],
+      "design_decisions": [
+        "No-op on zero amount or self-transfer",
+        "Built on SafeERC20"
+      ],
+      "security_invariants": [
+        "received == amount or revert"
+      ],
+      "standards": [
+        "ERC-20"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Use in the swap, launchpad and vault. Test: test/ExactERC20.test.ts with MockTaxERC20."
+    },
+    {
+      "name": "AnimaDiamond",
+      "path": "contracts/diamond/AnimaDiamond.sol",
+      "purpose": "EIP-2535 diamond with the cut welded shut: constructor wires facets, checks per-facet config agreement, emits the single DiamondCut, delegatecalls the initialiser, asserts initialisation took effect and that the routing table was not tampered; fallback delegatecalls by selector. 177 B runtime, 0 ABI functions.",
+      "key_functions": [
+        "constructor(FacetCut[] cuts,address init,bytes initCalldata)",
+        "fallback() external payable — FunctionNotFound(bytes4) for unrouted selectors; bare ETH reverts",
+        "_requireFacetsAgree(address init) — staticcall animaConfigHash on every facet and the initialiser"
+      ],
+      "design_decisions": [
+        "'The usual reason to build a diamond is upgradeability, and that is precisely the property this contract must not have'",
+        "No diamondCut, no owner over the routing table; EIP-2535: a diamond with no cut function is immutable",
+        "Post-condition nextAgentId != 0 because 'the EVM returns success for a delegatecall to an address holding no code'",
+        "Re-reads the routing table against the emitted cut: 'What it does do is make the emitted event true'",
+        "Per-facet immutables checked once at construction rather than paid for on every accountOf (~6,300 gas)"
+      ],
+      "security_invariants": [
+        "Only Add actions; every selector unique; every facet has code",
+        "All answering facets + init report the same animaConfigHash; at least one must",
+        "Initialisation verified by post-condition; emitted DiamondCut is true for every selector it names",
+        "Immutable after construction; verifiable from any RPC (loupe + no 0x1f931c1c)"
+      ],
+      "standards": [
+        "EIP-2535 (immutable variant)",
+        "ERC-7201"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "The single most valuable piece for the GOAL: lets swap+messaging+launchpad+vault+renderer facets sit behind one NFT address with no EIP-170 ceiling and no admin key. Errors: FunctionNotFound, NotAnAddition, FacetHasNoCode, EmptyFacetCut, SelectorAlreadyBound, InitializationFailed, FacetConfigMismatch, NoConfiguredFacet, NoFacets, NotInitialised, RoutingTampered."
+    },
+    {
+      "name": "DiamondStorage / IDiamond / IDiamondLoupe / AnimaLoupeFacet",
+      "path": "contracts/diamond/DiamondStorage.sol, contracts/diamond/IDiamond.sol, contracts/diamond/AnimaLoupeFacet.sol",
+      "purpose": "Routing table in its own ERC-7201 namespace (anima.storage.diamond, slot 0xbebefff3c1769f392cbed28935c84c24a3fe9fb422c6177e5902f9088f11d900); cut vocabulary without IDiamondCut; the 4-function loupe (1,731 B, interfaceId 0x48e2b093).",
+      "key_functions": [
+        "facets() view returns (Facet[])",
+        "facetFunctionSelectors(address) view",
+        "facetAddresses() view",
+        "facetAddress(bytes4) view",
+        "event DiamondCut(FacetCut[],address,bytes)"
+      ],
+      "design_decisions": [
+        "'IDiamondCut is deliberately absent from the codebase — there is no contract to inherit it from'",
+        "Routing table separated from product state so a future field can never walk into the facet map"
+      ],
+      "security_invariants": [
+        "Loupe is mandatory so anyone can verify immutability"
+      ],
+      "standards": [
+        "EIP-2535",
+        "ERC-7201"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Drop-in."
+    },
+    {
+      "name": "AnimaStorage / IAnimaConfigured (AnimaConfig)",
+      "path": "contracts/diamond/AnimaStorage.sol, contracts/diamond/IAnimaConfigured.sol",
+      "purpose": "ERC-7201 namespaced Layout for all agent state (anima.storage.core, slot 0x2134dd8a40292237c0a0658c1368c4805ba84a926576fc8c56170c3a72e5a700); AnimaConfig {registry, accountImplementation, accountSalt, keyRegistry} and animaConfigHash() for the construction-time agreement check.",
+      "key_functions": [
+        "AnimaStorage.layout() internal pure returns (Layout storage)",
+        "animaConfigHash() view returns (bytes32) = keccak256(abi.encode(registry,accountImplementation,accountSalt,keyRegistry))"
+      ],
+      "design_decisions": [
+        "The four ERC-6551 config values are deliberately NOT in storage: three cold SLOADs cost ~6,300 gas on accountOf, the hottest cross-contract read (eight contracts call it)",
+        "OZ upgradeable bases keep their own ERC-7201 namespaces so the regions are disjoint by construction",
+        "No facet may declare a plain state variable (slots 0-2 asserted empty)"
+      ],
+      "security_invariants": [
+        "Append-only Layout; never reorder"
+      ],
+      "standards": [
+        "ERC-7201"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Rename the namespace and define the unified Layout; keep the per-facet-immutable + config-hash pattern for any value read on hot paths."
+    },
+    {
+      "name": "AnimaBase",
+      "path": "contracts/diamond/AnimaBase.sol",
+      "purpose": "Abstract base every facet inherits: per-facet immutables, authorisation predicates, lifecycle helpers, _writeShards, and the sealed non-virtual overrides of tokenURI, isApprovedForAll, setApprovalForAll and _update so no facet can diverge. Built on OZ contracts-upgradeable ERC721/ERC2981/EIP712/Ownable2Step.",
+      "key_functions": [
+        "_isController / _isOperator / _requireOwnerOf / _requireController / onlyModule",
+        "_locked / _setStatus / _setMetadata / _setVerifier / _writeShards",
+        "_update(address,uint256,address) — identical semantics to the monolith, sealed",
+        "isApprovedForAll / setApprovalForAll / _setTimedApproval / _approvalKey",
+        "tokenURI(uint256) sealed",
+        "supportsInterface virtual"
+      ],
+      "design_decisions": [
+        "'The failure mode of EIP-2535 is not storage collision — ERC-7201 settles that. It is semantic drift'",
+        "isApprovedForAll overridden in the base because ERC721Upgradeable._isAuthorized calls it on every transfer — a facet with the stock version 'would read an approval store nothing writes to'",
+        "_update deliberately not virtual: 'the compiler refuses the attempt rather than the reviewer having to notice it'",
+        "Unreferenced internal functions are stripped, so a facet pays only for what it reaches"
+      ],
+      "security_invariants": [
+        "Same token invariants as the monolith, enforced once for all facets"
+      ],
+      "standards": [
+        "ERC-721",
+        "ERC-2981",
+        "EIP-712",
+        "Ownable2Step",
+        "ERC-165"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep the pattern verbatim; change what _update clears to the unified token's state (e.g. vault session keys, social delegations)."
+    },
+    {
+      "name": "AnimaInit",
+      "path": "contracts/diamond/AnimaInit.sol",
+      "purpose": "The diamond's constructor, delegatecalled once: __ERC721_init, __EIP712_init('AnimaAgent','1'), __Ownable_init, nextAgentId=1, _setVerifier, royalty. Its init selector is never routed. 9,012 B.",
+      "key_functions": [
+        "init(string name,string symbol,address owner,ITransferVerifier verifier,address royaltyReceiver,uint96 royaltyBps) external initializer"
+      ],
+      "design_decisions": [
+        "Agent ids one-based so id 0 is 'no agent' across registries",
+        "Calling init on the deployed initialiser directly writes only its own storage — 'inert by construction, not by discipline'",
+        "Carries AnimaConfig so the agreement check covers it"
+      ],
+      "security_invariants": [
+        "initializer flag in the diamond's ERC-7201 Initializable namespace",
+        "Unreachable after construction (never routed)"
+      ],
+      "standards": [
+        "EIP-2535",
+        "OZ Initializable"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Rewrite the body for the unified token; keep the shape and the never-routed property. Must be source-verified alongside facets (a hostile initialiser can add unlisted selectors)."
+    },
+    {
+      "name": "AnimaCoreFacet",
+      "path": "contracts/diamond/AnimaCoreFacet.sol",
+      "purpose": "The base facet: full ERC-721/2981/Ownable2Step/EIP-712 surface plus expiring approvals, locking, dispute, admin pointers, ERC-7572, totalMinted; adds IDiamondLoupe to ERC-165. 9,946 B, 38 routed selectors.",
+      "key_functions": [
+        "setApprovalForAllUntil(address,uint64)",
+        "revokeAllApprovals()",
+        "approvalExpiryOf(address,address) / approvalEpoch(address)",
+        "locked / isTransferable / lockAgent / unlockAgent / setDisputed",
+        "verifier() / setVerifier / isModule(address) / setModule",
+        "contractURI / setContractURI / setDefaultRoyalty / setTokenRoyalty / totalMinted",
+        "supportsInterface adds 0x48e2b093"
+      ],
+      "design_decisions": [
+        "Transfer entry points inherited unchanged; locking enforced in AnimaBase._update 'so a token cannot be moved through some other facet's back door while it owes work'"
+      ],
+      "security_invariants": [
+        "Module-only lock/unlock/dispute"
+      ],
+      "standards": [
+        "ERC-721",
+        "ERC-2981",
+        "ERC-5192",
+        "ERC-6454",
+        "ERC-7572",
+        "EIP-2535 loupe id"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Good split point for the unified 'core' facet (ERC-721 face + approvals + locks + admin)."
+    },
+    {
+      "name": "AnimaAgentFacet",
+      "path": "contracts/diamond/AnimaAgentFacet.sol",
+      "purpose": "Identity/config facet: REGISTRY/ACCOUNT_IMPLEMENTATION/ACCOUNT_SALT/KEY_REGISTRY getters, operators, manifest/metadata, model, accountOf/deployAccount, wallet binding, policy, lifecycle, guardian, ERC-4907 lease, ERC-5646 fingerprint. 15,052 B, 34 routed selectors. Writes nothing that moves the token.",
+      "key_functions": [
+        "accountOf(uint256) — reads only immutables, zero storage",
+        "getStateFingerprint(uint256)",
+        "setAgentWallet / unsetAgentWallet / walletNonce",
+        "setStatus / guardianPause / setGuardian",
+        "setUser / moduleSetUser / userOf / userExpires",
+        "setManifest / setAgentURI / manifestOf / verifyManifest / setMetadata / getMetadata",
+        "declareModel / modelOf / policyOf / setPolicy"
+      ],
+      "design_decisions": [
+        "'This is the facet an owner configures and a counterparty reads before hiring'"
+      ],
+      "security_invariants": [
+        "Same as monolith for each function"
+      ],
+      "standards": [
+        "ERC-8004",
+        "ERC-4907",
+        "ERC-5646",
+        "ERC-4906",
+        "ERC-6551 consumer"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep accountOf/deployAccount/fingerprint/lease/guardian; the model/policy/manifest parts are agent-specific."
+    },
+    {
+      "name": "AnimaBrainFacet",
+      "path": "contracts/diamond/AnimaBrainFacet.sol",
+      "purpose": "Minting (mintAgent + ERC-8004 register x3), brain reads, downgradeSealPolicy, updateBrain, transferWithBrain (nonReentrant). 15,758 B — largest unit, 8,818 B headroom; 11 routed selectors.",
+      "key_functions": [
+        "mintAgent(...) / register(string,MetadataEntry[]) / register(string) / register()",
+        "brainOf / brainRoot / brainEpoch / sealPolicyOf",
+        "downgradeSealPolicy(uint256,SealPolicy)",
+        "updateBrain(uint256,BrainShard[],uint64)",
+        "transferWithBrain(address,address,uint256,BrainShard[],bytes[],bytes)"
+      ],
+      "design_decisions": [
+        "Mint and re-keyed sale grouped: 'the same operation seen at two moments'"
+      ],
+      "security_invariants": [
+        "Verifier called before state change; recipient key required; seal overwritten with certified value"
+      ],
+      "standards": [
+        "ERC-8004",
+        "ERC-7857 adapted",
+        "EIP-1153 reentrancy guard"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Mint facet is the natural home for a unified mint that also provisions the vault/account; private-state re-keying is optional."
+    },
+    {
+      "name": "deriveFacetCut / cutIsImmutable (SDK)",
+      "path": "sdk/src/index.ts:634-735",
+      "purpose": "Derives the EIP-2535 cut from the monolith ABI: specialised facets claim selectors they add over the base, the base serves the remainder, additional facets (loupe) must not collide; throws on unrouted, undeclared or duplicate selectors. DIAMOND_CUT_SELECTOR 0x1f931c1c.",
+      "key_functions": [
+        "deriveFacetCut({tokenAbi, base, specialised[], additional[]}) returns FacetCut[]",
+        "cutIsImmutable(FacetCut[]) returns boolean"
+      ],
+      "design_decisions": [
+        "'Hand-written selector lists are the standing hazard of this pattern: a diamond is deployed, the cut is welded shut, and only later does someone notice a function nobody routed'"
+      ],
+      "security_invariants": [
+        "Never returns a partial cut"
+      ],
+      "standards": [
+        "EIP-2535"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Use with the unified token ABI as the specification. Tests: Sdk.test.ts 'SDK — deriving an EIP-2535 cut' (6)."
+    },
+    {
+      "name": "deploy-diamond.ts (verification pass)",
+      "path": "scripts/deploy-diamond.ts",
+      "purpose": "Deploys facets+init, waits for code on each (public RPC lag), derives the cut, deploys the diamond, then verifies on chain: every declared selector resolves to its assigned facet, no diamondCut, loupe lists exactly 4 facets, facet bytecode equals artifact modulo immutableReferences, animaConfigHash matches, initialisation took effect, EIP-712 domain, ERC-165 for 11 ids. Aborts with 'do NOT publish this address'. Run for real by test/Deploy.test.ts.",
+      "key_functions": [
+        "deployDiamond(config: DiamondConfig, connection?) returns {token, facets, init, cuts}",
+        "waitForCode(publicClient,address,label,tries=40)",
+        "maskImmutables(code, immutableReferences)"
+      ],
+      "design_decisions": [
+        "'An operator transcribing a fixture is exactly where an unrecoverable mistake comes from… There is no step 5'",
+        "Prints the three human-only checks: source-verify facets and the initialiser; facetAddress(0x1f931c1c)==0 from a trusted node; registry is canonical"
+      ],
+      "security_invariants": [
+        "Refuses zero addresses in config",
+        "Refuses a cut that routes diamondCut"
+      ],
+      "standards": [
+        "EIP-2535"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Parametrise facet names; the checks are generic."
+    },
+    {
+      "name": "AnimaWeb3Renderer",
+      "path": "contracts/web/AnimaWeb3Renderer.sol",
+      "purpose": "ERC-4804 manual-mode on-chain HTML console for an existing collection: resolveMode()=manual, fallback(bytes path) returns abi.encode(string). Routes / and /token/{id}/live; shows owner/account/fingerprint/model/brain/seal/lock; CONNECT WALLET; deployAccount, setStatus, setGuardian, setOperator and a raw simulate-then-sign console. 22,592 B runtime (1,984 B under EIP-170). Deployed Base Sepolia 0x9160bE4d943516a2463Ac5f3ABAc5F5cce7975Cd.",
+      "key_functions": [
+        "constructor(IAnimaWeb3View anima)",
+        "resolveMode() pure returns (bytes32 'manual')",
+        "fallback(bytes calldata path) returns (bytes)",
+        "_tokenPath / _index / _token / _notFound / _head / _style / _script (private)"
+      ],
+      "design_decisions": [
+        "Separate from the immutable diamond 'lets an existing collection gain a browser without changing token logic'",
+        "Immutable, stateless, no owner, so anyone can redeploy it without the collection key",
+        "Every write is simulated (simulateContract with account: user) before the wallet is asked to sign",
+        "Test forbids any github.io reference: the page must not redirect to the Pages site"
+      ],
+      "security_invariants": [
+        "No on-chain gating: anyone can view; writes gated only by the token contract's own checks"
+      ],
+      "standards": [
+        "ERC-4804 / web3:// (manual mode)"
+      ],
+      "reuse_verdict": "rewrite",
+      "reuse_notes": "Keep the ERC-4804 shape and simulate-before-sign UX. Drop: runtime import of viem from https://esm.sh (CDN/server dependency), hardcoded RPC table for chains 11155111/84532 only, seal label array ['NONE','SEALED TEE','ZK RE-ENCRYPTED'] that mislabels Committed/ReKeyed, HTML as string literals near the size ceiling. Start from the unmerged dependency-free client on branch codex/submit-blockchain-deployment-using-sepolia-key-koorbx (hand-rolled selectors, raw JSON-RPC, full 6-entry seal list). In the unified design make it a facet or link it from tokenURI, and store HTML as SSTORE2 shards."
+    },
+    {
+      "name": "Sanctuary GitHub Pages client",
+      "path": "index.html, src/main.js, src/style.css, vite.config.js, .github/workflows/pages.yml, public/.well-known/anima.json",
+      "purpose": "Off-chain static Vite site (viem bundled) targeting the 0xb3d92c76 Base Sepolia diamond: connect wallet, enumerate totalMinted x ownerOf to find the wallet's agents, mint with a self-contained data:application/json + inline SVG tokenURI, deployAccount, awaken/pause, wallet_watchAsset. The .well-known directory publishes contract addresses and the web3:// renderer URL template.",
+      "key_functions": [
+        "connect() -> requestAddresses -> switch/add Base Sepolia -> discover()",
+        "discover(): totalMinted then ownerOf(id) for every id, keep matches",
+        "mintAgent(): metadataURI(name,hue) data: URI, manifestHash=keccak256(uri), one genesis shard, SealPolicy.None, then deployAccount",
+        "inspectAgent(id) without connecting",
+        "addNFTToWallet via wallet_watchAsset"
+      ],
+      "design_decisions": [
+        "'The metadata is stored with the token instead of pointing at this website. Wallets such as Brave can therefore render a freshly minted ANIMA without an IPFS gateway or hosted API'",
+        "Relative asset URLs so one build works on localhost, an IPFS directory, and GitHub Pages"
+      ],
+      "security_invariants": [
+        "Never handles private keys; wallet provider only"
+      ],
+      "standards": [
+        "EIP-1193",
+        "ERC-721 metadata data: URI"
+      ],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Served by GitHub (a server), hardcodes one chain/address, O(n) ownerOf enumeration does not scale, and it is inconsistent with the README which cites the 0x0aeb diamond. Only the self-contained data: tokenURI idea is worth keeping, and it should be generated on-chain instead."
+    }
+  ],
+  "standards_implemented": [
+    "ERC-165",
+    "ERC-721 (+Metadata)",
+    "ERC-2981",
+    "ERC-4906",
+    "ERC-4907",
+    "ERC-5192",
+    "ERC-5646",
+    "ERC-6454",
+    "ERC-7572 (draft, community interfaceId 0xe8a3d485)",
+    "ERC-8004 IdentityRegistry on the token",
+    "ERC-6551 (consumer; canonical registry 0x000000006551c19487814612e58FE06813775758)",
+    "ERC-7857 (adapted: BrainShard, re-key, SealedKeysPublished)",
+    "ERC-6492 (library)",
+    "EIP-712 (AgentWalletBinding; ReKey quorum)",
+    "EIP-2535 (immutable diamond + loupe 0x48e2b093)",
+    "ERC-7201 (namespaced storage)",
+    "ERC-4804 / web3:// manual mode (renderer)",
+    "ICRC-37 / CW-721 expiring approvals (ported)",
+    "EIP-1153 transient reentrancy guard",
+    "Ownable2Step",
+    "Declared only: ERC-7432 (0xd00ca5cf, implemented in AnimaRoles), ERC-8126, ERC-8004 Reputation/Validation"
+  ],
+  "unique_ideas": [
+    "Immutable EIP-2535 diamond: facets wired in the constructor, no diamondCut, no routing-table owner; cut derived from the monolith ABI (deriveFacetCut) so a function can never be left unrouted; constructor asserts initialisation by post-condition (delegatecall to a codeless address returns success) and re-reads the routing table against the emitted DiamondCut (RoutingTampered)",
+    "Per-facet immutable configuration (ERC-6551 registry/impl/salt/key registry) checked equal by animaConfigHash at construction instead of paying ~6,300 gas of SLOADs on every accountOf",
+    "Sealed non-virtual _update in a shared base so no facet can opt out of 'selling revokes all authority'",
+    "Epoch-keyed operator and approval stores: O(1) revokeAllApprovals, setApprovalForAllUntil, approvalExpiryOf; unbounded grant recorded as type(uint64).max",
+    "Counted locks and disputes (lockCount/disputeCount) reported via ERC-5192 and ERC-6454 but enforced in the transfer path; only allowlisted modules may lock; burn is gated identically",
+    "Guardian that can only pause; Retire refused while locked; setUser refused while locked so paying tenants cannot be evicted",
+    "ERC-5646 fingerprint over AgentCore + model root + bound wallet + lease + policy + ERC-6551 state() nonce, reverting for nonexistent tokens",
+    "Manifest URI and hash set together; the ERC-8004 URI-only setter records 'uncommitted' rather than a stale hash",
+    "Chain-wide EncryptionKeyRegistry (publish once, any cryptosystem, keyIdOf bound into proofs) as the precondition for sealed transfers",
+    "Honest SealPolicy enum that only a verifier can strengthen; verifier binds request.anima == msg.sender so proofs cannot be burned by front-runners",
+    "ERC-6492 with a must-actually-deploy guard; ExactERC20 value conservation",
+    "Gas-overhead test that fails the build if the diamond drifts outside 25% relative AND 6,000 gas absolute; expectRevert matching 4-byte selectors so diamond reverts assert the same as monolith reverts",
+    "Memory-only library entry points to avoid per-data-location code duplication (measured: public library for dynamic arrays made the token 4 KB larger)",
+    "Separate immutable ERC-4804 renderer so an already-deployed collection gains an on-chain browser; CI workflow records the renderer address into the deployment file",
+    "Deploy-script lag defences for public RPCs: waitForCode before a constructor inspects fresh deployments, retry the first read, ids from receipt logs"
+  ],
+  "weaknesses": [
+    "tokenURI is an opaque stored string; nothing on-chain generates metadata or HTML, so the NFT does not 'mint a website' — the website is a separate renderer contract discovered via deployment records / .well-known, not from the token",
+    "AnimaWeb3Renderer imports viem from https://esm.sh/viem@2.55.19 at runtime (third-party CDN = server dependency) and is reached through the hosted w3link.io gateway unless the browser speaks web3://; the dependency-free rewrite exists only on an unmerged branch",
+    "Renderer hardcodes RPC URLs and chain names for 11155111 and 84532 only; on any other chain the page script has an undefined rpc",
+    "Renderer seal label array has 3 entries for a 6-value enum: Committed displays as 'SEALED TEE', ReKeyed as 'ZK RE-ENCRYPTED'",
+    "Renderer is 22,592 B — 1,984 B from EIP-170 — because HTML/CSS/JS are Solidity string literals",
+    "No access gating anywhere: viewing is public; 'ownership verification' is client-side ownerOf == connected address; no SIWE/signature challenge (acceptable because writes are gated on-chain, but there is no gated-content model)",
+    "Sanctuary discover() enumerates totalMinted x ownerOf per id (no ERC-721Enumerable); O(n) RPC calls",
+    "Two Base Sepolia deployments referenced inconsistently: README and Sanctuary instructions cite 0x0aeb6f78 (owner key destroyed), while src/main.js and .well-known/anima.json target 0xb3d92c76; only the latter record has a renderer",
+    "mintAgent is permissionless and free to any `to`; register() mints to msg.sender; no mint policy, supply cap or price",
+    "revokeAllApprovals covers operator approvals only; single-token approve() is stock OZ (cleared on transfer, so low impact)",
+    "unlockAgent silently returns at lockCount==0, so a mis-counting module is undetectable from the token",
+    "Monolith is 605 B under EIP-170: every addition must go to the diamond build or displace something",
+    "OpenZeppelin dependency (contracts + contracts-upgradeable 5.6.1) conflicts with a 'no external Solidity dependencies' rule if the unified repo adopts IPSEITY's policy",
+    "Unmerged branch codex/fix-high-priority-issues-from-codex-review adds ownershipEpoch(uint256) to IAnima/monolith/AnimaCoreFacet (needed by a RevenueRouter fix) — not on main",
+    "A hostile initialiser can still add selectors the DiamondCut never named; only source verification of AnimaInit catches it (documented)",
+    "Diamond has no receive(); the token address cannot accept bare ETH",
+    "Unaudited; test counts in docs drift (CLAUDE.md says 268, docs say 279 — 279 is correct including the three .mjs suites)"
+  ],
+  "website_delivery": "Two surfaces, neither emitted by the NFT's tokenURI (which is an opaque string set by the minter; the Sanctuary sets a self-contained data:application/json+SVG URI but the contract neither generates nor enforces it). (1) On-chain: contracts/web/AnimaWeb3Renderer.sol, a separate immutable ERC-4804 manual-mode contract (resolveMode()='manual'; fallback(bytes path) returns abi.encode(string html) for '/' and '/token/{id}/live'), deployed on Base Sepolia at 0x9160bE4d943516a2463Ac5f3ABAc5F5cce7975Cd for the 0xb3d92c766e3cb356db381feb21958a9ebb974365 diamond, addressed as web3://0x9160be4d…:84532/token/{id}/live or https://0x9160be4d….basesep.w3link.io/token/{id}/live (published in public/.well-known/anima.json). Its page script loads viem from the esm.sh CDN at runtime, reads token state via a hardcoded public RPC (Sepolia / Base Sepolia only), connects an EIP-1193 wallet, and simulates each write before asking for a signature. Deployed by scripts/deploy-web3-renderer.ts or the 'Deploy the ANIMA onchain browser' GitHub workflow, which records the address into deployments/<chainId>.json. (2) Off-chain: a static Vite 'Sanctuary' on GitHub Pages (index.html, src/main.js) with viem bundled, hardcoded to the 0xb3d9 diamond, published by .github/workflows/pages.yml. An unmerged branch (codex/…-koorbx) has a dependency-free renderer client (hand-rolled selectors, raw JSON-RPC).",
+  "wallet_gating": "No gating for viewing on either surface. The renderer displays ownerOf and accountOf for any token id to anyone; the Sanctuary lets anyone inspect any id and, after connect(), enumerates totalMinted x ownerOf to list the tokens whose ownerOf equals the connected address ('Ownership verified from Base Sepolia just now'). There is no signature challenge, SIWE or session. The only real authorisation is on-chain, per function: _requireOwnerOf (declareModel, setPolicy, setGuardian, setOperator, setUser, setAgentWallet, downgradeSealPolicy, Retire), _requireController = owner | live ERC-4907 user | operator at current operatorEpoch (setManifest, setMetadata, updateBrain, setStatus Inactive/Active/Paused), guardian-only guardianPause, onlyModule (lock/unlock/setDisputed/moduleSetUser), Ownable2Step owner (setVerifier/setModule/royalties/contractURI), and ERC-721 _isAuthorized reading the epoch-keyed timed approval store for transfers. Both UIs surface this by simulating (simulateContract / eth_call with from=user) before signing, so a non-owner sees NotOwnerOf / NotAgentController before any transaction is sent.",
+  "measured_numbers": [
+    "AnimaAgent runtime 23,971 B (605 B under EIP-170 24,576), initcode 26,744 B, 83 ABI functions",
+    "AnimaDiamond runtime 177 B, initcode 3,049 B, 0 ABI functions",
+    "AnimaCoreFacet 9,946 B (38 routed selectors); AnimaAgentFacet 15,052 B (34); AnimaBrainFacet 15,758 B (11; largest unit, 8,818 B headroom); AnimaLoupeFacet 1,731 B (4); AnimaInit 9,012 B",
+    "EncryptionKeyRegistry 1,783 B; AttesterQuorumVerifier 4,332 B; NullTransferVerifier 220 B; AnimaWeb3Renderer 22,592 B runtime (1,984 B headroom)",
+    "87 routed selectors (83 token + 4 loupe) over 4 facets",
+    "Diamond gas overhead flat +4,300..+5,400: ownerOf 24,472->29,062 (+4,590, 18.8%); tokenURI 30,058->34,511; supportsInterface 21,998->26,960 (+4,962, 22.6% worst); isApprovedForAll 28,511->32,853; accountOf 26,863->31,594 (+4,731); getStateFingerprint 54,818->60,204 (+5,386); mintAgent 311,367->316,587 (+1.7%); transferFrom 85,818->90,499; updateBrain 68,445->72,833",
+    "Before per-facet immutables: accountOf +11,081 gas (41.3%), getStateFingerprint +11,525; config in storage cost ~6,300 gas (3 cold SLOADs)",
+    "Gas test bound: fail if >25% relative AND >6,000 gas absolute",
+    "Size levers: drop CBOR trailer 53 B; optimizer runs 200->1 376 B; both 429 B; public library for shard writes +4 KB (worse)",
+    "Tests: 279 total = 268 it() in test/*.ts + 3 Cli.test.mjs + 4 EconomySim.test.mjs + 4 ManifestSchema.test.mjs; core-area files: AnimaAgent 25, Diamond 22, Regressions 22, Sdk 22, Ownership 11, Deploy 2, Web3Renderer 2, ExactERC20 2, Gas 1, Lifecycle 1",
+    "Mutation check (commit 8f40c79): a one-character facet change fails 162 of 189 tests",
+    "27 deployable contracts (README/SPEC); 32 'contract' declarations incl. mocks/facets",
+    "ERC-7201 slots: anima.storage.core 0x2134dd8a40292237c0a0658c1368c4805ba84a926576fc8c56170c3a72e5a700; anima.storage.diamond 0xbebefff3c1769f392cbed28935c84c24a3fe9fb422c6177e5902f9088f11d900",
+    "Interface ids: 721 0x80ac58cd; 721Metadata 0x5b5e139f; 2981 0x2a55205a; 4906 0x49064906; 4907 0xad092b5c; 5192 0xb45a3c0e; 6454 0x91a6262f; 7572 0xe8a3d485; 5646 0xf5112315; loupe 0x48e2b093; 7432 0xd00ca5cf; 6551 account 0x6faff5f1; 6551 executable 0x51945447; diamondCut selector 0x1f931c1c",
+    "Base Sepolia (84532) diamond 0x0aeb6f783ebade8fd5ffca74317266d4ea3e71b3 (deployer 0xb76d…3bc7, key destroyed): facets 0x4A81…8c47 / 0x79c4…b545 / 0xEebD…21c0 / 0xda7d…aBa2, init 0x86E5…4c85, keyRegistry 0x6B9f…61e6, verifier 0x9B23…C0A6; deploy cost 0.00628 ETH",
+    "Base Sepolia second deployment (deployer 0xc591…2C00): diamond 0xb3d92c766e3cb356db381feb21958a9ebb974365, facets 0xbb2a…d8b9 / 0x2f21…9569 / 0x1cbf…ce4f / 0x5c94…f35b, init 0xbbd2…2a3, keyRegistry 0x1144…1563, verifier 0xC83f…ed1F, web3Renderer 0x9160bE4d943516a2463Ac5f3ABAc5F5cce7975Cd (history 0xbD71…3A29, 0x1E07…5bC8); town run 130 successful tx / 48 expected reverts / 12 residents (ids 18-29); batchMint ids 30-32",
+    "Also deployed on Sepolia 11155111 (diamond 0xbbd203d76eb2a2e493f458dff74b10c6659d12a3, 10 batch-minted), Unichain Sepolia 1301, Robinhood testnet 46630, BSC testnet 97; LayerZero journeys in omni-84532.json",
+    "Canonical ERC-6551 registry 0x000000006551c19487814612e58FE06813775758",
+    "Toolchain: solc 0.8.28, viaIR, optimizer runs 200, evmVersion cancun; OpenZeppelin 5.6.1; Hardhat 3 + viem"
+  ],
+  "pitfalls": [
+    "Any function added to AnimaAgent must be added to exactly one facet (deriveFacetCut throws otherwise); do not loosen deriveFacetCut",
+    "Never reorder AgentCore or Lease; append only — getStateFingerprint ABI-encodes them wholesale",
+    "No facet may declare a plain state variable; all diamond state is ERC-7201 (slots 0-2 asserted empty)",
+    "A bare '@' in NatSpec is parsed as a tag and breaks compilation",
+    "Public libraries with dynamic-array parameters grow bytecode (+4 KB measured)",
+    "Never wrap optional side effects in try/catch on a gas-estimated path: eth_estimateGas finds the cheapest success, which skips the side effect",
+    "Scaled ratios truncate to zero at realistic decimals (use mulDiv per whole token)",
+    "delegatecall to a codeless address returns success — assert post-conditions, never trust the return",
+    "Public RPCs are load balancers: wait for code before a constructor inspects fresh deployments, take ids from receipt logs, retry first reads",
+    "Hardhat decodes custom errors from the artifact at the reverting address; diamond tests must match 4-byte selectors",
+    "Numeric claims in docs drift (test counts, sizes, gas) — re-measure before quoting",
+    "MockLZEndpoint accepts empty executor options; the real endpoint rejects them (use lzReceiveOptions())",
+    "Rounding in curves/vaults must favour the protocol",
+    "The 0x0aeb Base Sepolia deployment's owner key is destroyed; its owner functions are permanently unreachable"
+  ],
+  "tests_and_tooling": "node:test + viem under Hardhat 3 (TypeScript ESM, local imports end in .js). `npm test` runs the 268-case .ts suite against the monolith; `ANIMA_IMPL=diamond` (npm run test:diamond) re-runs the identical suite against the diamond via test/helpers.ts deployProtocol({impl}), which deploys facets and derives the cut with the SDK deriveFacetCut; `npm run test:both` runs both. Three node --test .mjs suites (Cli 3, EconomySim 4, ManifestSchema 4) bring the total to 279. Core-area tests: test/AnimaAgent.test.ts (25: identity/manifest, brain, sealed transfer, autonomy-does-not-survive-a-sale, locking, guardian, token bound account, expiring approvals), test/Diamond.test.ts (22: fingerprint equivalence at pinned timestamp, ERC-165 parity, the two divergences, routing partition, ERC-7201 slot checks, config agreement/mismatch, immutability incl. bytecode grep for 0x1f931c1c, construction refusals incl. TamperInit/BackdoorFacet mocks), test/Ownership.test.ts (11: Ownable2Step handover and every owner lever, no setters for the pinned config), test/Deploy.test.ts (2: runs scripts/deploy-diamond.ts for real), test/Gas.test.ts (1: 18 probes, prints the table, fails on drift), test/Web3Renderer.test.ts (2), test/Regressions.test.ts (22, incl. ERC-5646 and ERC-6492 cases), test/Lifecycle.test.ts (1 end-to-end), test/Sdk.test.ts (22, incl. 6 for deriveFacetCut and BrainLib parity), test/ExactERC20.test.ts (2). helpers.ts expectRevert matches error names or 4-byte selectors (verified non-vacuous by mutation). Compiled artifacts already present in artifacts/ (build-info 2026-10-02) were used for size measurement; no build or test was executed for this report."
+}

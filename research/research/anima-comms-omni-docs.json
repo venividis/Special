@@ -1,0 +1,329 @@
+{
+  "repo": "Cutting-edge-technologically-advanced-NFT (ANIMA)",
+  "area": "comms, omnichain, sdk, scripts, deployments, docs (+ web renderer, GitHub Pages UI, machine-discovery files, and the unmerged Commons/Utility branches that bear on website delivery, social, launchpad and vault)",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/anima-comms-omni-docs.md",
+  "summary": "ANIMA's 'reach' layer in this area is three things. AgentComms (7,368 B) is a deliberately narrow messaging contract: a sender proves control of an agent id, escrows the recipient's self-set postage in an ERC-20, and the recipient collects it only by replying within a 5-minute-to-30-day window, otherwise anyone can refund the sender; payload bytes never touch the chain (only keccak commitment + transport URI), sendPrivate/replyPrivate pin the exact recipient encryption key from a chain-wide EncryptionKeyRegistry so a mempool rotation fails the send, and senders supply maxPostage/expectedFeeToken to stop a recipient front-running its own price. Its gap for the merge goal is enumeration: _nextMessageId is private and there is no per-agent or per-thread index, so an indexer-free on-chain UI cannot list an inbox. The omnichain layer (AnimaOApp + OmniAgentHome + OmniAgentMirror + codec) is a LayerZero V2 escrow-never-burn bridge: the home token is escrowed, a snapshot of manifest hash, brain root/epoch, weights root, seal policy and home identity crosses the wire, the mirror is a plain ERC-721 that answers isReplica()==true, carries no bond or account, has exactly one home route, and can only be sent home; inbound messages require msg.sender==endpoint AND a registered non-zero peer, with an opt-in per-source rate limiter. It round-tripped for real on four testnet routes; one Unichain packet has been stuck since 2026-08-31 and the project admits there is no recovery state machine and no explicit DVN configuration.\n\nThe SDK (sdk/src/index.ts, 772 lines) is the reference implementation of every off-chain commitment the contracts make and is tested byte-for-byte against Solidity: RFC 8785 manifest canonicalisation and hash, ordered brain-root hash chain, InferenceMeter work root, audit-log replay, private-envelope commitment, EIP-712 order/voucher types, the derived EIP-2535 cut for the immutable diamond (throws on any unrouted/duplicate/extra selector), and LayerZero Type-3 executor options pinned to the Solidity builder's bytes because the mock endpoint silently accepted 0x. The scripts are a mature live-chain harness (resumable records keyed by deployer, wait-for-code, ids from receipt logs, block until the endpoint reaches the tx block, twelve-wallet adversarial towns with mined reverts as evidence, a star LayerZero exerciser that treats saved state as evidence not authority) and deploy-diamond.ts verifies the deployed diamond against its ABI on chain before printing an address. Deployment records cover Base Sepolia (two deployments, both with destroyed or disclosed keys), Sepolia, Unichain Sepolia (non-canonical ERC-6551 registry), Robinhood and BSC testnets: 60 agents, 991 receipts.\n\nWebsite delivery is the weak point relative to the goal. On main there are two UIs: a GitHub-Pages Vite 'Sanctuary' (off-chain, hardcoded to a different token address than the README advertises, with fictional showcase data, but with a reusable client-side ownerOf sweep for 'which agents does this wallet hold' and a self-contained data: JSON+SVG tokenURI at mint) and AnimaWeb3Renderer, an ERC-4804 manual-mode contract (22,592 B, 1,984 B under EIP-170) whose fallback(bytes path) builds the whole console HTML for /token/{id}/live in a view call, served via web3:// or w3link gateways. That page imports viem from esm.sh, hardcodes public RPCs for two chains, mislabels the seal policy enum, and gates nothing by holder: anyone sees the page; writes are only refused by the contracts themselves via simulateContract. Two unmerged branches hold the pieces the goal actually needs: AnimaCommons (12,941 B on-chain social circles with 1,024-byte bodies, paged arrays, moderation tombstones, a history hash chain, work-request-to-escrow links and an agent badge gated on isController plus an exact ERC-5646 fingerprint), FrozenClient/ClientPart (a 609 KB HTML bundle stored as inert code parts with a keccak commitment checked in the constructor, pinned to the NFT via an owner-mutable setMetadata key, 135.9M gas locally), TimeLockVault (admin-less fixed-beneficiary locks, native or exact ERC-20) and V2LiquidityDeployer plus 'checked' launchpad entrypoints that pin fees, deployer and deadline into the call. That branch ships its source as an opaque xz patch applied by CI; I decompressed it and verified the pinned hashes before reading it.",
+  "components": [
+    {
+      "name": "AgentComms",
+      "path": "contracts/comms/AgentComms.sol",
+      "purpose": "Priced, identity-authenticated agent messaging: postage escrowed on send, collectable only by replying, refundable if ignored; commitment + transport URI on chain, ciphertext off chain; key-pinned private envelopes; authenticated broadcasts.",
+      "key_functions": [
+        "configureInbox(uint256 agentId, address feeToken, uint128 postage, uint64 replyWindow, bool open) — owner only; window 5 min..30 days",
+        "setSenderAllowed(uint256,address,bool) / setAgentSenderAllowed(uint256,uint256,bool) — owner only; agent-id allowlist survives key rotation",
+        "send(uint256 toAgentId, uint256 fromAgentId, bytes32 threadId, bytes32 payloadHash, string transportURI, address expectedFeeToken, uint128 maxPostage) returns (uint256 messageId)",
+        "sendPrivate(..., bytes32 expectedRecipientKeyId) — requires keyIdOf(ownerOf(toAgentId)) == expected",
+        "reply(uint256 messageId, bytes32 payloadHash, string transportURI) — any controller of toAgentId; postage paid to accountOf(toAgentId)",
+        "replyPrivate(uint256, bytes32, string, bytes32 expectedRecipientKeyId) — pins original sender's key",
+        "refund(uint256 messageId) — permissionless after replyBy",
+        "broadcast(uint256 fromAgentId, bytes32 topic, bytes32 payloadHash, string transportURI) — controller only, event only",
+        "messageOf(uint256) view; inboxOf/isAllowed/isAllowedAgent/recipientKeyOf/replyKeyOf public"
+      ],
+      "design_decisions": [
+        "Only the parts of messaging that need a chain: authenticated identity, priced attention with refund, commitment not content (L28-47).",
+        "maxPostage + expectedFeeToken guard against a recipient raising postage in front of a pending send (L203-206; regression test).",
+        "Allowlists keyed by agent id because agents rotate session keys (L183-184).",
+        "Postage goes to the agent's ERC-6551 account, never the caller (L302-303).",
+        "sendPrivate/replyPrivate pin the exact registry key so a mempool rotation fails instead of recording undecryptable ciphertext (L222-223); zero in recipientKeyOf means legacy path.",
+        "Ordering/delivery guarantees explicitly refused as the transport's job."
+      ],
+      "security_invariants": [
+        "A message is answered XOR refunded; late reply reverts even before refund is claimed",
+        "Writing as an agent requires isController, which a sale revokes (operatorEpoch roll)",
+        "Value-conserving ERC-20 transfers (ExactERC20) — fee-on-transfer tokens revert",
+        "nonReentrant (transient) on send/sendPrivate/reply/replyPrivate/refund"
+      ],
+      "standards": ["ERC-20 (SafeERC20/ExactERC20)", "relies on ERC-721 ownerOf and ERC-6551 accountOf", "no formal messaging ERC"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep escrow/refund/identity/key-pinning verbatim. Add nextMessageId() getter, per-agent and per-thread id arrays with paged views, optional bounded on-chain body, optional native postage. Decide whether operators need their own pinned keys (today the owner's key is pinned)."
+    },
+    {
+      "name": "EncryptionKeyRegistry",
+      "path": "contracts/core/EncryptionKeyRegistry.sol",
+      "purpose": "Chain-wide singleton where an address publishes the public key sealed content must be encrypted to; keyType names the scheme (X25519=1, secp256k1 ECIES=2, P-256=3, ML-KEM-768=4).",
+      "key_functions": ["setEncryptionKey(uint16 keyType, bytes publicKey)", "revokeEncryptionKey()", "keyOf/publicKeyOf/keyIdOf(address) — keyIdOf = keccak256(publicKey) or 0"],
+      "design_decisions": ["A key belongs to a person, not a collection (L15-18)", "Revocation makes sealed transfers revert rather than deliver unopenable ciphertext (L50-52)"],
+      "standards": [],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "1,783 B; no owner; exactly the primitive a private-messaging layer needs."
+    },
+    {
+      "name": "ILayerZeroV2",
+      "path": "contracts/omni/ILayerZeroV2.sol",
+      "purpose": "Hand-transcribed minimal LayerZero V2 endpoint/receiver ABI (MessagingParams, MessagingReceipt, MessagingFee, Origin; quote/send/setDelegate/eid; allowInitializePath/nextNonce/lzReceive) kept local so the build is hermetic.",
+      "standards": ["LayerZero V2 ILayerZeroEndpointV2 / ILayerZeroReceiver"],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Only needed if the merged protocol keeps a LayerZero bridge."
+    },
+    {
+      "name": "AnimaOmniCodec / AgentSnapshot",
+      "path": "contracts/omni/AnimaOmniCodec.sol",
+      "purpose": "abi.encode/decode of AgentSnapshot {to, agentId, brainRoot, brainEpoch, manifestHash, weightsRoot, seal, homeChainId, homeToken, agentURI} — what crosses the wire so a mirror is a verifiable replica.",
+      "design_decisions": ["Plain abi.encode deliberately; hand-packed codecs 'have produced a remarkable number of critical bugs' and length-prefixing makes truncation fail loudly (L27-30)"],
+      "standards": [],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Adapt the struct fields to the merged token's state; never add ciphertext or keys (PRIVACY.md)."
+    },
+    {
+      "name": "AnimaOApp",
+      "path": "contracts/omni/AnimaOApp.sol",
+      "purpose": "Abstract OApp base: owner-set peers per eid, dual authentication (msg.sender==endpoint AND registered non-zero peer), opt-in per-source-chain inbound rate limit, unordered delivery, outbound send/quote with exact-fee check.",
+      "key_functions": ["setPeer(uint32 eid, bytes32 peer) onlyOwner", "setInboundLimit(uint32 srcEid, uint64 windowSeconds, uint64 capacity) onlyOwner", "inboundRemaining(uint32) view", "setDelegate(address) onlyOwner", "allowInitializePath(Origin) view", "nextNonce() pure returns 0", "oAppVersion() -> (1,2)", "lzReceive(Origin,bytes32,bytes,address,bytes) payable", "_lzSend / _quote internal"],
+      "design_decisions": ["Every inbound message must satisfy both halves; zero peer never trusted, unset route fails closed (L18-29)", "Rate limit converts a forged-DVN drain into a retryable delay; off by default so a deployment picks a number (L43-51, L84-85)", "Unordered nonce so one stuck message cannot block a route (L131-132)", "Security rests on DVN/executor config at the endpoint, not here (L31-35)"],
+      "security_invariants": ["SECURITY.md #34-36, #39"],
+      "standards": ["LayerZero V2 OApp receiver surface", "Ownable2Step"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep auth + rate limit; reconsider having an owner at all (IPSEITY's port has none and pins config at construction)."
+    },
+    {
+      "name": "OmniAgentHome",
+      "path": "contracts/omni/OmniAgentHome.sol",
+      "purpose": "Home-chain escrow: send() validates receiver word, owner, not-locked, native balance acknowledgement, snapshots agent state, records awayOn[agentId]=dstEid, transfers token into itself (tripping the pause-on-transfer hook), dispatches; _lzReceive releases only an agent that left, only from the chain it went to.",
+      "key_functions": ["quoteSend(uint32 dstEid, bytes32 to, uint256 agentId, bytes options) view returns (MessagingFee)", "send(uint32 dstEid, bytes32 to, uint256 agentId, bytes options, MessagingFee fee, address refundAddress, bool acknowledgeAssetsRemain) payable returns (MessagingReceipt)", "awayOn(uint256) view"],
+      "design_decisions": ["Escrow, never burn: bond/reputation are chain-local claims (L27-32)", "Mirror has a different ERC-6551 account; ERC-20s cannot be enumerated so are not checked; departure event publishes the account for front-ends (L34-41)", "Busy agent may not leave (L43-45)", "Right-padded receiver would strand the token forever — validated before escrow (L104-107)"],
+      "security_invariants": ["AgentBusy if locked", "HomeAccountHoldsAssets unless acknowledged", "AgentNotAway / WrongOriginChain on return", "InvalidReceiver"],
+      "standards": ["LayerZero V2", "ERC-721 escrow"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Optional for a single-chain goal; correct shape if multi-chain presence is wanted. Needs a packet-recovery policy before production."
+    },
+    {
+      "name": "OmniAgentMirror",
+      "path": "contracts/omni/OmniAgentMirror.sol",
+      "purpose": "Remote ERC-721 replica minted on arrival and burned on departure; stores Replica{brainRoot, manifestHash, weightsRoot, brainEpoch, homeChainId, syncedAt, seal, homeEid, homeToken, agentURI}; verifyManifest(bytes) checks keccak against the committed hash; isReplica() always true; exactly one home route; send() is home-only.",
+      "key_functions": ["setPeer override (OnlyOneHomeRoute)", "isReplica() pure returns (bool)", "replicaOf(uint256) view", "tokenURI(uint256) = snapshotted agentURI", "verifyManifest(uint256, bytes) view", "quoteSend / send(uint32 dstEid, bytes32 to, uint256 agentId, bytes options, MessagingFee fee, address refundAddress)"],
+      "design_decisions": ["A mirror is not the agent: no bond, no reputation, no account, says so via isReplica (L17-21)", "Honest staleness via syncedAt (L28-30)", "Second home route rejected at config time, not after escrow (L71-73)", "Forwarding chain-to-chain would strand the original (L150-154)"],
+      "standards": ["ERC-721", "LayerZero V2"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Same as home; drop if no bridge."
+    },
+    {
+      "name": "MockLZEndpoint",
+      "path": "contracts/mocks/MockLZEndpoint.sol",
+      "purpose": "Queue-and-deliver LayerZero mock with spoofable origin sender; deliberately does not auto-deliver so replay/reorder cases are testable.",
+      "standards": [],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Remember it accepts empty options; always build real Type-3 options."
+    },
+    {
+      "name": "ANIMA SDK",
+      "path": "sdk/src/index.ts",
+      "purpose": "Reference implementation of every off-chain hashing rule plus manifest typing/verification, EIP-712 types, policy helpers, immutable-diamond cut derivation and LayerZero options.",
+      "key_functions": ["serialiseManifest/manifestHash/canonicalise (RFC 8785)", "verifyManifestBytes / fetchVerifiedManifest (HTTPS, 1 MiB, 10 s, no redirects)", "agentWebUrl(origin, chainId, contract, agentId)", "handleKey(kind, value)", "shardLeaf / brainRoot (ordered hash chain, tags anima.BrainShard.v1 / anima.BrainRoot.v1)", "workRoot(receipts)", "privateEnvelopeHash(ctx, ciphertext) (tag anima.PrivateEnvelope.v1)", "VOUCHER_TYPES/voucherDomain, ORDER_TYPES/orderDomain, SKIP_STATE_CHECK", "replayAuditLog(account, chainId, entries)", "lockedDownPolicy / targetLeaf", "deriveFacetCut({tokenAbi, base, specialised, additional}) / cutIsImmutable / DIAMOND_CUT_SELECTOR 0x1f931c1c", "lzReceiveOptions(gas, value)"],
+      "design_decisions": ["Hash first, parse second (L258-262)", "JCS chosen because A2A signs JCS; JSON.stringify is JCS-conformant except NaN/Infinity and lone surrogates, which throw (L351-358)", "deriveFacetCut computes the cut from the ABI because hand-written selector lists are the standing hazard of immutable diamonds (L662-677)", "lzReceiveOptions pinned to Solidity bytes in tests (L759-760)"],
+      "standards": ["RFC 8785", "ERC-8004 registration-v1", "EIP-712", "EIP-2535", "ERC-165 ids", "LayerZero Type-3 options"],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Hashing/cut/options verbatim; adapt the manifest layer so web3:// and on-chain manifests are first-class and HTTPS is only a mirror."
+    },
+    {
+      "name": "deploy-diamond.ts",
+      "path": "scripts/deploy-diamond.ts",
+      "purpose": "Deploys four facets + initialiser, derives the cut with the SDK, deploys the immutable diamond, then verifies on chain: every ABI selector routes to its assigned facet, no diamondCut, loupe lists exactly the facets, facet code matches artifacts with immutables masked, config hash matches, init took effect, ERC-165 correct.",
+      "design_decisions": ["waitForCode against public-RPC lag (L51-68)", "maskImmutables for honest bytecode comparison (L42-49)", "Fails with 'do NOT publish this address'"],
+      "standards": ["EIP-2535", "ERC-165"],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Run for real by test/Deploy.test.ts. Keep if the merged token is a diamond."
+    },
+    {
+      "name": "deploy.ts / testnet-deploy.ts",
+      "path": "scripts/deploy.ts, scripts/testnet-deploy.ts",
+      "purpose": "Monolith and resumable live deployment with per-chain JSON records keyed by deployer, canonical ERC-6551 detection, EntryPoint v0.7 detection, cast keys outside the repo, wiring journal.",
+      "design_decisions": ["Wiring is the security-critical step; nothing enters allowlists that was not deployed here", "Records belonging to another key are never reused", "PAYMENT_PROCESSOR must be a dedicated non-deployer address"],
+      "standards": [],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep the resumable-record and lag-defence patterns as a shared helper."
+    },
+    {
+      "name": "Live-chain exercisers",
+      "path": "scripts/testnet-scenario.ts, testnet-modules.ts, testnet-everything*.ts, testnet-omni.ts, testnet-omni-status.ts, testnet-mint.ts, testnet-batch-mint.ts, testnet-batch-exercise.ts, testnet-town.ts",
+      "purpose": "Drive the protocol on real testnets with explorer links for every tx; twelve-wallet adversarial towns mine attack reverts as evidence; the LayerZero star runner resumes journeys from on-chain custody and refuses duplicate sends.",
+      "design_decisions": ["State is evidence, not authority", "Ids from receipt logs; block until endpoint reaches tx block; single transport", "Explicit gas so negative assertions produce status-0 receipts"],
+      "standards": [],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Generic harness worth porting; replace feature acts with the merged protocol's."
+    },
+    {
+      "name": "economy-sim.mjs",
+      "path": "scripts/economy-sim.mjs",
+      "purpose": "Seeded Monte Carlo stress model (4 policies x 4 worlds x 250 runs x 180 days) with a value-conservation assertion; output docs/ECONOMY_SIMULATION.json.",
+      "standards": [],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Research artefact, not protocol; keep only as a reference if economics are revisited."
+    },
+    {
+      "name": "generate-agent-function-index.mjs + public discovery files",
+      "path": "scripts/generate-agent-function-index.mjs, public/anima-functions.json, public/.well-known/anima.json, public/llms.txt, schemas/*.json",
+      "purpose": "Machine discovery: ABI-derived index of 29 contracts / 657 functions with selectors; a well-known directory with chain, contracts, standards, renderer URL templates and safety rules; JSON Schemas for manifest and directory, tested by ManifestSchema.test.mjs.",
+      "standards": ["ERC-8004 registration-v1 schema"],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Cheap and useful for agent-facing discovery; regenerate against the merged ABI."
+    },
+    {
+      "name": "AnimaWeb3Renderer",
+      "path": "contracts/web/AnimaWeb3Renderer.sol",
+      "purpose": "ERC-4804 manual-mode contract: resolveMode()='manual'; fallback(bytes path) returns abi.encode(string html) for '/', '/token/{id}/live' and not-found; builds the full agent console HTML/CSS/JS in a view call with owner, ERC-6551 account and collection interpolated.",
+      "key_functions": ["resolveMode() pure returns (bytes32 'manual')", "fallback(bytes calldata path) returns (bytes)", "immutable ANIMA (ownerOf, accountOf)"],
+      "design_decisions": ["Separate from the immutable token so an existing collection gains a browser without changing token logic (L14-16)", "Stateless, ownerless, redeployable by anyone (deploy-web3-renderer.ts L36-37)"],
+      "security_invariants": ["Only addresses/ids are interpolated, so no HTML injection surface"],
+      "standards": ["ERC-4804 (manual mode)"],
+      "reuse_verdict": "rewrite",
+      "reuse_notes": "Keep the manual-mode routing skeleton and the three-tab console structure. Must: inline the JS (no esm.sh), stop hardcoding RPCs (use the gateway's/wallet's provider), fix the seal enum labels, gate the control surface by ownerOf/isController, and move the page body into SSTORE2-style shards because only 1,984 B of EIP-170 headroom remain."
+    },
+    {
+      "name": "GitHub Pages Sanctuary",
+      "path": "index.html, src/main.js, src/style.css, vite.config.js, .github/workflows/pages.yml",
+      "purpose": "Off-chain Vite site: marketing landing with fictional beings, plus an owner portal that connects a wallet, sweeps totalMinted()/ownerOf() to list held agents, mints with a self-contained data: JSON+SVG tokenURI, deploys the ERC-6551 account, toggles status, and asks the wallet to watch the ERC-721.",
+      "design_decisions": ["Metadata stored with the token so Brave renders it without a server (L147-148)", "Relative asset URLs so the same build works on localhost, IPFS and GitHub Pages (vite.config.js)"],
+      "standards": ["EIP-1193", "wallet_watchAsset"],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Not on-chain; points at a different token than the README; fake showcase numbers. Salvage the data:-URI metadata idea and the ownership-sweep UX."
+    },
+    {
+      "name": "cli/anima.mjs (ENS binding terminal)",
+      "path": "cli/anima.mjs",
+      "purpose": "Interactive CLI that verifies isController on the agent chain, then atomically writes ENS resolver records (addr = agent account, text com.anima.agent = eip155:chain:contract:id, com.anima.account, url, contenthash from a CIDv1 ipfs:// URI) and optionally transfers custody of the .eth to the agent's ERC-6551 account (mainnet only; wrapped and unwrapped paths).",
+      "standards": ["ENS", "ENS contenthash (ipfs-ns 0xe3)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Good pattern for giving an NFT a human-readable web name; extend contenthash to a web3:// / on-chain pointer rather than IPFS only."
+    },
+    {
+      "name": "Deployment records",
+      "path": "deployments/84532.json, 84532-0xc591c669162cd4da8ab9bfa2c2e68d538a312c00.json, 11155111.json, 1301.json, 46630.json, 97.json, omni-84532.json",
+      "purpose": "Machine-written evidence of what was deployed and exercised: contracts, cast, wiring journal, smoke, extended, townRun evidence (tx hashes + status), batchMint/batchExercise, omni journeys.",
+      "standards": [],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Historical: deployer keys destroyed (0xb76d) or compromised by disclosure (0xc591). Keep the record format and the evidence."
+    },
+    {
+      "name": "docs/ (ARCHITECTURE, SPEC, SECURITY, PRIVACY, DEPLOYMENT, AGENT_*, research and audits)",
+      "path": "docs/*.md",
+      "purpose": "Design rationale with measured numbers, 39 security invariants, draft ERC, privacy boundaries, deployment order, agent integration guide, standards census, microeconomy research, dated testnet audits.",
+      "standards": ["lists ERC-165/712/721/1271/2981/4337/4906/4907/5192/5646/6454/6492/6551/7201/7432/7572/8004/8126/8217/EIP-2535 as implemented"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Reuse the invariant lists, the 'honest limitations' style and the trust-boundary table; correct the drifting test counts and token addresses."
+    },
+    {
+      "name": "test/helpers.ts",
+      "path": "test/helpers.ts",
+      "purpose": "deployProtocol() fixture that swaps monolith/diamond via ANIMA_IMPL using the SDK's deriveFacetCut; mintAgent(); local brainRoot(); expectRevert() that matches error names OR any 4-byte selector of that name scanned from artifacts (needed for diamond reverts).",
+      "standards": [],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "The selector-aware expectRevert and the dual-build fixture are worth keeping."
+    },
+    {
+      "name": "AnimaCommons (unmerged branch upgrade/sanctuary-commons-3d-20260904)",
+      "path": "contracts/comms/AnimaCommons.sol (git show origin/upgrade/sanctuary-commons-3d-20260904)",
+      "purpose": "On-chain public social layer: circles with stewards/moderators/invites/bans/slow mode, typed posts (Discussion/Question/WorkRequest/Update) with <=1,024-byte bodies stored on chain, paged id arrays (no indexer), revisions, withdraw/moderate tombstones, replacement-style reactions, accepted replies, work-request-to-WorkEscrow links requiring exact specHash and client match, a per-circle history hash chain, and an optional agent badge that requires isController(agentId) plus an exact current ERC-5646 fingerprint.",
+      "key_functions": ["createCircle/configureCircle/invite/join/leave/setModerator/ban/proposeSteward/acceptSteward", "publish(circleId, parentId, agentId, expectedAgentState, kind, body)", "revise/withdraw/moderate/react/acceptReply/attachJob", "circleOf/postOf/postCount/postsPage(circleId, cursor, limit<=50)"],
+      "design_decisions": ["Wallet is the social principal; buying a token does not buy a human's posts or roles (L17-20)", "Tombstones hide, never delete (L16-17)", "Evidence-linked work cards, not self-asserted badges (L286)", "No custody, no owner, 12,941 B, kept outside the token because the monolith has 605 B headroom"],
+      "security_invariants": ["Fingerprint pin invalidates stale agent authorship across A->B->A transfers", "Moderators cannot ban stewards or peers; leaving/ban clears dormant roles", "Byte limits, slow mode on publish and revise"],
+      "standards": ["ERC-5646 fingerprint pinning"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Closest existing match for an indexer-free messaging/social layer. Decide NFT-gated vs wallet-principal participation; 29 tests exist; not deployed publicly."
+    },
+    {
+      "name": "FrozenClient / ClientPart (unmerged branch fix/utility-workflows-20260904, inside xz patch)",
+      "path": "contracts/utility/FrozenClient.sol (decompressed from .github/utility-payload/*.part)",
+      "purpose": "SSTORE2-style immutable HTML publication: ClientPart stores <=23,000 bytes behind a leading STOP; FrozenClient(address[] parts, bytes32 expectedHash) validates <=128 parts, prefix and sizes, reassembles via extcodecopy and reverts unless keccak256 matches; html()/readPart()/partCount() views. utility-publish.mjs pins abi.encode(client, hash) under the NFT's metadata key anima.client.v2; utility-recover.mjs rebuilds from eth_getCode and verifies before writing.",
+      "design_decisions": ["No proxy, mutable chunk registry, external resources or HTTP dependency", "Pointer is owner-mutable; content immutable (SECURITY.md)", "Publication deliberately restricted to chain 31337"],
+      "standards": ["SSTORE2 pattern", "ERC-721 metadata key pin"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Measured 609,226 B bundle, 27 parts, 135,938,093 gas locally. Combine with the ERC-4804 renderer so tokenURI/web3:// serve the frozen bundle; make the pointer immutable or versioned rather than owner-mutable."
+    },
+    {
+      "name": "TimeLockVault (unmerged branch, xz patch)",
+      "path": "contracts/utility/TimeLockVault.sol",
+      "purpose": "Admin-less, non-yielding, fixed-beneficiary time locks for native or exact-transfer ERC-20; beneficiary may extend only; anyone may trigger claim at maturity; paged enumeration by beneficiary.",
+      "key_functions": ["createLock(address token, uint256 amount, address beneficiary, uint64 unlockAt) payable returns (uint256 id)", "extend(uint256 id, uint64 unlockAt)", "claim(uint256 id)", "lockOf/lockCount/locksPage"],
+      "security_invariants": ["No cancellation, no beneficiary change, no early exit", "Both sender and recipient deltas checked for ERC-20", "MAX_DURATION 3650 days", "nonReentrant (transient)"],
+      "standards": [],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "3,632 B, 13 tests. A vault feature, not the whole 'vault' pillar (that is the ERC-6551 account plus a receive-only Grip)."
+    },
+    {
+      "name": "V2LiquidityDeployer + AgentLaunchpad checked entrypoints (unmerged branch, xz patch)",
+      "path": "contracts/utility/V2LiquidityDeployer.sol, contracts/market/AgentLaunchpad.sol (diff)",
+      "purpose": "ILiquidityDeployer adapter that adds V2 liquidity on graduation with 1% ratio tolerance, verifies the LP delta equals the router's declared amount, locks the LP in TimeLockVault to the beneficiary for 1-3650 days, returns dust and zeroes approvals. Launchpad gains UTILITY_API=1, createLaunchChecked(p, expectedDeployer, expectedFeeHash) and buyChecked/sellChecked(..., deadline, maxFeeBps).",
+      "standards": ["Uniswap V2-shaped router/factory interface"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "The 'checked' pattern (pin mutable governance config and deadlines into the call) should be adopted across swap/launch/vault."
+    }
+  ],
+  "standards_implemented": [
+    "LayerZero V2 OApp receiver ABI (lzReceive, allowInitializePath, nextNonce, oAppVersion) — omni",
+    "ERC-721 (OmniAgentMirror)",
+    "Ownable2Step (omni)",
+    "ERC-4804 manual mode (AnimaWeb3Renderer.resolveMode)",
+    "ERC-20 via SafeERC20 + value-conserving ExactERC20 (comms)",
+    "RFC 8785 JSON Canonicalization (SDK)",
+    "ERC-8004 registration-v1 manifest shape (SDK, schema)",
+    "EIP-712 typed data: AnimaMarket Order, AnimaInferenceMeter Voucher, AnimaAgent AgentWalletBinding (SDK/scripts)",
+    "EIP-2535 cut derivation and immutability check (SDK, deploy-diamond)",
+    "ERC-165 interface ids verified on chain (deploy-diamond)",
+    "ERC-6551 canonical registry 0x000000006551c19487814612e58FE06813775758 (deploy scripts)",
+    "ERC-4337 EntryPoint v0.7 detection (testnet-deploy)",
+    "ENS resolver text/addr/contenthash records (cli)",
+    "Branch: ERC-5646 fingerprint pinning (AnimaCommons), SSTORE2-style code storage (FrozenClient), Uniswap V2 router interface (V2LiquidityDeployer)"
+  ],
+  "unique_ideas": [
+    "Postage escrow collectable only by replying, refundable by anyone after the window; sender-supplied maxPostage + expectedFeeToken defeat recipient front-running of its own price",
+    "Allowlist peers by agent id so session-key rotation never breaks correspondence",
+    "sendPrivate/replyPrivate pin the exact registry key id so a key rotation in the mempool fails the tx instead of recording undecryptable ciphertext; SDK privateEnvelopeHash domain-separates ciphertext by chain, contract, sender, recipient, key and nonce",
+    "Escrow-never-burn bridge carrying an AgentSnapshot so the mirror is a verifiable replica (verifyManifest) that answers isReplica()==true; awayOn bookkeeping; one home route per mirror; home-only return; right-padded receiver check before escrow; acknowledgeAssetsRemain friction; opt-in inbound rate limiter that throttles rather than drops",
+    "deriveFacetCut: derive an immutable diamond's selector table from the ABI and refuse partial cuts; deploy script verifies routing, immutability, masked bytecode, config hash, init and ERC-165 on chain before printing an address",
+    "lzReceiveOptions bytes pinned to the Solidity builder because the mock endpoint accepted 0x — 'the single most common way a bridge that works in tests fails on a live chain'",
+    "ERC-4804 manual-mode renderer kept separate from the immutable token so an existing collection gains a browser later; any funded key can redeploy it",
+    "Three public-RPC lag defences: wait for code, ids from receipt logs, block until the endpoint reaches the tx block",
+    "Resumable deployment records where saved state is evidence not authority; twelve-wallet adversarial towns that mine attack reverts (status-0 receipts) as evidence",
+    "Self-contained data:application/json + inline SVG tokenURI at mint so wallets need no server or IPFS",
+    "Machine discovery: /.well-known/anima.json, llms.txt, ABI-derived function index (657 functions), JSON Schemas with additionalProperties:false that reject executable fields",
+    "Branch: fingerprint-pinned agent badges on social posts; per-circle history hash chain; work-request-to-escrow links requiring exact specHash; tombstones not deletions; wallet as social principal so a sale does not buy a person's history",
+    "Branch: FrozenClient constructor refuses to deploy unless the reassembled bundle hashes to the expected value; NFT metadata key pin plus a recover script that never executes recovered bytes",
+    "Branch: client verifies every deployed contract's runtime hash with solc immutable ranges masked, audits diamond facet routing selector-by-selector, and uses epoch-invalidated re-simulated plans with atomic approve/act/revoke batches through the ERC-6551 account",
+    "Branch: 'checked' launchpad entrypoints that pin fee schedule, liquidity deployer, deadline and max fee into the call",
+    "ENS binding CLI that writes com.anima.agent / com.anima.account text records and can hand .eth custody to the agent's ERC-6551 account"
+  ],
+  "weaknesses": [
+    "AgentComms has no enumeration: _nextMessageId is private, no per-agent/thread index — an indexer-free on-chain UI cannot list an inbox without eth_getLogs",
+    "AgentComms payloads are off-chain by design; ERC-20 postage only; sendPrivate pins the token owner's key, not an operator's; zero-postage open inboxes are spammable",
+    "AnimaWeb3Renderer imports viem from esm.sh and hardcodes public RPCs for only two chains — not self-contained; seal-policy labels index a 6-value enum with a 3-entry array (Committed shows as SEALED TEE); no holder gating of the UI; 1,984 B of EIP-170 headroom left",
+    "No UI surface on main gates reads by NFT ownership; writes rely solely on contract reverts surfaced by simulateContract; the Pages site hardcodes a different token address (0xb3d9...) than the README (0x0aeb...)",
+    "Omni: no recovery/cancel state machine for accepted-but-undelivered packets (Unichain agent #4 stuck since 2026-08-31); scripts never set an explicit DVN/executor stack; ERC-20 balances not checked at departure; mirror has a different ERC-6551 address and no bond; Ownable2Step owner over peers",
+    "Deployments are historical: 0xb76d burner destroyed, 0xc591 key disclosed; Unichain Sepolia uses a non-canonical ERC-6551 registry",
+    "Test counts drift across docs (199/239/261/268/279/322/362); CI runs only the monolith suite",
+    "The utility branch ships its source as an opaque xz patch applied by a workflow that pushes with the GitHub token — unreviewed until applied",
+    "Commons/utility contracts exist only on unmerged branches, are local-chain tested, undeployed and unaudited; FrozenClient's NFT pin is owner-mutable; publication costs ~136M gas for a 609 KB bundle",
+    "Whole project unaudited; 39 invariants and an adversarial pass are not an audit"
+  ],
+  "website_delivery": "Three surfaces on main. (1) A GitHub-Pages Vite site (index.html, src/main.js) — entirely off-chain, bundles viem, loads Google Fonts, hardcodes ANIMA 0xb3d92c766e3cb356db381feb21958a9ebb974365 and https://sepolia.base.org, shows fictional beings; its owner portal is real but client-side. (2) AnimaWeb3Renderer (contracts/web, 22,592 B): an ERC-4804 manual-mode contract whose fallback(bytes path) returns abi.encode(string html) for /token/{id}/live, served through web3://0x9160bE4d...75cd:84532/token/{id}/live or https://<renderer>.basesep.w3link.io/...; the HTML/CSS are generated on chain in a view call but the page's <script type=module> imports viem from https://esm.sh/viem@2.55.19 and talks to hardcoded public RPCs, so it is not dependency-free. (3) The token's tokenURI is whatever agentURI the controller set (the Sanctuary mints a self-contained data: JSON+SVG). On the unmerged fix/utility-workflows-20260904 branch, FrozenClient/ClientPart store a complete 609 KB HTML bundle as inert code parts with a constructor-checked keccak commitment, pinned to the NFT via setMetadata('anima.client.v2', abi.encode(client, hash)) — local chain only, owner-mutable pointer. Nothing on any branch emits the client from tokenURI itself.",
+  "wallet_gating": "Reads are never gated anywhere; every page and view is public. The ERC-4804 renderer shows the full console to anyone and only asks for a wallet when a write is attempted; authorization is enforced solely by the ANIMA/account/module contracts (ownerOf / isController / guardian / module allowlists) and surfaced to the user by simulateContract failing. The GitHub-Pages Sanctuary verifies holding client-side by reading totalMinted() and ownerOf(id) for every id and keeping those equal to the connected EIP-1193 address (no signature challenge). The unmerged utility client gates owner actions with ownerOnly(id) = ownerOf(id) == connected wallet, re-checks eth_accounts/eth_chainId before each send, and refuses to spend unless every deployed contract's runtime hash matches the compiled release. The only on-chain NFT-gated social action is AnimaCommons.publish on the Commons branch: posting with an agent badge requires ANIMA.isController(agentId, msg.sender) and an exact current getStateFingerprint(agentId); circle membership itself is wallet-based, deliberately not NFT-gated.",
+  "measured_numbers": [
+    "Runtime bytes (from artifacts/): AgentComms 7,368; OmniAgentHome 6,979; OmniAgentMirror 9,528; AnimaOmniCodec 57; AnimaWeb3Renderer 22,592 (1,984 under EIP-170); EncryptionKeyRegistry 1,783; MockLZEndpoint 3,179; AnimaAgent 23,971 (605 to spare); AnimaDiamond 177; AnimaCoreFacet 9,946; AnimaAgentFacet 15,052; AnimaBrainFacet 15,758",
+    "Branch runtime bytes (docs/utility/runtime-sizes.json): AnimaCommons 12,941; TimeLockVault 3,632; V2LiquidityDeployer 4,039; FrozenClient 848; ClientPart 57; AgentLaunchpad(checked) 17,117; AgentAccount 10,709; AgentSwapRouter 5,519; AgentToken 5,369; WorkEscrow 11,346; BondVault 5,714; AgentMarket 9,083",
+    "Tests measured: 268 it() across test/*.test.ts (Comms 12, Omni 11, Sdk 22, Web3Renderer 2, Deploy 2, Regressions 22 incl. 2 comms + 3 bridge + 2 rate-limit) plus 11 in *.test.mjs; docs claim 279; branch claims 322 (Commons) and 362 (utility)",
+    "Gas (docs/ARCHITECTURE.md): ownerOf 24,472 vs 29,062 (+4,590); accountOf 26,863 vs 31,594 (+4,731; was +11,081 with storage immutables); getStateFingerprint 54,818 vs 60,204; mintAgent 311,367 vs 316,587 (+1.7%); transferFrom 85,818 vs 90,499; updateBrain 68,445 vs 72,833",
+    "AgentComms constants: MIN_REPLY_WINDOW 5 min, MAX_REPLY_WINDOW 30 days; scenario postage 5 aUSD, town postage 2 aUSD",
+    "LayerZero: eids baseSepolia 40245, sepolia 40161, bscTestnet 40102, robinhoodTestnet 40451, unichainSepolia 40333, opSepolia 40232; endpoint 0x6EDCE65403992e310A62460808c4b910D972f10f (base/sepolia/bsc), 0x3acaaf60502791d199a5a5f0b173d78229ebfe32 (robinhood), 0xb8815f3f882614048cbe201a67ef9c6f10fe5035 (unichain); outbound cost 0.0000996 ETH; OMNI_RECEIVE_GAS default 500,000; lzReceiveOptions(300000)=0x000301001101000000000000000000000000000493e0",
+    "Live: protocol deploy 0.00628 ETH on Base Sepolia; 60 agents / 60 wallets / 751 success + 240 expected-revert receipts across 5 chains; per-chain towns 130/48 (Base), 144/48 (Sepolia), 132/48 (Unichain), 213/48 (Robinhood), 132/48 (BSC); Sepolia batch tokens 14-23 exercised in 32 tx; omni journeys agents #2,#3,#5 completed, #4 stuck",
+    "Addresses: token diamonds 0x0aeb6f783ebade8fd5ffca74317266d4ea3e71b3 (Base, burner destroyed) and 0xb3d92c766e3cb356db381feb21958a9ebb974365 (Base, 0xc591 deployer); comms 0xD0081791398a0f5504672a0cb46afC733feCF34b / 0xA9c0f8aeb07E61c05AfCA2F73E1fdDA66eF84d8f; web3Renderer 0x9160bE4d943516a2463Ac5f3ABAc5F5cce7975Cd (history 0xbD714258..., 0x1E07De29...); OmniAgentHome 0xbaA01630c858EF1DA96bb47FA726043afea0e169 / 0x9a4D3C3Dc0cf5B6536Ff7FC035a2Defe8Cd9fF69; canonical ERC-6551 registry 0x000000006551c19487814612e58FE06813775758; EntryPoint v0.7 0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+    "FrozenClient (branch, local): bundle 609,226 bytes, 27 parts of 23,000 B, publication gas 135,938,093; Commons standalone page ~443 KB; Commons limits body 1,024 B, page 50, rules 2,048 B, slowMode <= 1 day; TimeLockVault MAX_DURATION 3650 days; V2 deployer ratio slippage 100 bps",
+    "Fees/params: WorkEscrow 100 bps (ceiling 10%), AgentMarket 250 bps (ceiling 5%), Launchpad 100/100/100 bps (ceiling 3%), royalty 500 bps, unbonding 7 days, meter challenge 3 days; public/anima-functions.json 29 contracts, 657 functions; 99 commits 2026-08-22..2026-09-16"
+  ],
+  "pitfalls": [
+    "MockLZEndpoint accepts empty executor options; the real message library rejects 0x — always build with lzReceiveOptions()",
+    "Public RPC load balancers lag: wait for code before constructors inspect fresh deployments, take ids from receipt logs, block until the endpoint reaches the tx block",
+    "AgentCore/Lease field order is normative for the ERC-5646 fingerprint — append only",
+    "Every AnimaAgent function must be in exactly one facet; deriveFacetCut throws otherwise — do not loosen it",
+    "Never wrap optional side effects in try/catch on gas-estimated paths (eth_estimateGas finds the path where they fail)",
+    "A bare @ in NatSpec breaks compilation",
+    "Doc test counts drift; measure before quoting",
+    "The two published UIs point at different token addresses; both deployers' keys are gone or compromised; owner functions on 0x0aeb... are permanently unreachable",
+    "Renderer depends on esm.sh and hardcoded RPCs; chains other than 84532/11155111 get rpc=undefined; seal labels are wrong; only 1,984 B of bytecode headroom",
+    "AgentComms cannot be enumerated on chain; eth_getLogs over MessageSent is required today",
+    "Do not resend the stuck Unichain packet or unlock custody on a timeout — it may still deliver and create two live representations",
+    "Leaving LayerZero DVN/executor on defaults delegates security to whoever the defaults name (KelpDAO April 2026 was a 1-of-1 DVN)",
+    "Unichain Sepolia deployment uses a non-canonical ERC-6551 registry (0x4609...), so account addresses differ from canonical",
+    "The utility branch's source is an opaque xz patch applied by CI with push rights; read the decompressed patch (hashes verified) before trusting it",
+    "Commons byte limits count UTF-8 bytes not characters; invitation-only circles are not private; moderation/withdrawal are tombstones, not deletion"
+  ],
+  "tests_and_tooling": "Hardhat 3 + viem, node:test, TypeScript ESM with .js import suffixes; solc 0.8.28 pinned via the npm package (hardhat.config.ts), viaIR, optimizer 200, cancun (transient reentrancy guards). test/helpers.ts deployProtocol() builds the whole protocol and swaps the token for the immutable diamond when ANIMA_IMPL=diamond using the SDK's deriveFacetCut, so the same suite runs against both builds (npm run test:both); expectRevert matches error names or any 4-byte selector of that name scanned from artifacts because diamond reverts carry no decoded name. Area tests: Comms.test.ts (12), Omni.test.ts (11, MockLZEndpoint pair with manual deliver and spoofable origin), Sdk.test.ts (22, contract agreement for brainRoot/workRoot/auditRoot/manifest/handleKey, JCS edge cases, hostile manifest retrieval, cut derivation, LZ option bytes, envelope commitments), Web3Renderer.test.ts (2, eth_call with the path as calldata and abi-decoded string), Deploy.test.ts (2, runs deploy-diamond.ts for real), Regressions.test.ts (postage front-run, fee token, right-padded receiver, off-route mirror, rate limit window and refill), Lifecycle.test.ts (bridge leg inside the whole-life story), plus Cli.test.mjs, ManifestSchema.test.mjs (ajv 2020 strict), EconomySim.test.mjs. CI: npm ci, npm run audit:prod (prod tree must be clean at high), hardhat build, hardhat test (monolith only). Gas.test.ts bounds diamond overhead (<=25% or <=6,000 gas). Live tooling: resumable testnet scripts with explorer links, LayerZero Scan status script, GitHub workflows for Pages publishing and renderer deployment. Branch tooling: Playwright browser checks against an in-memory document with EIP-1193 shims on a loopback Hardhat chain, ABI/runtime-hash generation (utility-abi.mjs), standalone HTML preview/publish/recover scripts."
+}

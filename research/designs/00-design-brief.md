@@ -1,0 +1,19 @@
+GOAL OF THE OVERALL PROGRAM: merge four NFT repositories into ONE unified, fully on-chain NFT protocol. Minting one ERC-721 must give the holder, inside the NFT itself: (1) a swap, (2) a messaging / crypto-social layer, (3) a launchpad, (4) a vault. The NFT must "mint a website": the token's own metadata/web3:// surface serves a web app from chain; the visitor connects a wallet, the app verifies they hold the NFT (or are authorised by its holder), and then they can use all of the above. Everything on chain, no server, no IPFS. The owner also asked for deep research into "anything special we should add". Today is 2026-10-03.
+
+INPUTS (read ALL of them in full before designing; they are the distilled knowledge of ~40 reader and researcher agents):
+- /tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/dossiers/ipseity.md   (Most-Advanced-NFT-Possible: fully on-chain token + web3:// site + per-token AMM + Parley messaging + Kiln launchpad + Reach/Grip accounts)
+- /tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/dossiers/anima.md     (Cutting-edge-technologically-advanced-NFT: agent NFT, immutable diamond, 6551 account with session keys, bond, comms, launchpad, revenue router, LayerZero)
+- /tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/dossiers/garden.md    (Pixel-Garden: kernel + Reach/Grip + code-hash-admitted cartridges + frozen on-chain host + v4 launchpad)
+- /tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/dossiers/master.md    (MASTER-NFT-PROJECT: ANIMA v7 modular on-chain app, Swap/Launch/Vault/Memory/Commons UI, RAILGUN privacy route, module versioning)
+- /tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/dossiers/research-brief.md (2026 state of the art, MUST/SHOULD/COULD/AVOID list, chain recommendation, 15 special ideas, security checklist)
+- /tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/toolchain-facts.md (what compiles in this container)
+The underlying source trees are at /home/user/Most-Advanced-NFT-Possible, /home/user/Cutting-edge-technologically-advanced-NFT, /home/user/Pixel-Garden, /home/user/MASTER-NFT-PROJECT (read-only; consult them when a dossier is not specific enough). Detailed per-area reports live in /tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/.
+
+HARD CONSTRAINTS the design must respect:
+1. Fully on-chain: the app bytes, the metadata, the state, the messages. No server, no IPFS, no CDN, no external JS at runtime. The page may call the user's wallet's RPC (EIP-1193) and nothing else.
+2. EIP-170 (24,576 bytes per contract) on the chosen chain today; design for it, and say what you would do if EIP-7907 raises it.
+3. No upgradeability or admin key over the holder's guarantees (both ANIMA and IPSEITY argue this; keep it). Anything "curated" must be bounded and documented.
+4. Selling the NFT must transfer the whole bundle (accounts, pool position, social identity, vault) safely: the seller's authority must be revoked, the buyer must receive the assets, nothing must be strandable (learn from ANIMA's `_update` and IPSEITY/Garden ratchets and custody epochs).
+5. Must be buildable and testable in this container with Node 22 and solc-js (IPSEITY's `tools/compile.mjs` + `tools/forge.mjs` + `@ethereumjs/vm` harness, or Hardhat 3 as ANIMA uses). Say which and why.
+6. Reuse proven code where a dossier says "reuse-verbatim" or "adapt"; prefer fewer, well-tested contracts over novelty. Every contract in your design must name its origin (which repo file it derives from) or be marked NEW with a justification.
+7. One token = one bundle. The hub token, two ERC-6551 accounts (acting + receive-only), one per-token AMM position or pool, one social identity, one vault policy.

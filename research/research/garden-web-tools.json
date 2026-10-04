@@ -1,0 +1,675 @@
+{
+  "repo": "Pixel-Garden (/home/user/Pixel-Garden, default branch)",
+  "area": "web host, launcher, sdk, tools (web/**, sdk/**, tools/**, ops/**, package.json)",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/garden-web-tools.md",
+  "summary": "Pixel-Garden's web/sdk/tools area (28,612 lines of JS) is the most complete 'NFT mints a website' implementation among the repos. The site is a single HTML host built by tools/build-kernel.mjs, gzipped and radix-85 encoded (tools/host-encoding.mjs) so it survives inside a <script> tag, published as raw ArchiveFactory chunk contracts (23,000-byte chunks, 32 per leaf, 16 leaves per directory) and frozen once by PixelGardenKernel.freezeHost (publisher-only, before first mint, <=196,608 bytes). Kernel.document(id) returns those exact bytes plus '<script>window.PIXEL_CONTEXT={chainId,contract,tokenId}</script></body></html>'; document(id,string) is the ERC-6860 overload so web3://KERNEL:CHAIN/document/ID/string!index.html resolves; tokenURI wraps document(id) as a base64 animation_url inside a percent-encoded JSON data URI (ContentCartridge.gardenMetadata, with the verbatim rationale that re-encoding the whole HTML would exceed RPC gas caps). A separate static HTTPS reader (web/launcher) exists only to recover and verify that on-chain host against a build-pinned __HOST_HASH__ before executing it, swapping the DOM with DOMParser/replaceWith rather than document.write so EIP-1193 listeners survive.\n\nOwnership gating is read-from-chain and enforced-on-chain: GardenClient.refresh() (web/kernel/client.mjs:120) batches ownerOf, custodyEpoch, account/grip, accountReady and refuses to proceed unless both ERC-6551 accounts pass kernel.isCanonicalAccount (exact CREATE2 + ERC-1167 runtime hash); owns = connected account === owner (client.mjs:153); every write passes operation() (client.mjs:206) which re-checks chain, account, custody epoch, cartridge activation and simulates before the durable transaction journal sends. No login signature, no backend. Authority itself lives in the kernel and in ReachAccount's epoch-checked typed withdrawals, seals and exact-recipe sessions; custody epoch bumps on every transfer so a buyer can never replay a seller's prepared call.\n\nThe host is at 99.8% of its cap, so the project invented two escape hatches: hash-pinned 'trusted workspaces' (large UIs archived separately, verified with verifyHostModule against build-time SHA-256 + byte count, then evaluated with new Function in the host realm) and sandboxed cartridges (iframe sandbox=allow-scripts, injected CSP with connect-src 'none', MessageChannel capability bridge limited to 120 req/min, 4 concurrent, 40,000-char JSON, typed methods gated by manifest capabilities). The SDK supplies a canonical release format (pixel.garden.release/1), pinned-block reorg-checked recovery for every feature, durable transaction/publication/state checkpoints persisted before wallet access, a complete messaging stack (P-256 ECDH + HKDF + AES-GCM whispers, X25519 Double Ratchet with chain-authenticated handshake, PBKDF2-310,000 sealed backups, EIP-712 identity attestations), and finance recipes for Uniswap v3/v4 swaps, swap-to-lock, token + v4 hook launchpad with CREATE2 flag mining, presales, OTC, vesting sales and a systemd maturity keeper.\n\nFor the GOAL, reuse verbatim the archive format/chain I/O, host encoding, discovery pager, whisper/ratchet/sealed-packet crypto, wallet discovery and read console; adapt the build pipeline, reader, GardenClient operation guard, transaction/publication journals, recipe/session SDK and launchpad/swap/lock SDKs; drop the board-specific analytics, 4D studio/worlds art stack and the legacy web/host.mjs line. Known weaknesses: HTTPS reader and read RPC remain trust dependencies, no public-chain deployment, browser-only secret storage, mainnet-only Uniswap config, and a ~200 KB data-URI tokenURI that some marketplaces will truncate.",
+  "components": [
+    {
+      "name": "tools/compile.mjs",
+      "path": "/home/user/Pixel-Garden/tools/compile.mjs",
+      "purpose": "solc-js 0.8.36 viaIR runs=1 cancun compile of src/, EIP-170/initcode gates, reproducible runtime hashes (bytecodeHash:none) pinned into the kernel constructor",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "compile({tests}) L6",
+        "size gate L179/L193: runtimeBytes > 24576 || initcodeBytes > 49152 throws"
+      ],
+      "design_decisions": [
+        "Pin the exact Content runtime without embedding another complete copy in Kernel initcode. Compile from the same sources/settings; never accept a caller-supplied identity hash."
+      ],
+      "security_invariants": [
+        "Kernel only accepts cartridge runtimes whose keccak matches compile output"
+      ],
+      "standards": [],
+      "reuse_notes": "Keep the pinned-runtime-hash constructor pattern for a modular kernel."
+    },
+    {
+      "name": "tools/host-encoding.mjs",
+      "path": "/home/user/Pixel-Garden/tools/host-encoding.mjs",
+      "purpose": "Radix-85 codec (printable ASCII minus quote/backslash/angle/backtick) for gzip host payload inside <script>",
+      "reuse_verdict": "reuse-verbatim",
+      "key_functions": [
+        "alphabet L2",
+        "encode85(bytes) L6",
+        "decode85(text,length,alphabet) L20 (stringified into bootstrap)"
+      ],
+      "design_decisions": [
+        "No HTML-hazardous characters so the payload needs no escaping"
+      ],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_notes": "Pair with DecompressionStream('gzip') bootstrap."
+    },
+    {
+      "name": "tools/build-kernel.mjs",
+      "path": "/home/user/Pixel-Garden/tools/build-kernel.mjs",
+      "purpose": "Bundle web/kernel/host.mjs, gzip+radix85, emit bootstrap, package cartridges (<=262,144 B) and host (<=196,608 B), compute trusted-workspace digests (web/kernel/trusted.json)",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "cartridge cap L163",
+        "host cap L184",
+        "bootstrap string with DOMContentLoaded wait and 'Host recovery failed' fallback"
+      ],
+      "design_decisions": [
+        "Optional closing tags are supplied by Kernel.document, after its bound identity context.",
+        "Only these exact sandbox entrypoints may request unpublished local trade memories."
+      ],
+      "security_invariants": [
+        "Bootstrap declares nothing at global scope"
+      ],
+      "standards": [],
+      "reuse_notes": "Pipeline shape is reusable; cartridge list is project-specific."
+    },
+    {
+      "name": "tools/build-launcher.mjs",
+      "path": "/home/user/Pixel-Garden/tools/build-launcher.mjs",
+      "purpose": "esbuild the HTTPS reader with __HOST_HASH__ injected, emits dist/launcher.html, launcher-chunks/*, garden-sw.js, garden.webmanifest",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "hash injection from kernel build"
+      ],
+      "design_decisions": [
+        "Reader is a verifier, not a mirror"
+      ],
+      "security_invariants": [
+        "Only exact pinned host hash runs"
+      ],
+      "standards": [],
+      "reuse_notes": ""
+    },
+    {
+      "name": "tools/fixture-kernel.mjs",
+      "path": "/home/user/Pixel-Garden/tools/fixture-kernel.mjs",
+      "purpose": "Deploy ERC-6551 registry runtime, ArchiveFactory, cartridges, kernel [10000, content, keccak(Market..Presale)], freeze host, mint, assert tokenURI->animation_url->document round trip; writes dist/deployment.json",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "decodeURIComponent(tokenURI.split(',').slice(1).join(','))",
+        "assert document.startsWith(html)"
+      ],
+      "design_decisions": [
+        "Development-only connection metadata is outside the immutable production host."
+      ],
+      "security_invariants": [],
+      "standards": [
+        "ERC-721",
+        "ERC-6551"
+      ],
+      "reuse_notes": "Template for mint->tokenURI->run integration test."
+    },
+    {
+      "name": "tools/recover-cartridges.mjs",
+      "path": "/home/user/Pixel-Garden/tools/recover-cartridges.mjs",
+      "purpose": "CLI: with RPC + token id, recover host document, every cartridge, journal, rooms, locks, presales, OTC, launches and history to disk",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "recoverGarden(core, tokenId, outputDirectory) L15"
+      ],
+      "design_decisions": [
+        "Every feature has a no-UI recovery path"
+      ],
+      "security_invariants": [
+        "Pinned block, exact byte checks"
+      ],
+      "standards": [],
+      "reuse_notes": ""
+    },
+    {
+      "name": "tools/verify-source.mjs",
+      "path": "/home/user/Pixel-Garden/tools/verify-source.mjs",
+      "purpose": "Recompile a contract from source with pinned compiler and compare exact runtime bytes (Hook Inspector)",
+      "reuse_verdict": "reuse-verbatim",
+      "key_functions": [
+        "verifySourceBuild({input,compilerVersion,source,contract,runtime}) L6",
+        "L19 rejects malformed hex or >24,576 bytes"
+      ],
+      "design_decisions": [],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_notes": ""
+    },
+    {
+      "name": "tools/maturity-keeper.mjs + ops/maturity-keeper.service + sdk/maturity-keeper.mjs",
+      "path": "/home/user/Pixel-Garden/tools/maturity-keeper.mjs",
+      "purpose": "systemd keeper that signs only executeSale for matured vesting-sale recipes, journals before broadcast, enforces caps, never resends",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "maturityKeeper() sdk L86",
+        "keeperConfig L14",
+        "keeperDomain L39",
+        "validateKeeperState L49"
+      ],
+      "design_decisions": [
+        "One gas payer, one durable journal. Never authorizes, changes a route, or pays a different recipient."
+      ],
+      "security_invariants": [
+        "Refuses changed kernel/chain/genesis",
+        "Confirmed-receipt reorg blocks subsequent nonce use",
+        "journal cap 1,000 attempts"
+      ],
+      "standards": [
+        "EIP-712"
+      ],
+      "reuse_notes": "Pattern for any off-chain automation."
+    },
+    {
+      "name": "tools/package-cartridge.mjs, tools/rpc-relay.mjs, tools/dev.mjs",
+      "path": "/home/user/Pixel-Garden/tools/package-cartridge.mjs",
+      "purpose": "Package a module app into release format; allowlisted read-only JSON-RPC relay for browser tests; dev server over fixture",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "packageModuleApplication L11"
+      ],
+      "design_decisions": [],
+      "security_invariants": [
+        "relay allows only read methods"
+      ],
+      "standards": [],
+      "reuse_notes": "rpc-relay reuse-verbatim for test infra."
+    },
+    {
+      "name": "web/launcher (reader)",
+      "path": "/home/user/Pixel-Garden/web/launcher/main.mjs",
+      "purpose": "Static HTTPS page that lists owned tokens, mints with seed, recovers prior mints by nonce, and runs the on-chain host only after hash verification; SW caches shell only",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "open(v) L186 -> recoverGardenHost(...,__HOST_HASH__) L189",
+        "DOMParser/replaceWith DOM swap L202-208",
+        "startup hostArchive().expandedHash === __HOST_HASH__ L406",
+        "connected() L102",
+        "recoverMint() L260",
+        "initializeSeedMint() L337",
+        "shelf() L164",
+        "web3:// address card L154"
+      ],
+      "design_decisions": [
+        "Only an exact build-pinned host can run on this origin. Neither arbitrary token metadata nor query-provided HTML is executable. Cartridges stay sandboxed.",
+        "document.write/open removes wallet message listeners. Replace the inert DOM and explicitly start only the already verified bootstrap, preserving providers."
+      ],
+      "security_invariants": [
+        "Never executes token metadata or query HTML"
+      ],
+      "standards": [
+        "EIP-1193",
+        "EIP-6963",
+        "ERC-4804/ERC-6860"
+      ],
+      "reuse_notes": "Keep DOM-swap trick, pinned hash, SW-shell-only."
+    },
+    {
+      "name": "web/kernel/host.mjs",
+      "path": "/home/user/Pixel-Garden/web/kernel/host.mjs",
+      "purpose": "Immutable host runtime: workspace menu (24 workspaces/20 boards), holdings, Reach/Grip, seals/sessions, cartridge sandbox + bridge, trusted workspace loading",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "client = new GardenClient(window.PIXEL_CONTEXT) L137",
+        "CSP string L1078",
+        "pixel.ready/MessageChannel/pixel.connect L1088-1122",
+        "limits L1105: >120 req, >=4 concurrent, >40000 chars"
+      ],
+      "design_decisions": [
+        "Cartridges get no network (connect-src 'none'); all data via capability bridge"
+      ],
+      "security_invariants": [
+        "Bridge accepts messages only from activeFrame.contentWindow",
+        "transaction.propose never signs; routes to client.operation()"
+      ],
+      "standards": [],
+      "reuse_notes": ""
+    },
+    {
+      "name": "web/kernel/client.mjs (GardenClient)",
+      "path": "/home/user/Pixel-Garden/web/kernel/client.mjs",
+      "purpose": "Wallet connect, ownership/account refresh, operation guard, send with durable journal, content install/activate, state save",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "refresh() L120 (ownerOf L131, custodyEpoch L132, accountReady L135, isCanonicalAccount x2 L141-142)",
+        "get owns L153",
+        "connect() L159",
+        "operation() L206",
+        "send() L286",
+        "contents.ownerOf(edition) !== reach L819"
+      ],
+      "design_decisions": [
+        "Account binding failed thrown unless both TBAs canonical"
+      ],
+      "security_invariants": [
+        "Every write rechecks chain, account, custody epoch, activation, simulates"
+      ],
+      "standards": [
+        "ERC-721",
+        "ERC-6551",
+        "EIP-1193"
+      ],
+      "reuse_notes": "The operation() guard is the core of connect->verify->use."
+    },
+    {
+      "name": "web/kernel trusted-*.mjs + sdk/host-modules.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/host-modules.mjs",
+      "purpose": "Hash-pinned native workspace loaders: recover archive, verifyHostModule against build digest, then new Function(source+';return PixelX;')()",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "verifyHostModule(recovered, path, expected) L3"
+      ],
+      "design_decisions": [
+        "Recovery proves what was published. This separate check proves it is the host author's exact code."
+      ],
+      "security_invariants": [
+        "Exact SHA-256 + byte count + path + MIME"
+      ],
+      "standards": [],
+      "reuse_notes": "Escape hatch for EIP-170 front-end size without an upgrade key."
+    },
+    {
+      "name": "web/kernel/wallet-choice.mjs, transaction-store.mjs, publications.mjs, mint-seed.mjs, read-console.mjs, a11y.mjs",
+      "path": "/home/user/Pixel-Garden/web/kernel/wallet-choice.mjs",
+      "purpose": "EIP-6963 discovery; IndexedDB journal under Web Locks; publication checkpoints; seeded mint; send-less pinned console; accessibility",
+      "reuse_verdict": "reuse-verbatim",
+      "key_functions": [
+        "mintWithSeed (visualSeed 1..4294967295)",
+        "PublicationStore"
+      ],
+      "design_decisions": [],
+      "security_invariants": [
+        "read console rejects sends, expressions, oversized slots"
+      ],
+      "standards": [
+        "EIP-6963"
+      ],
+      "reuse_notes": "transaction-store/publications adapt; others verbatim."
+    },
+    {
+      "name": "web/cartridge-api.mjs",
+      "path": "/home/user/Pixel-Garden/web/cartridge-api.mjs",
+      "purpose": "Cartridge-side bridge client over MessagePort",
+      "reuse_verdict": "reuse-verbatim",
+      "key_functions": [
+        "call(method, params) 180,000 ms timeout",
+        "$ escape show action"
+      ],
+      "design_decisions": [],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_notes": ""
+    },
+    {
+      "name": "sdk/archive/format.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/archive/format.mjs",
+      "purpose": "Release manifest schema, canonical JSON, limits, packaging, verification, dependency graph, chunk planning",
+      "reuse_verdict": "reuse-verbatim",
+      "key_functions": [
+        "RELEASE_SCHEMA L4",
+        "HOST_API L5",
+        "CAPABILITIES L7",
+        "LIMITS L15",
+        "canonicalJSON L52",
+        "safePath L76",
+        "validateManifest L98",
+        "packageFiles L278",
+        "packageHTML L294",
+        "verifyArchive L356",
+        "resolveReleaseGraph L397",
+        "planChunks L437",
+        "readVerifiedFile L469"
+      ],
+      "design_decisions": [
+        "Content-addressed chunks deduplicated across releases"
+      ],
+      "security_invariants": [
+        "16 KiB manifest, 64 releases, depth 16, 64 MiB/8 MiB"
+      ],
+      "standards": [],
+      "reuse_notes": "Rename schema strings."
+    },
+    {
+      "name": "sdk/archive/chain.mjs + hash.mjs + host-document.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/archive/chain.mjs",
+      "purpose": "Publish/recover archives and content editions via ArchiveFactory/OnchainApp/Directory; rebuild exact host document",
+      "reuse_verdict": "reuse-verbatim",
+      "key_functions": [
+        "publishArchive L43",
+        "recoverArchive L118",
+        "publishContent L180",
+        "recoverContent L232",
+        "recoverContents L239",
+        "recoveredHostDocument L5"
+      ],
+      "design_decisions": [
+        "Never trust an address from a resume file or mapping without checking exact bytes.",
+        "Recover only canonical readers at a pinned block. No unbounded readAll or execution.",
+        "Rebuilding it from verified inputs avoids trusting a separate RPC response for active HTML."
+      ],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_notes": ""
+    },
+    {
+      "name": "sdk/archive/publication.mjs + sdk/state.mjs + sdk/transactions.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/archive/publication.mjs",
+      "purpose": "Durable publication/state/transaction checkpoints persisted before broadcast, classified inspection, read-only merges",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "publicationRunner L184",
+        "mergePublication L272",
+        "inspectTransaction L43",
+        "durableRunner L114",
+        "STATE_SCHEMA L15",
+        "BROWSER_RECOVERY L16",
+        "executeStateSave L131"
+      ],
+      "design_decisions": [
+        "Checkpoints are untrusted data. They never contain a wallet key or executable task list.",
+        "A saved hash is evidence to inspect, never authority to skip a transaction.",
+        "Recompute every call from the package, replay confirmed exact calls, and persist BEFORE broadcast.",
+        "Import cannot erase newer local evidence and accidentally mint the same edition twice."
+      ],
+      "security_invariants": [
+        "never auto-resend",
+        "state blob 32 KiB"
+      ],
+      "standards": [],
+      "reuse_notes": ""
+    },
+    {
+      "name": "sdk/launcher.mjs + sdk/discovery.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/launcher.mjs",
+      "purpose": "Garden URL (web3://) codec, mint receipt parsing, owned-token paging, host recovery with pinned hash, starter install; shared pinned-block log pager",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "gardenURL L15",
+        "parseGardenURL L21",
+        "mintedGarden L29",
+        "ownedGardenPage L46",
+        "recoverGardenHost L78",
+        "installStarter L118",
+        "PAGE_LIMITS 20,000/2,000/1,000",
+        "checkSnapshot"
+      ],
+      "design_decisions": [
+        "Deliberately a narrow Garden URL parser, not a general web3 interpreter. Do not use URL.port: EVM chain IDs are not TCP ports and may exceed 65535.",
+        "Hash checks detect corrupt recovery; they are not consensus proofs against a lying RPC."
+      ],
+      "security_invariants": [],
+      "standards": [
+        "ERC-4804/ERC-6860"
+      ],
+      "reuse_notes": "discovery.mjs reuse-verbatim."
+    },
+    {
+      "name": "sdk/whispers.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/whispers.mjs",
+      "purpose": "Whispers v1 DMs: P-256 ECDH -> HKDF-SHA-256 -> AES-256-GCM with chain-bound scope AAD; PBKDF2 key backups",
+      "reuse_verdict": "reuse-verbatim",
+      "key_functions": [
+        "whisperScope L14",
+        "createMessagingKey L26",
+        "messageContext L56",
+        "encryptWhisper L66",
+        "decryptWhisper L94",
+        "encryptKeyBackup L127 (PBKDF2 310,000 L120)",
+        "decryptKeyBackup L147"
+      ],
+      "design_decisions": [
+        "Browser-native encryption. Private keys never enter an application frame, RPC or contract."
+      ],
+      "security_invariants": [
+        "plaintext <=1,024 B, envelope <=4,096 B"
+      ],
+      "standards": [],
+      "reuse_notes": ""
+    },
+    {
+      "name": "sdk/whisper-ratchet.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/whisper-ratchet.mjs",
+      "purpose": "Whispers v2: X25519 classical Double Ratchet with chain-authenticated offer/accept/complete handshake",
+      "reuse_verdict": "reuse-verbatim",
+      "key_functions": [
+        "MAX_SKIPPED=64 L20",
+        "validateRatchetState L40",
+        "createRatchetOffer L168",
+        "acceptRatchetOffer L220",
+        "completeRatchetOffer L245",
+        "encryptRatchet L278",
+        "decryptRatchet L317",
+        "discardSkippedKeys L359"
+      ],
+      "design_decisions": [
+        "State transitions are copy-on-success. The caller MUST durably replace encrypted state before submitting a ciphertext or exposing plaintext"
+      ],
+      "security_invariants": [
+        "replay rejected",
+        "auth failure never mutates state"
+      ],
+      "standards": [],
+      "reuse_notes": ""
+    },
+    {
+      "name": "sdk/social.mjs + sdk/social-board.mjs + sdk/sealed-packets.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/social.mjs",
+      "purpose": "EIP-712 identity attestations, room/post/reaction recovery, bounded attachments, conversation history, passphrase-sealed journal packets",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "IDENTITY_TYPES L2",
+        "identityDomain L12",
+        "recoverSocial L42",
+        "REACTIONS L14",
+        "validateAttachment L19",
+        "encodeSocialPost L44",
+        "readRoomPage L79",
+        "createConversationHistory L178"
+      ],
+      "design_decisions": [],
+      "security_invariants": [
+        "posts <=2,048 B",
+        "UTF-8 validated before storage"
+      ],
+      "standards": [
+        "EIP-712"
+      ],
+      "reuse_notes": "sealed-packets reuse-verbatim."
+    },
+    {
+      "name": "sdk/financial-recipes.mjs + locks.mjs + swap-lock.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/financial-recipes.mjs",
+      "purpose": "Typed Reach recipes for v3/v4 swap, launch, exit; lock terms/vesting; swap-to-lock with note commitment; session exposure",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "CALL_TYPE L4",
+        "v3Recipe L16",
+        "v4Recipe L25",
+        "launchRecipe L37",
+        "exitRecipe L52",
+        "recipeHash L72",
+        "sessionExposure L81",
+        "lockRecipe L12",
+        "vestedAmount L38",
+        "swapLockTarget L10",
+        "recoverSwapLock L40",
+        "verifyTradeNote L95"
+      ],
+      "design_decisions": [
+        "Exact recipes, never general executors"
+      ],
+      "security_invariants": [
+        "recipeHash pixel.garden.recipe/1, 1-1024 uses"
+      ],
+      "standards": [
+        "Uniswap v3/v4"
+      ],
+      "reuse_notes": ""
+    },
+    {
+      "name": "sdk/launchpad.mjs + launch.mjs + liquidity.mjs + presale.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/launchpad.mjs",
+      "purpose": "Token + v4 hook creation with CREATE2 flag mining, launch checkpoints, LP seeding math, presales with vesting and attempt reconciliation",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "TOKEN_SPEC L13",
+        "HOOK_SPEC L15",
+        "deploymentRecipe L19",
+        "hookAddress L38",
+        "mineHook L48",
+        "recoverDeployments L67",
+        "newLaunch L17",
+        "executeLaunch L83",
+        "seedPlan L4",
+        "presaleRecipe L30",
+        "validatePresaleVesting L46",
+        "recoverPresales L87"
+      ],
+      "design_decisions": [
+        "Browser does not compile Solidity; imports artifacts/initcode",
+        "salts bind chain/kernel/garden/nonce"
+      ],
+      "security_invariants": [
+        "initcode <=49,152 B",
+        "family 9 payload <=50,176 B"
+      ],
+      "standards": [
+        "ERC-20",
+        "Uniswap v4 hooks"
+      ],
+      "reuse_notes": "Mainnet addresses in config/ethereum.json need per-chain variants."
+    },
+    {
+      "name": "sdk/otc.mjs + estate.mjs + continuity.mjs + vesting-sales.mjs",
+      "path": "/home/user/Pixel-Garden/sdk/otc.mjs",
+      "purpose": "OTC two-party escrow reads/plans, rentals, inheritance states, vesting sale recipes/commitments",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "fundingPlan L12",
+        "readOTCDeal L46",
+        "recoverOTC L64",
+        "recoverEstate L47",
+        "CONTINUITY_STATES L1",
+        "saleRecipe L21",
+        "saleCommitment L54",
+        "recoverSale L95"
+      ],
+      "design_decisions": [],
+      "security_invariants": [
+        "OTC settlement 160,055 gas measured"
+      ],
+      "standards": [
+        "ERC-20/721/1155"
+      ],
+      "reuse_notes": ""
+    },
+    {
+      "name": "sdk analytics readers (history-page, history-checkpoints, hook-inspector, *-discovery, *-accounting, external-metadata, asset-details)",
+      "path": "/home/user/Pixel-Garden/sdk/hook-inspector.mjs",
+      "purpose": "Pinned-block, reorg-checked, bounded readers with replayable checkpoints; hook flag/proxy/runtime inspection; bounded image validators",
+      "reuse_verdict": "adapt",
+      "key_functions": [
+        "checkSnapshot",
+        "pixel.garden.history-checkpoint/1",
+        "collectibleImage"
+      ],
+      "design_decisions": [
+        "Zero and no-answer kept distinct"
+      ],
+      "security_invariants": [],
+      "standards": [
+        "EIP-1967",
+        "EIP-1167"
+      ],
+      "reuse_notes": "Keep discovery/history-checkpoints/hook-inspector; drop board-specific accounting."
+    },
+    {
+      "name": "web/kernel studio/worlds/art stack",
+      "path": "/home/user/Pixel-Garden/web/kernel/studio.mjs",
+      "purpose": "4D procedural geometry, synthesized audio, three world cartridges, 20-board visual language",
+      "reuse_verdict": "drop",
+      "key_functions": [],
+      "design_decisions": [
+        "visuals derive only from on-chain visualSeed"
+      ],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_notes": "Project-specific art direction."
+    },
+    {
+      "name": "legacy web/host.mjs, finance.mjs, journal.mjs, rpc.mjs, garden-game.mjs, tools/build.mjs, tools/fixture.mjs, sdk/packages.mjs",
+      "path": "/home/user/Pixel-Garden/web/host.mjs",
+      "purpose": "Pre-kernel integrated host (96 KiB cap) and 4 KiB-chunk package format",
+      "reuse_verdict": "drop",
+      "key_functions": [],
+      "design_decisions": [],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_notes": "Superseded by web/kernel and sdk/archive."
+    }
+  ],
+  "standards_implemented": [
+    "ERC-721",
+    "ERC-6551 (canonical registry 0x000000006551c19487814612e58FE06813775758, exact ERC-1167 runtime check)",
+    "ERC-4804/ERC-6860 web3:// with string!index.html",
+    "EIP-1193",
+    "EIP-6963",
+    "EIP-712",
+    "ERC-1271 (verified, never signed by session keys)",
+    "ERC-20/ERC-721/ERC-1155 handling",
+    "EIP-1967/EIP-1167 inspection",
+    "Uniswap v3 and v4 (hooks, Permit2, PositionManager)",
+    "ENS",
+    "SSTORE2-style data contracts"
+  ],
+  "unique_ideas": [
+    "Kernel.document(id) = frozen archive bytes + injected PIXEL_CONTEXT script + closing tags; one archive serves every token",
+    "tokenURI percent-encodes only the JSON envelope and base64-encodes the HTML once to stay under RPC gas caps",
+    "Radix-85 gzip transport with the decoder stringified into the on-chain bootstrap",
+    "HTTPS reader as verifier: build-pinned __HOST_HASH__, DOMParser/replaceWith swap preserving wallet listeners, SW caches shell only",
+    "Hash-pinned trusted workspaces loaded via new Function after verifyHostModule to escape EIP-170 for the front-end without an upgrade key",
+    "Sandboxed cartridges: iframe allow-scripts + injected CSP connect-src 'none' + MessageChannel capability bridge with rate/size limits",
+    "isCanonicalAccount check before trusting any TBA; custody epoch increments on every transfer (including self-transfer)",
+    "Exact-recipe sessions with recipeHash and bounded uses; sessionExposure shows worst-case spend",
+    "Swap-to-lock with journalHash note commitment",
+    "Durable transaction journal persisted before wallet access; classified inspectTransaction states; never auto-resend",
+    "Chain-authenticated X25519 Double Ratchet DMs and PBKDF2 sealed journal packets",
+    "Independent recovery CLI for every feature; pinned-block, reorg-checked, bounded readers everywhere",
+    "Reach (acting) vs Grip (receive-only, no exit function) vault split",
+    "Browser-side CREATE2 hook address mining with cancellation bound to form state"
+  ],
+  "weaknesses": [
+    "Host at 196,273/196,608 B (99.8%); new UI must go to trusted extensions evaluated via new Function",
+    "HTTPS reader and read RPC are acknowledged trust dependencies; archive hashes are not consensus proofs",
+    "No public-chain deployment; all numbers from local fixture and mainnet fork",
+    "Ratchet state, whisper keys and journals live only in browser IndexedDB",
+    "Mainnet-only Uniswap address book",
+    "~200 KB data-URI tokenURI may be truncated by marketplaces; web3:// is the real surface",
+    "Cartridges have no network; everything through a 120 req/min bridge",
+    "20 boards remain incomplete per evidence limits",
+    "Legacy host/fixture/packages still in tree",
+    "Single-chain kernel, no multi-chain partitioning"
+  ],
+  "website_delivery": "Host HTML built by tools/build-kernel.mjs (gzip + radix-85, DOMContentLoaded bootstrap with DecompressionStream) is published as raw ArchiveFactory chunk contracts (23,000 B chunks, 32/leaf, 16 leaves, 11,776,000 B max) and frozen once by PixelGardenKernel.freezeHost (src/PixelGardenKernel.sol:229; publisher-only, before first mint, <=196,608 B). document(id) (L247) returns the exact bytes + '<script>window.PIXEL_CONTEXT={...}</script></body></html>'; document(id,string) (L244) is the ERC-6860 overload for web3://KERNEL:CHAIN/document/ID/string!index.html; tokenURI (L799) -> ContentCartridge.gardenMetadata (src/cartridges/ContentCartridge.sol:79) returns a percent-encoded data:application/json whose animation_url is data:text/html;base64,<document(id)> and external_url is the web3:// address. A separate static HTTPS reader (web/launcher, dist/launcher.html + chunks + garden-sw.js) recovers the on-chain host via recoverGardenHost and refuses to run unless hostArchive().expandedHash === build-pinned __HOST_HASH__ (web/launcher/main.mjs:406), then swaps the DOM via DOMParser/replaceWith (L202-208) and re-creates scripts, never document.write. Large UIs are hash-pinned trusted workspaces; content cartridges run sandboxed in iframes with injected CSP.",
+  "wallet_gating": "No login signature or backend. EIP-6963/window.ethereum provider, eth_accounts silently or eth_requestAccounts on gesture, chain id checked against PIXEL_CONTEXT (web/kernel/client.mjs:159). GardenClient.refresh() (L120) batch-reads ownerOf, custodyEpoch, account/grip, accountReady, displayName, visualSeed and throws 'Account binding failed' unless kernel.isCanonicalAccount passes for both Reach and Grip (L141-142; CREATE2 + exact ERC-1167 runtime hash, registry 0x000000006551c19487814612e58FE06813775758). owns = connected account === ownerOf (L153); owner-only controls render disabled otherwise. Every write goes through operation() (L206) which re-checks chain, account, custody epoch, cartridge activation epoch, simulates, then send() (L286) journals before broadcast. Authority is enforced on chain: kernel owner checks, ReachAccount authorized(epoch,msg.sender) on withdrawals/seals/sessions, custody epoch bump on every transfer. Public reads need no wallet; read-console is send-less and pinned-block.",
+  "measured_numbers": [
+    "Frozen host 196,273 / 196,608 B (SHA-256 22644b25...) at OTC Board 21; 196,543 B after dependency-bound fix",
+    "Caps: host 196,608 B; cartridge 262,144 B; legacy host 98,304 B; archive chunk 23,000 B; leaf 32 chunks; directory 16 leaves / 512 chunks / 11,776,000 B",
+    "Manifest 16 KiB; state blob 32 KiB; browser recovery 2 MiB per release / 8 MiB total; graph 64 releases depth 16; SDK 64 MiB",
+    "Cartridge bridge: 120 req/min, 4 concurrent, 40,000-char JSON, 180,000 ms timeout",
+    "Discovery paging 20,000 blocks / 2,000 chunk / 1,000 events",
+    "Kernel 23,798/44,931 B (mint-to-app) -> 23,785/45,494 B; Reach 17,268/17,517; Grip 1,933/2,106; Content 8,898/17,774; Market 24,089/25,336 -> 23,690/24,936; Locks 14,275; Social 13,272; Continuity 8,796; Estate 19,044; Presale 16,701; Curve 18,797/19,586; Liquidity 21,673/23,593; OTC 15,370/16,159 B",
+    "Trusted workspaces: social 196,001; continuity 272,242; estate 293,236; locks 190,624; analytics 315,104; presale 153,676; finance 269,380; workspace 321,866; experience 345,673 B",
+    "Cartridges at Board 21: market 78,815; studio 75,505; garden-game 60,858; moonlit 60,860; nexus 60,853; journal 37,524; locks 34,968; thin launchers ~23,300-23,460 B",
+    "Reader chunks 131,344 B + 128,374 B; garden-sw.js 1,254 B; webmanifest 282 B",
+    "Whispers: plaintext <=1,024 B, envelope <=4,096 B, PBKDF2-SHA-256 310,000 iterations, MAX_SKIPPED 64",
+    "Launchpad payloads: family 9 <=50,176 B; Market/Presale/Curve/Liquidity <=12,288 B (hookData <=8,192 B); initcode <=49,152 B; token name 1-64 B, symbol 1-16 B, decimals 0-18",
+    "OTC settlement 160,055 gas; up to 8 assets per side",
+    "Tests: 289 -> 298 -> 396 automated; 173 browser functional groups + 116 layout audits + 16 launcher groups; 90 local browser checks; 45 fork + 3 ENS + 17 financial browser checks; mainnet fork block 26,059,508",
+    "Keeper journal cap 1,000 attempts; ERC-6551 registry runtime hash 0xda1d5b06e579f9e42e59b00fbc22939896ecb38dc8830d40de0a2508fecd6735",
+    "Area size 28,612 lines of JS; 60 commits 2026-09-25 to 2026-09-29"
+  ],
+  "pitfalls": [
+    "document.open/write after wallet injection drops EIP-1193 listeners; swap DOM nodes instead",
+    "Loader-side global const collides with minified host; bootstrap declares nothing globally",
+    "Re-base64-ing the whole HTML inside tokenURI exceeds RPC gas caps; encode the envelope only",
+    "URL.port cannot carry chain ids > 65,535; parse web3:// host:chain manually",
+    "try/catch alone does not survive a codeless address; also check extcodesize",
+    "Validate room titles as UTF-8 and bound inline images and dependency recovery (codex fixes)",
+    "Transaction import must never overwrite locally tracked records (duplicate-mint hazard)",
+    "Hook mining must be cancellable on form change; CREATE2 salts must bind chain/kernel/garden/nonce",
+    "metadata.bytecodeHash:'none' is required for reproducible runtime hashes pinned in the kernel constructor",
+    "Trusted-workspace digests change whenever any UI source changes; frozen hosts and their archived clients must keep original builds"
+  ],
+  "tests_and_tooling": "node:test suites (test/*.test.mjs) against a Hardhat 31337 cancun fixture built by tools/fixture-kernel.mjs; npm run check = compile -> build -> fixture -> unit -> Playwright Chromium 153 browser suites (browser-launcher 339 lines, browser-kernel 793, browser-social 399, browser-otc 401) with a deterministic injected EIP-1193 provider auditing 24 workspaces at 320/390/768/1500 px; test/financial-fork.mjs (1,034 lines) and ens-fork.mjs against mainnet fork block 26,059,508; test/keeper-integration.mjs drives the systemd keeper CLI; tools/rpc-relay.mjs allowlists read methods for browser tests; CI .github/workflows/verify.yml runs two final-source jobs. Telling tests: 'package recovery rejects false full-payload hashes even when upload root is consistent', 'browser host recovery constructs the exact document from verified archive bytes', 'durable runner persists exact nonce before wallet access and blocks uncertain replay', 'wrong chain, changed snapshot, tampered payload and noncanonical receipt fail closed', 'native host extensions reject substituted bytes, paths and MIME', 'ratchet rotates both directions, consumes old keys and rejects replay', 'keeper signs only executeSale, journals before broadcast and recovers without a second submission', 'Garden URLs preserve uint256 IDs and chain IDs beyond the TCP port range', 'no issuance without the Garden owner or an exact delegated recipe'."
+}

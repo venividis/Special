@@ -1,0 +1,620 @@
+{
+ "repo": "MASTER-NFT-PROJECT (ANIMA v7 Master) — /home/user/MASTER-NFT-PROJECT, branch main @ f65fb2c",
+ "area": "All Solidity contracts: contracts/src/** (100 .sol files, 12,081 lines, read in full)",
+ "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/master-contracts.md",
+ "summary": "ANIMA v7 is an ERC-721 (IDontFuckingBelieveIt, 20,940 B) that mints, per token, a deterministic CREATE2 NFT account (SovereignAccount, 21,506 B, via SovereignAccountFactory 23,423 B) and renders a fully on-chain tokenURI (ConfluenceRenderer) whose animation_url is a ~15 KB self-verifying HTML loader that fetches, SHA-256-verifies and document.write()s a multi-MB app from STOP-prefixed AppChunk contracts (OnchainApp v1 <=64 chunks, OnchainAppDirectory v2 <=512, OnchainModuleDirectory v3 gzip functional modules) using the viewer's own wallet RPC. Around the token sits a sealed 'Genesis stack' discovered through a publish-once GenesisManifest: NativeMarket (constant-product swap, 30 bps, swap-and-lock), GenesisLaunchpad (pro-rata batch sale that seeds permanent liquidity and vests founders through TimeVault), TimeVault (cliff/linear locks, no admin), WorldLedger (public rooms, reactions, profiles, follow/block, consent-epoch moderation, protocol-attributed activity feed), MemoryLedger + JournalSwapRouter (public/encrypted journal with reflection branches and journaled swaps), VestedExitVault, EstateExchange (sells the NFT under a declared-inventory covenant) and a real Uniswap-v4 market (V4GenesisMarket + PhoenixLaunchHook).\n\nVersion 7 adds a per-NFT installable program system: ModuleArchiveFactory -> ExtensionReleaseRegistry (publisher-namespaced immutable releases with exact dependencies) -> TokenModuleRegistry (atomic release+state activation, append-only roots/history, stale-review protection) -> ModuleStateStore (<=32 KiB snapshots stored as AppChunks; measured 7,713,661 gas for 32,768 bytes under the EIP-7825 16,777,216 cap), plus ChunkedCartridgeRegistry (ERC721 cartridges whose HTML is byte-exact recoverable and whose launch authorization follows the holding NFT's current owner) and ModuleWorkbench (a second recoverable 707,014-byte page exposing services()). A long tail of optional extensions exists: encrypted group chat (EpochGroupChat, MLSGroupChat, PrivacyKeys), LayerZero OFT lane and read-only state portal, agents (ERC-8183 draft, policy guard, provider directory), gas sponsorship, ENS subnames, streaming uniform-price auction, quadratic matching, fractional custody/governance, experimental DeFi gated to testnets, and a Groth16 quote proof.\n\nThe two load-bearing protocol ideas are (1) identity = the NFT's account: every peripheral checks collection.accountOf(id)==msg.sender while the account only obeys ownerOf(id); approvals and ERC-4907 users never gain authority; and (2) a custody epoch (SovereignAccount.sessionEpoch) bumped on every transfer and re-read by every grant, invitation, plan, listing and UI review. Ownership gating is therefore client-side (ConfluenceWallet.connect reads ownerOf at a pinned block and refuses non-owners) plus contract-enforced. Weaknesses: not canonical ERC-6551, two contracts within 1.2 KB of EIP-170, admin keys until freeze/seal, swap v1 has no LP layer, messages stored in contract storage, loader requires an RPC in the viewer (no web3:// route), mixed revert styles and heavily minified Solidity, ganache-based tests. Verdict: adapt the account/custody-epoch model, the chunked app + loader, the module/state registries, TimeVault, WorldLedger, launchpad and v4 market; drop sovereign/proof/agent/crosschain/experimental tails.",
+ "components": [
+  {
+   "name": "IDontFuckingBelieveIt",
+   "path": "contracts/src/core/IDontFuckingBelieveIt.sol",
+   "purpose": "ERC-721 collection: commit/reveal mint with endowment into a per-token account, metadata KV, ERC-4907/2981/4906, evolution/sovereign/ERC-8004 binding, transfer hook that rolls the account epoch",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "commitAwakening(bytes32) payable",
+    "revealAwakening(bytes32 secret,address recipient) returns(uint256,address)",
+    "cancelExpiredAwakening()",
+    "spawnFromAccount(uint256,address,bytes32) payable",
+    "setMetadata(uint256,string,bytes)",
+    "metadata(uint256,string) view returns(bytes)",
+    "accountOf(uint256)",
+    "artifactIdOfAccount(address)",
+    "renderSnapshot(uint256) returns(OrganismRenderData)",
+    "ascend(uint256,bytes32,uint96,uint32)",
+    "commitEvolution(uint256,bytes32,bytes32,bytes32)",
+    "bindERC8004(uint256,address,uint256,bytes32)",
+    "setUser(uint256,address,uint64)",
+    "setRoyalty(address,uint16)/freezeRoyalty()"
+   ],
+   "design_decisions": [
+    "Seed = keccak(domain,chainid,this,sender,recipient,secret,blockhash(commit+1),prevrandao,nextTokenId); reveal window 2..200 blocks",
+    "_isMutableAuthority: account always; owner only while not sovereign; 'A marketplace approval must never grant ascension, identity or spending authority.'",
+    "_transfer calls account.invalidateSessionsOnTransfer(), clears ERC-4907 user, forbids sending into any ANIMA account/collection/factory (ForbiddenTransferTarget)",
+    "Reserved metadata keys computed live from the account (stateRoot/memoryRoot/auditRoot)"
+   ],
+   "security_invariants": [
+    "Only the token's account may commitEvolution and only when its stateRoot already equals the derived root",
+    "Sovereign tokens transfer only by their account",
+    "Royalty <=1,000 bps, freezable; setAccountFactory once"
+   ],
+   "standards": [
+    "ERC-721",
+    "ERC-721 Metadata",
+    "ERC-165",
+    "ERC-2981",
+    "ERC-4906",
+    "ERC-4907",
+    "ERC-8048-style metadata (0xdf670be1)",
+    "ERC-8004 binding"
+   ],
+   "reuse_notes": "Keep mint, account wiring, authority predicates, transfer hook and KV; strip evolution/sovereign/ERC-8004; rename; consider ERC-6551 registry. 20,940 B."
+  },
+  {
+   "name": "SovereignAccount",
+   "path": "contracts/src/core/SovereignAccount.sol",
+   "purpose": "Per-token NFT-owned account (Bound mode: owner executes; exact-calldata asset-budgeted grants; ERC-1271; ERC-6551-shaped views) with optional irreversible proof-only Sovereign mode and an append-only audit root",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "execute(address,uint256,bytes) payable returns(bytes)",
+    "executeUtility(uint256 expectedNonce,uint48 deadline,address asset,address target,uint256 value,bytes data,uint256 allowance) payable",
+    "grantAction(address caller,address target,address asset,bytes32 dataHash,uint112 perCall,uint112 budget,uint96 value,uint48 expires,uint32 maxCalls) returns(uint256)",
+    "adoptInstrument(address registry,bytes32 edition) returns(bytes32)",
+    "grantInstrument(...)",
+    "executeInstrument(uint256 id,uint256 expectedNonce,bytes data) returns(bytes)",
+    "revokeInstrument(uint256)",
+    "invalidateSessionsOnTransfer()",
+    "evolveBound(uint256,bytes32,bytes32,bytes32)",
+    "executeVerified(Intent,bytes,bytes) payable",
+    "isValidSignature(bytes32,bytes)",
+    "isValidSigner(address,bytes)",
+    "token()/state()",
+    "sessionEpoch()/currentOwner()/mode()/actionNonce()"
+   ],
+   "design_decisions": [
+    "Net debit measured by balance difference against perCall/remaining; approval set to min(remaining,perCall) then reset; target codehash pinned; custody re-checked after the call",
+    "Legacy createSession/executeSession always revert: 'Legacy selector sessions cannot express token budgets.'",
+    "7-day adoption delay for registry-published instruments",
+    "onERC721Received rejects same-collection tokens (no nesting)",
+    "Audit root chained on every action with block number/timestamp"
+   ],
+   "security_invariants": [
+    "onlyController = msg.sender == ownerOf(tokenId); ERC-721 approvals are not authority",
+    "sessionEpoch increments on transfer/ascension and invalidates every grant",
+    "Grants: expires <= now+30d, maxCalls 1..100, native value only when asset==0"
+   ],
+   "standards": [
+    "ERC-1271",
+    "ERC-6551-like token()/state()/isValidSigner (not canonical)",
+    "ERC-721/1155 receiver",
+    "EIP-712-style typehashes"
+   ],
+   "reuse_notes": "Keep Bound-mode API; remove Sovereign/proof branch (~40% of bytecode); consider canonical ERC-6551. 21,506 B."
+  },
+  {
+   "name": "SovereignAccountFactory",
+   "path": "contracts/src/core/SovereignAccountFactory.sol",
+   "purpose": "CREATE2 factory; salt=keccak(domain,chainid,collection,tokenId); only the collection may create",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "createAccount(uint256) returns(address)",
+    "predictAccount(uint256) view",
+    "saltFor(uint256)"
+   ],
+   "reuse_notes": "23,423 B because it embeds the account creation code; 1.1 KB headroom. ERC-6551 registry would replace it."
+  },
+  {
+   "name": "ProofRouter / ThresholdAttestationVerifier / SP1ActionVerifier / RiscZeroActionVerifier / CompositeActionVerifier",
+   "path": "contracts/src/core/ProofRouter.sol, ThresholdAttestationVerifier.sol, ZkVmVerifierAdapters.sol",
+   "purpose": "Freezable verifier dispatch for sovereign-mode intents; M-of-N ECDSA quorum (strictly increasing signer order); SP1/RISC Zero/composite adapters",
+   "reuse_verdict": "drop",
+   "reuse_notes": "Only needed for the irreversible sovereign mode; frozenAuthority accepts only an exact ThresholdAttestationVerifier runtime."
+  },
+  {
+   "name": "OnchainRenderer",
+   "path": "contracts/src/core/OnchainRenderer.sol",
+   "purpose": "Animated SVG + JSON fallback renderer from OrganismRenderData",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "render(address collection,uint256 tokenId) view virtual returns(string)"
+   ],
+   "reuse_notes": "10,463 B; base class of ConfluenceRenderer."
+  },
+  {
+   "name": "OmnichainWitnessRegistry",
+   "path": "contracts/src/core/OmnichainWitnessRegistry.sol",
+   "purpose": "Transport-neutral registry of remote state roots per identity/domain with monotonic nonces",
+   "reuse_verdict": "drop"
+  },
+  {
+   "name": "ProtocolAssets / ProtocolGuard",
+   "path": "contracts/src/protocol/ProtocolPrimitives.sol",
+   "purpose": "Exact-delta ERC20/native pull/push/approveExact (rejects fee-on-transfer), nonReentrant, _identity(collection,actor,id), _amount<=uint112",
+   "reuse_verdict": "reuse-verbatim",
+   "design_decisions": [
+    "'No delegatecall, no native-token/ERC20 dual representation, no silent false returns.'",
+    "'Zero means an unbound wallet/contract address, never a claimed NFT identity.'"
+   ]
+  },
+  {
+   "name": "GenesisToken / OwnerLaunchToken",
+   "path": "contracts/src/protocol/GenesisToken.sol, confluence/fees/OwnerLaunchFactory.sol",
+   "purpose": "Minimal fixed-supply ERC-20s: 'No owner, mint, blacklist, tax, upgrade, or confiscation entrypoint.'",
+   "reuse_verdict": "reuse-verbatim",
+   "standards": [
+    "ERC-20"
+   ],
+   "reuse_notes": "1,676 B / 1,698 B; add EIP-2612 if needed."
+  },
+  {
+   "name": "GenesisLaunchpad",
+   "path": "contracts/src/protocol/GenesisLaunchpad.sol",
+   "purpose": "Pro-rata batch token launch: immutable terms, soft/hard cap, refundable failure, permissionless settle that seeds the market with >=50% of the raise, founder vesting and treasury lock in TimeVault, launch room in WorldLedger",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "create(string,string,string,uint112 supply,uint64 opens,uint64 closes,uint112 softCap,uint112 hardCap,uint16 founderBps,uint16 liquidityBps,uint32 vesting,uint256 identity) returns(uint256,address)",
+    "contribute(uint256,uint256) payable",
+    "withdrawContribution(uint256,uint112,uint256)",
+    "settle(uint256)",
+    "claim(uint256,uint256) returns(uint256)",
+    "launchInfo/launchAllocation"
+   ],
+   "design_decisions": [
+    "publicAllocation=(supply-founder)*1e4/(1e4+liquidityBps); LP tokens match contributor price: 'no invented price oracle'",
+    "founderBps<=2000, liquidityBps 5000..10000, vesting 30..1825 days, window 1h..30d",
+    "'This is NOT a continuous clearing auction or a claim of Sybil/MEV resistance.'"
+   ],
+   "reuse_notes": "12,964 B; contributions keyed by msg.sender; pair with ContinuousClearingAuction."
+  },
+  {
+   "name": "NativeMarket",
+   "path": "contracts/src/protocol/NativeMarket.sol",
+   "purpose": "Constant-product ETH/token AMM for launchpad tokens, 30 bps fee in reserves, 1-2 hops, no LP withdrawal, swap-and-lock into TimeVault via lockUntil",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "seed(address token,uint112 amount,uint256 launchId) payable",
+    "swap(address tokenIn,address tokenOut,uint112 amount,uint112 minOut,uint48 deadline,uint256 identity,uint64 lockUntil) payable returns(uint256,uint256)",
+    "quote(address,address,uint256) view returns(output,spotOutput,hops)",
+    "amountOut(uint256,uint256,uint256) pure"
+   ],
+   "reuse_notes": "5,344 B; no LP tokens/oracle; same ABI as V4GenesisMarket so routers are interchangeable."
+  },
+  {
+   "name": "TimeVault",
+   "path": "contracts/src/protocol/TimeVault.sol",
+   "purpose": "Fixed-beneficiary native/ERC20 cliff and linear vesting locks; no admin or early exit; permissionless release to the committed beneficiary; accountCommitment rolling hash",
+   "reuse_verdict": "reuse-verbatim",
+   "key_functions": [
+    "deposit(address asset,uint112 amount,address beneficiary,uint64 start,uint64 cliff,uint64 end,bool linear,uint256 identity) payable returns(uint256)",
+    "depositFromProtocol(...)",
+    "releasable(uint256) view",
+    "release(uint256) returns(uint256)",
+    "extend(uint256,uint64)",
+    "lockInfo(uint256)"
+   ],
+   "design_decisions": [
+    "'Beneficiary=NFT account makes the right follow that NFT. Selling the NFT can sell the right, but cannot accelerate this contract's release schedule.'",
+    "end <= now+3650 days; non-linear requires cliff==end"
+   ],
+   "reuse_notes": "6,517 B; remove WorldLedger dependency or keep the activity feed."
+  },
+  {
+   "name": "VestedExitVault",
+   "path": "contracts/src/protocol/VestedExitVault.sol",
+   "purpose": "Funded fixed-recipient sell schedule executed permissionlessly through the pinned market; custody-epoch bound; pause/resume/cancel/reauthorize; recovery of matured slices",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "createPlan(uint256 identity,address input,address output,Slice[] terms,bytes32 decision) payable returns(uint256)",
+    "eligible(uint256,uint256) view",
+    "executeSlice(uint256,uint256) returns(uint256)",
+    "control(uint256,uint8)",
+    "recover(uint256,uint256)"
+   ]
+  },
+  {
+   "name": "WorldLedger",
+   "path": "contracts/src/protocol/WorldLedger.sol",
+   "purpose": "On-chain social layer: rooms (gated/slow mode/color), messages with replies, reactions, hide flag, profiles, follow/block, member/moderator consent bound to both custody epochs, protocol-attributed activity feed written only by the sealed market/vault/launchpad/estate",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "sealModules(address market,address vault,address launchpad)",
+    "record(uint8 kind,address actor,uint256 identity,address asset,uint256 amount,uint256 refId,bytes32 detail)",
+    "createRoom(string,string,bool,uint32,uint24,uint256) returns(uint256)",
+    "post(uint256 room,uint256 replyTo,bytes body,uint256 identity) returns(uint256)",
+    "postWithReceipt(...,uint256 activityId)",
+    "react(uint256,uint8,bool)",
+    "setMember/setModerator/acceptInvitation",
+    "setProfile/setView",
+    "memberActive/moderatorActive view"
+   ],
+   "design_decisions": [
+    "'Write membership belongs to consenting custodians, not future NFT buyers.' (invitation epochs of grantor and recipient)",
+    "'Hiding is a presentation flag, never deletion of bytes. World has no global moderator.'",
+    "Room 1 'World' pre-created; MAX_MESSAGE_BYTES 1024; MAX_PAGE 64"
+   ],
+   "reuse_notes": "14,233 B; bodies stored in storage (expensive); consider events-only bodies."
+  },
+  {
+   "name": "AppChunk / OnchainApp / OnchainAppDirectory / OnchainModuleDirectory / ShardedResource",
+   "path": "contracts/src/protocol/OnchainApp.sol, OnchainAppDirectory.sol, OnchainModuleDirectory.sol, ShardedResource.sol",
+   "purpose": "STOP-prefixed <=23,000-byte data contracts; archives whose constructor assembles and SHA-256-verifies all bytes (v1 <=64 chunks); v2 nested directory <=16x32 chunks; v3 versioned functional-module directory (<=32 modules, 64 MiB, root commitment excluding addresses); gzip resource shard directory",
+   "reuse_verdict": "reuse-verbatim",
+   "key_functions": [
+    "AppChunk(bytes payload)",
+    "OnchainApp(address[] chunks,bytes32 sha): chunkCount(),readChunk(uint256),readAll(),contentSha256,byteLength",
+    "OnchainAppDirectory(address[] leaves,bytes32 sha): readChunk(flatIndex)",
+    "OnchainModuleDirectory(Module[],uint256 shellIndex,bytes32 digest): moduleAt(i),dependencyAt(i,j)"
+   ],
+   "design_decisions": [
+    "'Immutable, complete HTML/Wasm/shader archive. Not a mutable URL or an IPFS-only pointer.'",
+    "'Root commitment excludes deployment addresses so identical feature bytes can be reused across editions'"
+   ]
+  },
+  {
+   "name": "ConfluenceRenderer + ConfluenceLoader + GenesisSVG",
+   "path": "contracts/src/confluence/ConfluenceRenderer.sol, ConfluenceLoader.sol, GenesisSVG.sol",
+   "purpose": "tokenURI renderer: JSON with SVG portrait and an animation_url data:text/html loader (stored in an AppChunk) prefixed by window.AWE_CHAIN_IDENTITY; the loader recovers and verifies the full app from chain via the viewer's RPC",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "render(address,uint256) view returns(string)",
+    "constructor(address runtime,address manifest,address privacyResource)"
+   ],
+   "design_decisions": [
+    "'Keeping the recovery program in immutable data avoids embedding its complete executable text in every renderer runtime (EIP-170).'",
+    "Loader: pure-JS SHA-256, pinned block, selectors chunkCount 0xf91f0937 / readChunk 0x8f5281bf / schemaVersion 0x4e2ce6d3, v3 import-map assembly, document.write()"
+   ],
+   "reuse_notes": "14,772 B; regenerate loader for new ABI; add web3:// route."
+  },
+  {
+   "name": "GenesisManifest",
+   "path": "contracts/src/confluence/GenesisManifest.sol",
+   "purpose": "Publish-once per-collection directory of six module addresses (market, vault, memory, ledger, cartridges, exit) read by the app",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "publish(address collection,address[6] modules)",
+    "modulesOf(address) view returns(address[6])"
+   ]
+  },
+  {
+   "name": "ArtifactBinding",
+   "path": "contracts/src/confluence/ArtifactBinding.sol",
+   "purpose": "Adapter exposing artifactIdOfAccount/ownerOf/ownershipEpoch (account sessionEpoch) to cartridge registries",
+   "reuse_verdict": "reuse-verbatim"
+  },
+  {
+   "name": "CartridgeRegistry / ChunkedCartridgeRegistry",
+   "path": "contracts/src/confluence/cartridges/CartridgeRegistry.sol, modules/ChunkedCartridgeRegistry.sol",
+   "purpose": "ERC-721 cartridges holding HTML content (<=24,576 B in storage, or <=1 MiB in verified chunks); launchManifest(id,player) authorizes the holding NFT's current owner",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "publishRelease(string manifestJSON,address[] chunks,bytes32 sha) returns(uint256)",
+    "acquire(uint256 releaseId) returns(uint256)",
+    "contentOf(uint256) view returns(bytes)",
+    "launchManifest(uint256,address) view",
+    "canLaunch(uint256,address) view"
+   ],
+   "design_decisions": [
+    "contentOf re-checks every chunk codehash/length then full SHA-256 before returning",
+    "acquire mints only to msg.sender (no forced delivery)"
+   ],
+   "reuse_notes": "10,969 B; measured 1 MiB read = 13,798,118 view gas."
+  },
+  {
+   "name": "CommissionedCartridges / CommissionEscrow / EditionRegistry / BondedShelf",
+   "path": "contracts/src/confluence/cartridges/CommissionedCartridges.sol, operating/CommissionEscrow.sol, EditionRegistry.sol, BondedShelf.sol",
+   "purpose": "Prefunded work escrow turned into frozen cartridges; content-addressed edition leaves; fixed-price shelves for other NFTs",
+   "reuse_verdict": "drop"
+  },
+  {
+   "name": "OwnerFeeRouter / ISettlementConverter / OwnerLaunchFactory",
+   "path": "contracts/src/confluence/fees/*",
+   "purpose": "Weighted fee splitter with immediate attribution, commitSplit() freeze, converter allowlist, claim/claimFor/claimConverted, allocateSurplus; permissionless token launch factory recording hook/pool commitments",
+   "reuse_verdict": "adapt",
+   "reuse_notes": "7,586 B; creator-fee splits for launches."
+  },
+  {
+   "name": "MemoryLedger / JournalSwapRouter",
+   "path": "contracts/src/memory/MemoryLedger.sol, JournalSwapRouter.sol",
+   "purpose": "Append-only public or client-encrypted journal per NFT (<=32 KiB entries), former-owner reflection branches, journaled swaps that bind the measured fill to the note, formRoot experience trace",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "appendPersonal(uint256 identity,uint256 parent,uint8 mode,bool imprint,bytes32 expectedHead,bytes payload) returns(uint256)",
+    "beforeSwap(...)/bindFill(...) (router only)",
+    "installRouter(address) once",
+    "swapAndInscribe(Order,bytes) payable returns(uint256,uint256)"
+   ],
+   "design_decisions": [
+    "'A former author can reflect after a sale without changing the owner's journal/body.'",
+    "'This contract never receives a key... Metadata leaks.'"
+   ]
+  },
+  {
+   "name": "ModuleArchiveFactory",
+   "path": "contracts/src/modules/ModuleArchiveFactory.sol",
+   "purpose": "Creates canonical OnchainApp (schema 1) / OnchainAppDirectory (schema 2) readers from existing chunks and validates Archive descriptors (codehash, hashes, <=64 MiB expanded)",
+   "reuse_verdict": "adapt"
+  },
+  {
+   "name": "ExtensionReleaseRegistry",
+   "path": "contracts/src/modules/ExtensionReleaseRegistry.sol",
+   "purpose": "Publisher-namespaced immutable releases: moduleKey=keccak(publisher,moduleId), unique version, sorted existing dependencies (no cycles), sorted capabilities, sha256 manifest <=16 KiB, paged catalog",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "publish(ReleaseInput,bytes canonicalManifest) returns(bytes32)",
+    "release(bytes32)/manifest(bytes32)",
+    "releasesOf(bytes32,uint256,uint256)/catalog(uint256,uint256)"
+   ]
+  },
+  {
+   "name": "TokenModuleRegistry + ModuleStateStore",
+   "path": "contracts/src/modules/TokenModuleRegistry.sol, ModuleStateStore.sol",
+   "purpose": "Per-NFT module installation with atomic release+state activation, staging, append-only root/history, independent state-namespace index; state snapshots <=32 KiB stored as AppChunks or verified archives",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "stageState(uint256 tokenId,bytes32 moduleKey,bytes32 expectedRoot,uint64 expectedEpoch,bytes32 schema,bytes data,Archive) returns(bytes32)",
+    "activate(uint256,bytes32 releaseId,bytes32 expectedRoot,uint64 expectedEpoch,bytes32 expectedStateHead,bytes32 nextStateHead)",
+    "writeState(...)",
+    "disable(...)",
+    "modulesOf/stateModulesOf/historyOf (paged)",
+    "ModuleStateStore.append/record/dataOf/historyOf"
+   ],
+   "security_invariants": [
+    "_authorize: accountOf(tokenId)==msg.sender && artifactIdOfAccount(msg.sender)==tokenId && account.currentOwner()==ownerOf(tokenId); rootOf/sessionEpoch must match (StaleReview)",
+    "Only the registry can append state"
+   ],
+   "design_decisions": [
+    "'A full 32 KiB SSTORE snapshot exceeds the EIP-7825 transaction gas cap. Canonical STOP-prefixed data contracts retain the same bytes in one call'"
+   ],
+   "reuse_notes": "8,084 B + 4,951 B; measured 7,713,661 gas per 32 KiB stage."
+  },
+  {
+   "name": "ModuleWorkbench",
+   "path": "contracts/src/modules/ModuleWorkbench.sol",
+   "purpose": "Immutable anchor pinning the recoverable workbench document and exposing services() (chain, collection, registries, state store, document hash)",
+   "reuse_verdict": "adapt",
+   "reuse_notes": "707,014-byte document, 31 chunks."
+  },
+  {
+   "name": "V4Boundary / PhoenixLaunchHook / HookDeployer",
+   "path": "contracts/src/kingdom/V4Boundary.sol, PhoenixLaunchHook.sol, HookDeployer.sol",
+   "purpose": "Self-contained Uniswap v4 ABI boundary (reviewed vs v4-core d153b04); launch hook with committed init price, 1.00%->0.30% fee ramp over 1 day, seed principal lock, afterSwap economic root; CREATE2 deployer for hook address mining (HOOK_FLAGS 0x22c0)",
+   "reuse_verdict": "adapt"
+  },
+  {
+   "name": "V4GenesisMarket",
+   "path": "contracts/src/kingdom/V4GenesisMarket.sol",
+   "purpose": "Real PoolManager market with the same seed/swap ABI as NativeMarket: full-range seed with integer sqrt price, unlock-callback commitment hash, exact-fill 1-2 hop swaps, permissionless fee harvest to the launch creator, swap-and-lock",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "seed(address,uint112,uint256) payable",
+    "swap(address,address,uint112,uint112,uint48,uint256,uint64) payable returns(uint256,uint256)",
+    "harvest(address) returns(uint256,uint256)",
+    "installHook(address) once",
+    "unlockCallback(bytes)"
+   ],
+   "reuse_notes": "11,453 B; production swap path."
+  },
+  {
+   "name": "EstateExchange",
+   "path": "contracts/src/kingdom/EstateExchange.sol",
+   "purpose": "Escrowed NFT sale under a declared-inventory covenant (asset floors, child NFTs, vault lock seals, zero-allowance checks, module commitment, instrument revision, action nonce) re-verified before and after transfer; royalties; pull proceeds",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "list(uint256 tokenId,uint112 price,uint112 nativeFloor,uint64 expires,Floor[],Child[],LockSeal[],ApprovalCheck[],bytes description) returns(uint256)",
+    "buy(uint256,bytes32 expectedManifest) payable",
+    "refresh(...)",
+    "cancel(uint256)",
+    "withdrawProceeds()",
+    "snapshot(uint256) view"
+   ],
+   "reuse_notes": "14,847 B."
+  },
+  {
+   "name": "ConsentGiftRouter / InstrumentRouter",
+   "path": "contracts/src/instruments/ConsentGiftRouter.sol, operating/InstrumentRouter.sol",
+   "purpose": "Swap-or-fund -> revocable consent escrow -> fixed-date TimeVault gift to another NFT account; two-recipe swapAndLock router",
+   "reuse_verdict": "adapt"
+  },
+  {
+   "name": "ExperimentGate / ExperimentCell / ExperimentCellFactory / ExperimentalAdapters / NegotiatedMarkets / CommitmentIndex",
+   "path": "contracts/src/operating/*",
+   "purpose": "Testnet-only gate (chain 31337/84532/11155111), isolated funded cell with adapter grants and asset quarantine, ERC-4626 strategy, fixed basket, matched rights, fixed-term credit, covered calls, aggregated commitment snapshots",
+   "reuse_verdict": "drop",
+   "reuse_notes": "Structurally mainnet-disabled; keep accountCommitment rolling-hash idea."
+  },
+  {
+   "name": "GenesisNames / NamedMintSession / NamedMintFactory",
+   "path": "contracts/src/extensions/access/GenesisNames.sol",
+   "purpose": "Deterministic ENS subnames anima-<id> under a delegated parent resolving to the NFT account; atomic mint+name sessions",
+   "reuse_verdict": "adapt",
+   "standards": [
+    "ENS addr (0x3b3b57de) and text (0x59d1d43c) resolver interfaces"
+   ]
+  },
+  {
+   "name": "SessionSponsor",
+   "path": "contracts/src/extensions/access/SessionSponsor.sol",
+   "purpose": "Owner+sponsor dual-signed EIP-712 relay of executeInstrument with reviewed callGas and bounded refund from sponsor deposits ('not an ERC-4337 paymaster')",
+   "reuse_verdict": "drop",
+   "reuse_notes": "Optional gas-sponsorship idea."
+  },
+  {
+   "name": "AgentCommerce / AgentPolicyGuard / ProviderDirectory",
+   "path": "contracts/src/extensions/agents/*",
+   "purpose": "ERC-8183 draft job lifecycle; worker scheduling of exact account grants with interval/budget; EIP-712 signed provider directory with paid-job feedback",
+   "reuse_verdict": "drop"
+  },
+  {
+   "name": "AnimaOFTSource / AnimaOFTComposer / LayerZeroInterfaces",
+   "path": "contracts/src/extensions/crosschain/*",
+   "purpose": "Immutable LayerZero OFT lane with exact accounting and destination composer that pays or vault-locks, with defer/retry/refund",
+   "reuse_verdict": "drop"
+  },
+  {
+   "name": "ExperimentalLedger / House / HouseFeedRatio / HouseNativeMarketVenue / Wager / Wake / WakeExitTask",
+   "path": "contracts/src/extensions/experimental/*",
+   "purpose": "Pull-claim ledger base; isolated non-recourse spot leverage; Chainlink ratio oracle; matched binary wager with bonded dispute; prepaid keeper seat with takeover pricing",
+   "reuse_verdict": "drop"
+  },
+  {
+   "name": "OperatingNFTGovernance / OperatingVotingShares",
+   "path": "contracts/src/extensions/governance/*",
+   "purpose": "Share-voted exact calls through executeUtility, bounded operators, funded buyouts, tracked-asset budgets, obligations root; checkpointed voting ERC-20",
+   "reuse_verdict": "drop",
+   "reuse_notes": "24,192 B (384 B under EIP-170)."
+  },
+  {
+   "name": "LaunchRegistry / LaunchAllocationComposer / NFTAuctionFactory",
+   "path": "contracts/src/extensions/launch/*",
+   "purpose": "Append-only launch provenance with epoch-bound registrar authorization; one-call v4 launch + vested/direct allocations; CREATE2 auction factory with predict()",
+   "reuse_verdict": "adapt"
+  },
+  {
+   "name": "ContinuousClearingAuction",
+   "path": "contracts/src/extensions/markets/ContinuousClearingAuction.sol",
+   "purpose": "64-slot streaming uniform-price auction: lots released linearly per block, insertion-sorted checkpoint clearing, cancel after checkpoint, pull claims/refunds",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "fund()",
+    "bid(uint64 lots,uint96 limitPrice) payable returns(uint8 slot,uint64 id)",
+    "cancel(uint8,uint64)",
+    "checkpoint()",
+    "claimTokens/claimRefund/claimProceeds(address)"
+   ]
+  },
+  {
+   "name": "PublicGoodsMatching / WholeNFTShares",
+   "path": "contracts/src/extensions/markets/*",
+   "purpose": "Quadratic funding with registrar identities; frozen fractional custody of an unused Bound NFT with buyouts",
+   "reuse_verdict": "drop"
+  },
+  {
+   "name": "PrivacyKeys / EpochGroupChat / MLSGroupChat / PrivateMemoryHandover",
+   "path": "contracts/src/extensions/privacy/*",
+   "purpose": "P-256 key registry with generations; sender-key group chat (<=32 members, manager rotation with complete sorted roster, epoch freeze on key change); RFC 9420 MLS packet transport with roster commits; recipient-confirmed encrypted handover with atomic transfer",
+   "reuse_verdict": "adapt",
+   "reuse_notes": "Use PrivacyKeys + EpochGroupChat (or MLSGroupChat) for encrypted messaging; handover optional."
+  },
+  {
+   "name": "AuthenticatedStatePortal",
+   "path": "contracts/src/extensions/privacy/AuthenticatedStatePortal.sol",
+   "purpose": "Read-only LayerZero V2 OApp mirroring token custody/state snapshots with pinned ULN/executor config sealed at setup",
+   "reuse_verdict": "drop"
+  },
+  {
+   "name": "NativeQuoteGroth16Verifier / NativeQuoteRehearsal",
+   "path": "contracts/src/extensions/proof/*",
+   "purpose": "snarkJS Groth16 verifier and context-bound proof of one-hop NativeMarket arithmetic (productionReady=false)",
+   "reuse_verdict": "drop"
+  },
+  {
+   "name": "V4SettlementConverter / V4ScheduledExit / V4FeeCompounder",
+   "path": "contracts/src/extensions/strategies/V4Strategies.sol",
+   "purpose": "Single-pool v4 converter for OwnerFeeRouter; funded sell schedules with prepaid keeper rewards; owner LP fee compounding",
+   "reuse_verdict": "adapt"
+  },
+  {
+   "name": "Administrated / Base64 / Strings / Crypto (ECDSA, SignatureChecker)",
+   "path": "contracts/src/lib/*",
+   "purpose": "Two-step ownable; assembly Base64; number/hex/color strings; low-s ECDSA + EOA-or-1271 checker",
+   "reuse_verdict": "reuse-verbatim"
+  },
+  {
+   "name": "solady vendor (ERC721, Base64 used; ERC1155, SafeTransferLib, SignatureCheckerLib, ReentrancyGuard unused)",
+   "path": "contracts/src/confluence/vendor/solady/*",
+   "purpose": "Unmodified solady; only ERC721 and Base64 are imported",
+   "reuse_verdict": "reuse-verbatim",
+   "reuse_notes": "Four files are dead vendored code."
+  },
+  {
+   "name": "Mocks and test harnesses",
+   "path": "contracts/src/mocks/*, contracts/src/test/*",
+   "purpose": "MockTarget, ReentrantProbe, zk gateway mocks, FrozenVerifierPretender, exit/operating/cleanup mocks",
+   "reuse_verdict": "drop"
+  }
+ ],
+ "standards_implemented": [
+  "ERC-721 + Metadata (not Enumerable)",
+  "ERC-165",
+  "ERC-2981 (royalty <=10%, freezable)",
+  "ERC-4906 MetadataUpdate/BatchMetadataUpdate",
+  "ERC-4907 setUser/userOf/userExpires",
+  "ERC-8048-style on-chain metadata surface (0xdf670be1, setMetadata/getMetadata)",
+  "ERC-8004 agent registry binding (ownerOf check, codehash pinned)",
+  "ERC-1271 isValidSignature (account)",
+  "ERC-6551-shaped token()/state()/isValidSigner (0x523e3260) and interface ids 0x6faff5f1/0x4e2312e0 — NOT canonical ERC-6551 (no registry/proxy)",
+  "ERC-721 and ERC-1155 receivers",
+  "ERC-20 (GenesisToken, OwnerLaunchToken, FixedBasket, shares)",
+  "ERC-4626 consumer (ReceiverPinnedStrategy)",
+  "ERC-8183 draft job lifecycle (AgentCommerce)",
+  "EIP-712 (SessionSponsor, ProviderDirectory)",
+  "EIP-191 (attestation digest)",
+  "ENS resolver addr/text interfaces (GenesisNames)",
+  "Uniswap v4 PoolKey/IHooks/PoolManager ABI subset (V4Boundary, reviewed vs v4-core d153b04)",
+  "LayerZero V2 OFT (oft-evm 4.0.1) and Endpoint/ILayerZeroReceiver ABIs (lzCompose, lzReceive, allowInitializePath, nextNonce)",
+  "Groth16 (snarkJS) verifier; SP1/RISC Zero verifier interfaces",
+  "RFC 9420 MLS transport (MLSGroupChat)",
+  "EIP-170 (chunk design, compile-time gate), EIP-7825 tx gas cap awareness"
+ ],
+ "unique_ideas": [
+  "tokenURI animation_url is a ~15 KB self-verifying loader (window.AWE_CHAIN_IDENTITY + ConfluenceLoader) that recovers a multi-MB app from chunk contracts through the viewer's own RPC and document.write()s it — the website lives in the NFT without bloating tokenURI",
+  "STOP-prefixed AppChunk + constructor-verified OnchainApp archives + versioned directories (v1 flat, v2 nested, v3 functional modules with gzip envelopes and import-map assembly); root commitments exclude addresses",
+  "Custody epoch (sessionEpoch) bumped by the collection on transfer and consulted by every peripheral; invitations/moderation bind both grantor and recipient epochs; UI reviews bound to {owner, epoch}",
+  "Identity = NFT account: peripherals check collection.accountOf(id)==msg.sender; the account only obeys ownerOf; approvals and ERC-4907 users never gain authority; tokens cannot be sent into sibling accounts",
+  "Net-debit-measured exact-calldata grants (executeInstrument) with pinned target codehash, allowance min(remaining,perCall) then reset, post-call custody re-check; executeUtility exact-allowance recipe; 7-day instrument adoption delay",
+  "Per-NFT module registry with atomic release+state activation, staging before activation, append-only roots/history and an independent state-namespace index for lost-receipt recovery; 32 KiB snapshots stored as AppChunks to fit EIP-7825",
+  "Journal reflection branches (former owners keep their own thread) and journaled swaps binding the measured fill to the note",
+  "Sealed Genesis stack whose WorldLedger.record accepts only the sealed market/vault/launchpad/estate, producing a trustworthy on-chain activity timeline; postWithReceipt links chat to a trade",
+  "EstateExchange: sell the NFT under a declared-inventory covenant re-verified before and after transfer (audit root, instrument revision, module commitments, lock seals, zero allowances)",
+  "swap-and-lock in one call (lockUntil) and a shared seed/swap ABI across the constant-product and v4 markets",
+  "PhoenixLaunchHook fee ramp with seed-principal lock that still allows fee pokes; unlock-callback commitment hash in V4GenesisMarket",
+  "64-slot fixed-array streaming uniform-price auction cleared per checkpoint",
+  "Group chat epoch freeze whenever any member's key generation changes; sorted complete roster on rotation",
+  "Publish-once GenesisManifest and ModuleWorkbench.services() for on-chain service discovery; EIP-170 gate in the compiler script; unsigned reviewable deployment plans"
+ ],
+ "weaknesses": [
+  "Not canonical ERC-6551 (custom factory, no registry/proxy); system-manifest says canonicalERC6551Compliance:false",
+  "SovereignAccountFactory 23,423 B and OperatingNFTGovernance 24,192 B are within 1.2 KB / 384 B of EIP-170",
+  "Admin keys until freeze/seal: collection owner (royalty, factory once), ProofRouter/verifier/witness owners, WorldLedger configurator, MemoryLedger.installRouter, V4GenesisMarket.installHook, ExperimentGate guardian, OwnerFeeRouter owner",
+  "NativeMarket has no LP layer: liquidity permanently locked, only ETH-paired launchpad tokens, 2 hops max, no oracle; fees accrue to reserves",
+  "GenesisLaunchpad is pro-rata batch only, keyed by msg.sender, no allowlists/tiers, vesting starts at settle; explicitly no Sybil/MEV resistance",
+  "WorldLedger stores 1 KiB message bodies in storage (expensive writes); _epoch() staticcalls arbitrary actor code; no deletion",
+  "Loader requires window.ethereum or a user-typed RPC; animation_url is a bootstrap page, so sandboxed marketplace iframes show the loader not the app; no web3://(ERC-5219)/ERC-4804 route",
+  "Mixed revert style (custom errors vs require strings in GenesisToken, OnchainApp*, ShardedResource, ZkVm adapters, V4Strategies, crosschain, GenesisManifest, factories)",
+  "Heavily minified one-line Solidity in NativeMarket, GenesisLaunchpad, TimeVault, operating/*, experimental/*, SovereignAccount instrument section; little NatSpec",
+  "Dead vendored solady ERC1155/SafeTransferLib/SignatureCheckerLib/ReentrancyGuard",
+  "ABI coupling by returndata length (EstateExchange expects lockInfo to return 320 bytes; MLSGroupChat decodes rooms(uint256) first word)",
+  "32 KiB state snapshots cost 7.7-7.9 M gas (L2-oriented)",
+  "ERC-4907 user grants no account authority; EstateExchange refuses listings with an active user",
+  "Experimental tail is testnet-only by construction (ExperimentGate chain allowlist) and unaudited",
+  "Tests run on ganache 7.9.2 (archived) with one Forge fixture; the core organism lifecycle is a single 750-line JS test",
+  "Branding/domain strings (IDONTFUCKINGBELIEVEIT_*, idfbi/*, anima.*, AWE_CHAIN_IDENTITY) baked into hashes, selectors and the loader",
+  "Depends on draft specs: ERC-8004, ERC-8183 (retrieved 2026-09-12), ERC-8048 id 0xdf670be1, LayerZero oft-evm 4.0.1, v4-core commit d153b04",
+  "CREATE-based module archive factory: concurrent use invalidates predicted addresses (plans fail closed)",
+  "main claims no public deployment; the Sepolia record exists only on the unmerged branch codex/deploy-on-testnet-and-mint-3-nfts-pj8cqs"
+ ],
+ "website_delivery": "From chain, no server, no IPFS. IDontFuckingBelieveIt.tokenURI -> ConfluenceRenderer.render -> data:application/json;base64 with image = base64 GenesisSVG and animation_url = data:text/html;base64 of '<script>window.AWE_CHAIN_IDENTITY={seed,genome,root,chainId,collection,tokenId,manifest,privacyResource,runtime,sha256,archiveVersion}</script>' + the ~15 KB ConfluenceLoader page (kept in an AppChunk deployed by the renderer constructor). Opened in a wallet browser (or with a pasted HTTPS/localhost RPC) the loader pins a block, eth_calls chunkCount()/readChunk(i) on the runtime archive (OnchainApp v1 <=64 chunks of <=23,000 B; OnchainAppDirectory v2 <=512 chunks; OnchainModuleDirectory v3 <=32 gzip functional modules assembled into a data: import map), re-hashes with its own SHA-256, and document.write()s the full app (measured: 7,952,983-byte Genesis app + 707,014-byte workbench recovered exactly in 6,080 ms in the Chromium gate; local HTML archive 409,658 B in 18 chunks). Service discovery: AWE_CHAIN_IDENTITY.manifest -> GenesisManifest.modulesOf(collection) -> [market, vault, memory, ledger, cartridges, exit]; the v7 workbench is a second ModuleWorkbench anchor with services(). There is NO web3:// (ERC-5219) or ERC-4804 router in this repo; the hosted index.html (477 KB) is a dev copy only. Cartridges, module releases and state snapshots are recovered the same way (ChunkedCartridgeRegistry.contentOf, ModuleStateStore.dataOf).",
+ "wallet_gating": "Two layers, no SIWE/server. Client: web/confluence/wallet.mjs ConfluenceWallet.connect(collection, tokenId) asserts the page's baked identity matches, eth_requestAccounts, reads ownerOf/accountOf/renderSnapshot at one pinned block and throws 'This wallet does not own the selected NFT.' if ownerOf != connected address; requires code at the account; accountsChanged/chainChanged invalidate the session. The v7 workbench (web/modules/adapter.mjs, sdk.readRegistry) additionally requires ownerOf == account.currentOwner() == connected address and binds every prepared review to {owner, sessionEpoch} ('NFT ownership or custody epoch changed.'). Chain: every action is a transaction from the owner to SovereignAccount.execute/executeUtility (or executeInstrument by a grantee); onlyController is msg.sender == collection.ownerOf(tokenId) (SovereignAccount.sol:504-506); peripherals require collection.accountOf(identity) == msg.sender (ProtocolGuard._identity) and the module registry also checks currentOwner()==ownerOf and sessionEpoch (TokenModuleRegistry._authorize, StaleReview). A transfer bumps sessionEpoch and retires all prior grants/invitations/plans/reviews. ERC-721 approvals/operators and ERC-4907 users deliberately confer no account authority.",
+ "measured_numbers": [
+  "solc 0.8.30+commit.73712a01, viaIR, optimizer runs 1000, evmVersion cancun (shanghai for compile:local); EIP-170 gate in scripts/compile.mjs; 204 artifacts",
+  "Deployed bytes: OperatingNFTGovernance 24,192; SovereignAccountFactory 23,423; SovereignAccount 21,506; IDontFuckingBelieveIt 20,940; EstateExchange 14,847; ConfluenceRenderer 14,772; WorldLedger 14,233; GenesisLaunchpad 12,964; AuthenticatedStatePortal 12,824; Wager 12,652; ExperimentCellFactory 12,040; V4GenesisMarket 11,453; ChunkedCartridgeRegistry 10,969; House 10,956; ExperimentCell 10,545; OnchainRenderer 10,463; NFTAuctionFactory 10,227; MLSGroupChat 10,124; TokenModuleRegistry 8,084; VestedExitVault 8,199; ContinuousClearingAuction 7,900; OwnerFeeRouter 7,586; MemoryLedger 7,243; EpochGroupChat 7,031; TimeVault 6,517; ConsentGiftRouter 6,426; NativeMarket 5,344; ModuleStateStore 4,951; ExtensionReleaseRegistry 5,922; ModuleArchiveFactory 8,251; ModuleWorkbench 1,800; OnchainApp 1,027; OnchainAppDirectory 2,333; OnchainModuleDirectory 1,152; GenesisManifest 965; PhoenixLaunchHook 3,300",
+  "ModuleStateStore gas (shanghai, 20% headroom, cap 16,777,216): stage 32,768 B = 7,713,661 (limit 9,461,092); 23,001 B = 5,476,498; 23,000 B = 5,442,605; 1 B = 323,341; 0 B = 244,430; writeState 32,768 B = 7,871,459 (limit 9,602,817); old SSTORE design needed 29,172,440",
+  "Cartridge reads: 48 KiB edition 49,216 ABI bytes / 328,234 view gas; 1 MiB edition 1,048,640 bytes / 13,798,118 view gas, 46 chunk refs",
+  "Genesis app 7,952,983 B and workbench 707,014 B (31 chunks, sha ec2a47d8…79dc2b6) recovered in 6,080 ms; loader HTML archive 409,658 B / 18 chunks; earlier workbench 705,642 B; browser heap sample max 11,830,216 B",
+  "Tests: CI run 35172184548 on 84961c3 (tree 185169b): 760/760 JS, 11/11 official-launch (Anvil), 1/1 communication, 9/9 Rust, 51/51 module regression, 17/17 browser (7+5+1+4) on Chromium 151.0.7922.34; native Forge 7 tests + 64 fuzz runs (Forge 1.7.1); locally 127 *.test.mjs with 734 test() calls",
+  "Constants: reveal 2..200 blocks; metadata <=8,192 B; royalty <=1,000 bps; chunk <=23,000 B; OnchainApp <=64 chunks; directory <=16x32; module dir <=32 modules/64 MiB; cartridge <=1,048,576 B; journal <=32,768 B; message <=1,024 B; swap fee 30 bps; launch founder <=20%, liquidity 50-100%, vesting 30-1825 d; vault end <=3,650 d; grants <=30 d/<=100 calls/7-day adoption; hook fee 1.00%->0.30% over 1 day, HOOK_FLAGS 0x22c0; group chat <=32 members; CCA 64 slots",
+  "Sepolia 11155111 (unmerged branch pj8cqs): collection 0xCB8Dc18d3Ca5C9c2aeA16c94fa0af6EF4dfc0aC6, factory 0xd99D2e1aee792e074ff34495627D6213737e52d2, tokens 1-3, ModuleArchiveFactory 0x7751D929adeE4Ec9AA78505d5E9E047a510e27b1, ExtensionReleaseRegistry 0x0bBdD0Ac5c95e1Bd42A620BDc5C432aBC2D76e9c, TokenModuleRegistry 0x2ECcA4AE5AE809328703c624e7E82963EF4Ad8e1, ModuleStateStore 0xf7acB81FD2610C7887bb1962bfD809a96DcF3264, ChunkedCartridgeRegistry 0xD66A2D34AFF5d71cA27A80256e0Dfc223Ba5C4E1, ArtifactBinding 0xCDd59f365788F271e73F366bC4eA2747F9B5f6D9, workbench archive 0x5867e5A3B372CC17cc34e4130FdE583DF9822bED, ModuleWorkbench 0x1d2bad62Fe47a63b7a2e51E03959a50B8767C2aD, deployer 0xc591C669162cD4da8aB9BfA2c2e68d538A312C00, first tx block 11,742,089",
+  "Local 31337: collection 0x4DAf17c8142A483B2E2348f56ae0F2cFDAe22ceE, token 1 account 0x1795cD5F166392a061Dc944f44824cB2d5077c66"
+ ],
+ "pitfalls": [
+  "Any function added to SovereignAccount grows the factory's embedded creation code; the factory hits EIP-170 first",
+  "Every hash domain string and loader selector is brand-specific; re-derive all domains and regenerate ConfluenceLoader from web/confluence/chain-loader.mjs",
+  "The seal/freeze sequence (WorldLedger.sealModules, MemoryLedger.installRouter, V4GenesisMarket.installHook, ProofRouter.freeze, GenesisManifest.publish) is deployment-time discipline; forgetting one leaves an admin key",
+  "Peripherals that call market.swap must pass identity=0 and lockUntil=0 and assert lockId==0 and exact balance deltas (see VestedExitVault, JournalSwapRouter, ConsentGiftRouter) or a malicious market can leave allowances/locks behind",
+  "ProtocolAssets.pull/push reject fee-on-transfer and rebasing tokens by design",
+  "EIP-7825 (16,777,216 gas tx cap) shaped the state store; do not reintroduce per-word SSTORE for large blobs",
+  "Module archive factory uses CREATE; predicted addresses change under concurrent use",
+  "The loader's recoverArchive pins eth_blockNumber and refuses chain mismatch; a hosted RPC must allow eth_call on data contracts of up to 23 KB return",
+  "ExperimentGate hardcodes testnet chain ids; experimental modules can never open on mainnet without redeploying",
+  "EstateExchange and CommitmentIndex depend on exact returndata sizes and codehash pins of sibling modules — upgrade anything and listings go StaleCovenant"
+ ],
+ "tests_and_tooling": "scripts/compile.mjs (solc-js 0.8.30, viaIR, runs 1000, EIP-170 fail gate, writes reports/contract-sizes.json); node:test + ethers 6.15 + ganache 7.9.2 for all contract integration tests (test/contracts.integration.test.mjs, test/core-cleanup.contracts.test.mjs, test/modules/*.test.mjs, test/exit/contracts.test.mjs, test/operating/contracts.integration.test.mjs, test/security/*.test.mjs, test/extensions/*.test.mjs, test/launchpad/*.integration.test.mjs, test/genesis/live-protocol.test.mjs, test/genesis/commons-live.test.mjs); native Forge suite test/modules/fixtures/cartridges-native/Cartridges.t.sol run by scripts/test-modules-native.mjs with a pinned Forge 1.7.1 binary (shanghai, viaIR, fuzz 64); v4 hook tests on Anvil under integrations/console/protocol/v4-hook/test; Playwright Chromium gates (test/browser/*.mjs) that recover the app from chain and drive real reviewed transactions; scripts/static-audit.mjs; SOURCE-SHA256.json integrity; unsigned deployment planners (scripts/sepolia.mjs, extensions-deployment.mjs, modules-deployment.mjs) with CREATE nonce prediction and receipt reconciliation."
+}

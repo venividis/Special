@@ -1,0 +1,309 @@
+{
+  "repo": "Most-Advanced-NFT-Possible (IPSEITY) — /home/user/Most-Advanced-NFT-Possible @ 297e936 (default branch)",
+  "area": "accounts, vaults, estate: IpseityAccount (Reach), GripVault (Grip), Lease, Locker, Consign, Succession, V4PositionPlanner, interfaces/Standards.sol, AGENT.md, lib/Timelock.sol and their tests/verifiers",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/ipseity-accounts-estate.md",
+  "summary": "IPSEITY gives every ERC-721 two ERC-6551 accounts at two salts on the canonical registry (0x000000006551c19487814612e58FE06813775758): the Reach (src/IpseityAccount.sol, 12,315 B) acts and is policed; the Grip (src/GripVault.sol, 1,933 B) receives and has no function that spends, asserted against its compiled ABI. The Reach's seal is enforced by measurement rather than a selector blocklist — it snapshots balanceOf(this) of every manifest asset (max 16), ether, and ownerOf of every guarded NFT piece (max 8) before a sealed call and reverts Shrank/WentBlind/PieceLeft if anything fell after; the one blind spot (standing approvals) is closed by deny-by-default: while sealed a call to a promised asset may carry only transfer/transferFrom. Session keys (grantSession/executeAsSession) are bounded by expiry (≤365d), target and selector allowlists keyed by a per-key epoch (O(1) revoke), a cumulative native spend cap, refused by shape from calling the account or approving unlisted spenders (incl. Permit2's second argument), and retired automatically on sale via the hub's transfer counter (SoldOn). ERC-1271 under seal validates only digests rebuilt under the account's own EIP-712 domain (IPSEITY_ATTESTATION) with nonce+deadline. Eight adversarial findings are recorded in-source as past-tense bugs and pinned by tools/verify-vault.mjs and tools/verify-findings.mjs.\n\nThe estate layer is four small, fee-less, admin-less, pull-payment contracts over the hub. Lease (6,764 B) rents the ERC-4907 instrument by the day via a narrow per-token lease agent (setUserVia, never an ERC-721 approval); rent is escrowed and vests to the token, breakage is observed from rawUserOf/userExpires rather than declared, and a holder who ends a lease is credited only to the last block it was seen intact. Locker time-locks any ERC-20 up to ten years with no early exit, records what arrived (fee-on-transfer safe), and makes locks transferable positions (give into a token's Reach). Consign custodies a token for a dealer with a floor, honours ERC-2981 first, lets the seller keep ERC-4907 use, and lets anyone send it home after term. Succession is a two-clock dead-man's switch whose only sign of life is the owner's own word (a stranger could once reset it via embody), with ten status codes. V4PositionPlanner builds non-custodial Uniswap v4 PositionManager calldata; HEAD's version has a launcher==msg.sender defect that an unmerged branch (origin/codex/list-nft-functions-and-suggest-upgrades-hciyvv) fixes by making authority follow the NFT.\n\nThe web UI is served entirely from chain: tokenURI emits the WebGL instrument as a data: URI (103,808 B, 19.99M gas) and Premises (ERC-5219) serves a multi-page site over web3:// whose JS clients are Solidity string constants with on-chain-computed selectors. Ownership is verified in the browser only as a courtesy (EIP-6963 picker → eth_requestAccounts → eth_call ownerOf(id) compared to the account; Chrome.sol: 'What ownership actually gates is writing, and that is gated by the contract'); the enforcement is the contracts' modifiers (onlyOwner = holder or the token's Reach; onlyHolder adds ERC-721 approvees; onlyOperator adds the ERC-4907 user; onlySigner on the Reach; strict owner in Lease/Consign/Succession). Reads are never gated. All seven contracts are live on Ethereum Sepolia (2026-09-24 campaign) and six on Base Sepolia; nothing is audited.",
+  "components": [
+    {
+      "name": "IpseityAccount (the Reach)",
+      "path": "src/IpseityAccount.sol",
+      "purpose": "The token's acting ERC-6551 account: sealable (balance-measured, deny-by-default on promised assets), NFT identity manifest, batching, bounded session keys for agents, domain-separated ERC-1271 attestation.",
+      "key_functions": [
+        "token() returns (uint256 chainId, address tokenContract, uint256 tokenId) — reads the 6551 proxy footer at 0x4d",
+        "owner() / isValidSigner(address,bytes) / modifier onlySigner (ownerOf == msg.sender, refuses OwnershipCycle)",
+        "seal(uint64 until) ratchet-only ≤ MAX_SEAL=365 days; isSealed(); sealedUntil",
+        "guard(address) / unguard(address) / manifest() / holdings() / unmeasurable(); MAX_MANIFEST=16; onManifest",
+        "guardNFT(address,uint256) / unguardNFT(uint256) / pieces(); MAX_PIECES=8",
+        "grantSession(address key,uint64 expires,uint128 spendCap,address[] targets,bytes4[] selectors) / revokeSession(address) / sessionAllows(address,address,bytes4) / sessionCurrent(address) / sessionOf / sessionEpoch; MAX_LIST=16, MAX_SESSION=365 days",
+        "executeAsSession(address to,uint256 value,bytes data) nonReentrant",
+        "execute(address,uint256,bytes,uint8 operation) payable onlySigner nonReentrant — CALL only",
+        "executeBatch(Call[] calls) payable onlySigner nonReentrant; MAX_BATCH=16; measured as one act",
+        "isValidSignature(bytes32,bytes) — unsealed: holder sig; sealed: abi.encode(purpose,payload,deadline,inner) envelope rebuilt via attestationDigest",
+        "attestationDigest(string,bytes32,uint64) / domainSeparator() / retireAttestations() / attestationNonce / decodeAttestation(bytes)",
+        "onERC721Received refuses its own token; onERC1155Received/BatchReceived; supportsInterface (0x6faff5f1, 0x51945447, 0x150b7a02, 0x4e2312e0)"
+      ],
+      "design_decisions": [
+        "Measure balances before/after a sealed call instead of enumerating transfer words: 'A firewall that enumerates is a firewall with a hole in it shaped like whatever it has not heard of' (L37-41)",
+        "Deny-by-default at the manifest boundary: while sealed a call to a promised asset must be transfer (0xa9059cbb) or transferFrom (0x23b872dd); replaced a six-selector list that Permit2's approve(address,address,uint160,uint48) walked through (L781-815)",
+        "Bit-255 'measured' flag removed after a guarded token returning balance|(1<<255) walked 1,000 tokens out of a live seal; flag lives in its own seen[] array (L95-107)",
+        "notWhileMeasuring: manifest cannot change inside a measured call because unguard renumbers arrays taken by index; reproduced on chain, nonReentrant did not cover it (L225-261)",
+        "Blind-asset escape hatch: an asset the account cannot read may be unguarded even while sealed, else a hostile balanceOf bricks the account for the seal's length (L289-313)",
+        "Identity manifest for NFTs because balanceOf is a count, not an identity; swap attack reproduced (L327-332, L895-900)",
+        "Session mark = hub transfer counter so keys die on sale and stay dead after buy-back; packed in the struct's spare 15 bytes (L439-456)",
+        "Per-key epoch on grant and revoke because Solidity cannot delete a mapping; revoke+regrant used to resurrect every past permission (L500-512)",
+        "Cross-product allowlists documented not fixed: explicit pairs would be up to 256 SSTOREs (~5M gas); 'one key per pair' (L528-543)",
+        "Cycle check duplicated on the session path: a token moved into its own Reach left a key nobody could revoke (L602-614)",
+        "ERC-1271 under seal via EIP-712 domain separation (from the DAVE V2 note): sealed account is 'not disallowed: incapable' of signing a venue order (L979-1018); nonce+deadline added because statements must be able to go stale (L1022-1026)",
+        "No delegatecall ever (OnlyCall) because the implementation address is an input to every vault address and the code is forever (L148-161)"
+      ],
+      "security_invariants": [
+        "While sealed no manifest asset, ether, or guarded piece may be smaller/absent after any call (INVARIANTS 32, 34b)",
+        "While sealed no approval-family word executes against a promised asset and no ether leaves (33, 34, 58)",
+        "Seal only ratchets, caps at 365 days, survives sale and binds the buyer (35)",
+        "A session is bounded four ways, cannot reach the account, cannot approve an unlisted spender, is never more trusted than the holder, and dies on sale (41-45, 125)",
+        "Manifest cannot move while a call is being measured; a guarded piece cannot be dropped from inside the call that moves it (123, 124)",
+        "A blind asset can be released, a visible one cannot; account refuses to call an asset it cannot measure (52, 60)",
+        "Only digests rebuilt under IPSEITY_ATTESTATION validate while sealed; retireAttestations invalidates all (34, 61)"
+      ],
+      "standards": ["ERC-6551 account + executable (CALL only)", "ERC-165", "ERC-721/1155 receiver", "ERC-1271 (domain-separated under seal)", "EIP-712"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep the whole mechanism. Must keep the reference 6551 proxy (footer at 0x4d) and a hub getter equivalent to statsOf(id).xfers (fail-closed CannotReadHistory). Decide once whether session keys live here or in an ANIMA-style AgentAccount — not both. Storage layout is frozen the moment it deploys. ERC-1155 cannot be guarded by identity. Unaudited."
+    },
+    {
+      "name": "GripVault (the Grip)",
+      "path": "src/GripVault.sol",
+      "purpose": "Second ERC-6551 account per token (salt keccak256('IPSEITY.GRIP.v1')) that only receives: no execute, withdraw, sweep, rescue, admin or upgrade path exists in the ABI; holdings() is a floor a seller cannot move.",
+      "key_functions": [
+        "token() / owner()",
+        "receive(); onERC721Received; onERC1155Received; onERC1155BatchReceived (all pure accept)",
+        "holdings(address[] assets) returns (uint256 ether_, uint256[] balances)",
+        "isOneWay() returns true; state() returns 0; isValidSigner/isValidSignature always bytes4(0)",
+        "supportsInterface — deliberately excludes 0x51945447 IERC6551Executable"
+      ],
+      "design_decisions": [
+        "'This contract does not police the capability. It does not have it.' — every Reach defence exists because spend exists (L14-28)",
+        "Permanence stated as the cost: no burn, so a mistaken deposit is permanent; liquid inventory belongs in Pool, working capital in the Reach (L36-47)",
+        "Tested against the compiled ABI: every state-changing function is a token receiver (verify-vault.mjs L284-300)"
+      ],
+      "security_invariants": ["No function that spends (INVARIANTS 38)", "Does not advertise IERC6551Executable (39)", "holdings is a floor, not a snapshot (40)", "A Grip is permanent (A0)"],
+      "standards": ["ERC-6551 account (non-executable)", "ERC-165", "ERC-721/1155 receiver"],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "162 lines, no dependency beyond ownerOf. Only the salt string is collection-specific. Carry the ABI-shape test with it."
+    },
+    {
+      "name": "Lease",
+      "path": "src/Lease.sol",
+      "purpose": "Paid ERC-4907 rental counter: holder lists per-day terms, anyone rents for N days with exact payment, rent is escrowed and vests to the token; breakage is observed from the hub's raw user record; refunds by pull.",
+      "key_functions": [
+        "list(uint256 id,uint128 perDay,uint32 minDays,uint32 maxDays) onlyOwner — requires HUB.leaseAgentOf(id)==this; MAX_DAYS=365, MAX_PER_DAY=1e30",
+        "delist(uint256) onlyOwner; collect(uint256 id,address to) onlyOwner nonReentrant; endLease(uint256) onlyOwner",
+        "rent(uint256 id,uint32 dayCount,uint128 maxPerDay) payable nonReentrant — exact msg.value, PriceMoved guard",
+        "settle(uint256) anyone; claim() renter refund",
+        "cost(id,days); status(id) returns (ok, reason 0..4); listing(id) 9-tuple; obligations(ids,parties); termsOf/activeOf/earned/owed",
+        "no receive()/fallback"
+      ],
+      "design_decisions": [
+        "Rent accrues to the token, not the holder: 'sell the token mid-month and the unpaid rent goes with it, because the business was never the seller's' (L31-39)",
+        "Escrow + vesting because a transfer clears the ERC-4907 user and 'With money on the table it is a way to take some' (L45-54)",
+        "Breakage read from rawUserOf/userExpires, decided before expiry: reading userOf vested a day-one-broken lease in full to the holder (L285-302; commit f6dcdda added the raw-user check)",
+        "seen stamp: holder credited only to the last block the lease was seen intact; 'the party who can end a lease is the party who has to say so to be paid for it' (L109-123)",
+        "Terms stamped with author (by) so a seller's price cannot re-arm for a buyer (L92-99)",
+        "No protocol fee, no renewals, no order book; a better market is one setLeaseAgent away (L69-82)",
+        "Strict owner for money paths; hub's onlyHolder admits operators and that is wrong for emptying an account (L166-174)"
+      ],
+      "security_invariants": ["Lease never survives a sale (12)", "Lease agent may set the user and nothing else (70)", "Rent belongs to the token and a cut-short lease refunds the rest; split never loses or creates ether (71, fuzz)", "Holder credited only for time the contract watched pass (72)"],
+      "standards": ["ERC-4907 (consumer)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Unified hub must expose setUserVia, leaseAgentOf (owner-only setter), rawUserOf, userExpires, locked and clear user+agent on transfer. Native-ETH rent only; one renter; lazy holder forfeits (documented B6)."
+    },
+    {
+      "name": "Locker",
+      "path": "src/Locker.sol",
+      "purpose": "Admin-less ERC-20 time-lock vault: lock up to 3650 days, extend-only, no early exit, records the balance that arrived, locks are transferable positions.",
+      "key_functions": [
+        "lock(address token,uint256 amount,uint64 until) nonReentrant returns id",
+        "lockWithPermit(token,amount,until,deadline,v,r,s) — permit failure swallowed on purpose",
+        "claim(uint256 id) nonReentrant — owner, after until, once",
+        "give(uint256 id,address to); extend(uint256 id,uint64 until)",
+        "count(); lockAt(id) returns (token,owner,amount,until,taken); locksOf(who); totalLocked(token); MAX_TERM=3650 days"
+      ],
+      "design_decisions": [
+        "'A rescue path is an unlock with a nicer name' — no owner, pause, rescue or fee (L14-19)",
+        "Ten-year ceiling: 'a lock with no end is a burn wearing a vault's clothing' (L21-24)",
+        "Record the measured balance difference, not the request (fee-on-transfer safe); rebasing not accounted for (L26-34)",
+        "give: 'most usefully into a token's own 6551 account, so a locked treasury travels with the NFT when the NFT is sold' (L119-125); per-owner index is a finding aid, not the truth",
+        "nonReentrant added after a callback token could nest a lock inside the balance measurement (commit dfad0c7, test_callbackCannotNestBalanceMeasurement)"
+      ],
+      "security_invariants": ["A lock ends when its clock says — no sooner, for no one, only once (101)", "Records what arrived, not what was asked for (102)", "A lock is a position; the date is not (104)"],
+      "standards": ["EIP-2612 permit (optional fast path)", "ERC-20 (tolerant of non-returning tokens)"],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Standalone, zero hub coupling. Extend only if the unified launchpad needs ERC-721/1155 or native locks. Bytecode size not published."
+    },
+    {
+      "name": "Consign",
+      "path": "src/Consign.sol",
+      "purpose": "Consignment escrow: token custodied for 1–730 days, agent prices at/above the seller's floor and takes ≤50% cut, ERC-2981 royalty honoured first, seller keeps ERC-4907 use, reclaim after term by anyone, early release by agent, pull payments.",
+      "key_functions": [
+        "consign(uint256 id,address agent,uint96 floor,uint16 cut,uint64 until) — owner or the token's Reach; refuses zero floor, cut>5000 bps, bolted tokens; pulls via transferFrom then setUser(id, seller, until)",
+        "ask(uint256 id,uint96 price) agent only, >= floor",
+        "buy(uint256 id,uint96 agreed) payable once — agreed must equal ask (PriceMoved); refund overpayment",
+        "reclaim(uint256) anyone after until; release(uint256) agent any time; withdraw()",
+        "noteOf(id); split(id); consignedBy(who); heldFor(agent); owed(address)",
+        "no onERC721Received on purpose"
+      ],
+      "design_decisions": [
+        "'an approval you can withdraw the moment a buyer appears is not an inventory, and no dealer will work an item they can be cut out of' (L22-23)",
+        "Title moves, use stays: seller set as ERC-4907 user for the term (L43-48)",
+        "Buyer names the agreed price so a mempool-watching agent gets a revert, not the difference (L180-185)",
+        "Royalty taken from the price before anybody splits (L191-196)",
+        "Credited, never pushed: a reverting seller cannot wedge the sale (L55-56)",
+        "No receiver hook so the only door in is the one that writes the terms (L288-294)"
+      ],
+      "security_invariants": ["Agent cannot go under the floor and cannot keep the token by going quiet (118)", "Buyer names the price they agreed to (119)", "Escrow takes the title and gives back the use (120)"],
+      "standards": ["ERC-2981 (consumer)", "ERC-4907 (consumer)", "ERC-5192 (refuses bolted)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Optional feature; port with ERC-20 pricing if needed. uint96 price ceiling. Consigned token's Reach cannot act during the term."
+    },
+    {
+      "name": "Succession",
+      "path": "src/Succession.sol",
+      "purpose": "Dead-man's-switch inheritance: owner names an heir (address or whoever holds another token), a quiet period (30–3650 d) and a notice (7–365 d); anyone may knock after the quiet, owner cancels by stillHere, anyone may press claim after the notice; ten status codes.",
+      "key_functions": [
+        "arrange(uint256 id,address to,uint256 toToken,uint64 quiet,uint64 notice) onlyOwner (owner or Reach, never an approvee)",
+        "revoke(uint256) onlyOwner; stillHere(uint256) onlyOwner",
+        "summon(uint256) anyone — AlreadyCalled if a knock stands; StillSpeaking before knockableAt; Moved if sold",
+        "claim(uint256) anyone — NotCalled/NotYet/Moved/NobodyThere/SameHands; HUB.transferFrom(from, heir, id)",
+        "lastSeen; knockableAt; opensAt; heirOf; planOf; namedTo; wouldPass returns 0 OK,1 NO_PLAN,2 SOLD,3 NO_STANDING,4 BOLTED,5 NO_HEIR,6 BAD_HANDS,7 SPEAKING,8 WAITING,9 KNOCKABLE"
+      ],
+      "design_decisions": [
+        "Strict door: 'the thief would not steal the token, they would simply become the heir and wait' (L109-113)",
+        "Only the owner's own word counts as a sign of life: embody stamped lastOp and a stranger reset the silence; renters/operators reach every other stamp (L181-207; commit 3d36eda)",
+        "First knock fixes the deadline; repeated knocks refused so a stranger cannot defer a mature claim forever (L236-240; commit 15844fe)",
+        "toToken inheritance 'follows an instrument rather than a key, which is the only kind that survives the heir changing wallets' (L125-128)",
+        "Status codes instead of a bool because 'no' is useless to someone who arranged their estate years ago (L296-298)"
+      ],
+      "security_invariants": ["Heir cannot be named by an approvee (115)", "A switch that cannot be heard is a trap: public knock, second clock, owner cancels (116)", "wouldPass says which part is broken (117)", "Sign of life cannot be forged by a stranger (127)", "First knock fixes the deadline (150)"],
+      "standards": ["ERC-721 approval (consumer)", "ERC-5192 bolt respected"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Optional, distinctive. Needs hub account/grip/detailOf/getApproved/isApprovedForAll. Holder must stillHere once per quiet period. namedTo is stale by design."
+    },
+    {
+      "name": "V4PositionPlanner",
+      "path": "src/V4PositionPlanner.sol",
+      "purpose": "Read-only builder of canonical Uniswap v4 PositionManager modifyLiquidities calldata (mint, increase, decrease, collect, burn) for coins launched by Kiln; takes no custody, no approvals; the wallet sends the bytes itself.",
+      "key_functions": [
+        "mintPlan(uint256 token,address coin,MintRequest r) view returns (liquidity,value,data) — HEAD requires KILN.launchedBy(coin)==token && KILN.launcher(coin)==msg.sender && KILN.mayActAs(token,msg.sender)",
+        "increasePlan(PoolKey,positionId,liquidity,amount0Max,amount1Max,deadline,hookData) view",
+        "decreasePlan(PoolKey,positionId,liquidity,amount0Min,amount1Min,recipient,deadline,hookData) view",
+        "collectPlan(PoolKey,positionId,recipient,deadline,hookData) view; burnPlan(PoolKey,positionId,amount0Min,amount1Min,recipient,deadline,hookData) view",
+        "liquidityForAmounts(uint160 sqrtPriceX96,int24 lower,int24 upper,uint128 amount0Max,uint128 amount1Max) pure",
+        "immutables KILN, POSITION_MANAGER, PERMIT2; actions 0x00/0x01/0x02/0x03/0x0d/0x11"
+      ],
+      "design_decisions": [
+        "Solidity encodes because the browser deliberately has no recursive ABI encoder (L12-19)",
+        "Position owner is always an explicit input: 'Position ownership is the authority over liquidity and accrued LP fees' (L17-19)"
+      ],
+      "security_invariants": ["Only the launch token's authority can build the advertised mint plan (test_onlyCurrentLaunchTokenAuthorityCanBuildAdvertisedMint)", "Plans are canonical (actions 0x020d / 0x0111 decoded in tests)"],
+      "standards": ["Uniswap v4 PositionManager action encoding", "Permit2 (named, not called)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Only if the unified launchpad targets Uniswap v4. Take the unmerged branch origin/codex/list-nft-functions-and-suggest-upgrades-hciyvv (commits 883df87, 9d63d9a): authority = KILN.mayActAs only (HEAD's launcher==msg.sender breaks after the NFT is sold), live price via STATE_VIEW.getSlot0, PoolKey read from PositionManager.getPoolAndPositionInfo."
+    },
+    {
+      "name": "Standards.sol (interfaces) + sealed kernel stance",
+      "path": "src/interfaces/Standards.sol",
+      "purpose": "Hand-declared ERC interfaces (165/721/721Metadata/721Enumerable/721Receiver/2981/4906/4907/5192/6454/7572/7160/7496/6551Registry/173) and the ISealedKernel/IDataVerifier interfaces that implement ERC-7857's idea under their own name.",
+      "key_functions": [
+        "IDataVerifier.verifyTransfer(uint256 tokenId,address recipient,bytes proof) view returns (ok, oldHashes, newHashes, sealedTo) — context-bound to stop replay",
+        "ISealedKernel: transferWithKernel, cloneWithKernel payable, authorizeUsage, dataHashesOf, sealedTo, kernelStatus (0 absent/1 current/2 stale), kernelProved, hasVerifier",
+        "IERC6551Registry.createAccount/account(implementation,salt,chainId,tokenContract,tokenId)"
+      ],
+      "design_decisions": [
+        "Not ERC-7857 compliant, on purpose: different entry points/selectors, no ERC-165 id defined, and the standard's off-chain-ciphertext premise is 'the exact inverse of a work whose entire claim is that nothing is fetched' (L159-173)",
+        "ERC-173 kept because marketplaces staticcall owner() for collection admin (L134-137)",
+        "Sealed, current and proved are three separate questions (L204-216)"
+      ],
+      "security_invariants": ["Verifier chosen once from zero and never rotated (hub)", "A kernel proof is bound to token and recipient (hub _check; test_kernelProofIsBoundToTokenAndRecipientContext)", "A clone costs a mint (55)"],
+      "standards": ["ERC-165", "ERC-721 family", "ERC-2981", "ERC-4906", "ERC-4907", "ERC-5192", "ERC-6454", "ERC-7572", "ERC-7160", "ERC-7496", "ERC-6551 registry", "ERC-173", "ERC-7857 (idea only, explicitly not claimed)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Cheapest way to get thirteen interface ids right. The header cites test/Standards.t.sol which does not exist; the ids are asserted in test/Ipseity.t.sol::test_supportsInterface."
+    },
+    {
+      "name": "AGENT.md (agent integration doc)",
+      "path": "AGENT.md",
+      "purpose": "Explains ERC-7857's proper scope (the agent's private strategy, never the artwork), how an agent acts via grantSession/executeAsSession, why there is no live GUI, and the services.json machine manifest.",
+      "key_functions": [
+        "MCP sketch: ipseity_read (eth_call only), ipseity_propose (simulate, never sends), ipseity_act (executeAsSession), ipseity_kernel (fetch/hash/decrypt, refuse unless kernelStatus CURRENT)",
+        "Rule: check sessionAllows(key,to,selector) client-side before sending",
+        "services.json schema ipseity.services/1 (now /2) carrying invoke.sig/selector/kind per service"
+      ],
+      "design_decisions": [
+        "'the restriction is public and the strategy is private, and the first one makes the second one safe' (L174-186)",
+        "No live GUI: 'Claude writes on-chain state that the GUI already draws' (L231-233)",
+        "Signer service deliberately not in the repo so untested key handling is not shipped beside tested contracts (L211-215)"
+      ],
+      "security_invariants": ["A session key is a hot key: bounds hold if stolen, everything inside them is gone (B2)"],
+      "standards": ["ERC-7857 (discussed)", "ERC-4907 (renting as the cheapest agent access)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Adopt the propose/act split and view-precheck pattern in the unified design; prose is IPSEITY-specific."
+    },
+    {
+      "name": "Timelock (lib)",
+      "path": "src/lib/Timelock.sol",
+      "purpose": "Single-admin 7-day delay with 14-day grace, queue/execute/cancel, admin rotation only through its own queue; intended holder of the collection's curator role.",
+      "key_functions": ["queue(target,value,data,salt) onlyAdmin", "execute(...) payable onlyAdmin — TooEarly/Expired/NotQueued", "cancel(bytes32 op) onlyAdmin", "setAdmin(address) only via self-call", "ready(op); opHash(...); DELAY=7 days; GRACE=14 days"],
+      "design_decisions": ["Admin mutable only through the queue; queued ops expire; re-queue refused so an eta cannot move under a watcher; no guardians or veto council — 'Every one of those is another key to steal' (L15-31)"],
+      "security_invariants": ["A timelocked change takes seven days and announces itself first (30)", "Admin cannot escape the delay (31)"],
+      "standards": [],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "9 Solidity tests + verify-timelock.mjs (24 assertions). Use for curator/pool admin in the unified protocol."
+    }
+  ],
+  "standards_implemented": [
+    "ERC-6551 (two accounts per token: executable Reach, non-executable Grip; canonical registry)",
+    "ERC-165", "ERC-1271 (domain-separated under seal)", "EIP-712 (IPSEITY_ATTESTATION)",
+    "ERC-721 receiver, ERC-1155 receiver",
+    "ERC-4907 (hub; consumed by Lease and Consign)", "ERC-2981 (consumed by Consign)", "ERC-5192/6454 (bolt respected by Consign/Succession)",
+    "EIP-2612 (Locker optional path)", "Uniswap v4 PositionManager encoding (planner)",
+    "ERC-5219 web3:// site, ERC-6821 contentcontract (site, cited for UI delivery)",
+    "ERC-7857 idea implemented under its own name, explicitly not claimed"
+  ],
+  "unique_ideas": [
+    "Seal enforced by measuring balances before/after any call (plus ether and NFT ownerOf) instead of a selector blocklist",
+    "Deny-by-default selector allowlist (transfer/transferFrom only) at the manifest boundary while sealed — closes the approval blind spot without enumerating approval shapes",
+    "Two hands: Reach (acts, policed) and Grip (no spend function exists) at two salts; Grip guarantee asserted against the compiled ABI",
+    "unmeasurable(): 'answered zero' and 'did not answer' are different facts, disclosed to buyers beside holdings()",
+    "Blind-asset escape hatch and BlindTarget refusal — the account measures what it can and will not poke what it cannot see",
+    "notWhileMeasuring: a manifest frozen for the duration of a measured call (re-entry into a different function)",
+    "Session keys stamped with the hub's transfer counter so they retire on sale and stay retired after buy-back",
+    "Epoch-keyed allowlists giving O(1) revocation of mappings Solidity cannot delete",
+    "Permit2 spender-argument check (second ABI argument) on the session path",
+    "ERC-1271 under seal that validates only digests rebuilt under the account's own EIP-712 domain, with nonce+deadline and retireAttestations()",
+    "Narrow lease-agent capability (setUserVia) instead of an ERC-721 approval; rawUserOf to authenticate a lease after expiry",
+    "Rent escrowed to the token with vesting by observed breakage and a 'seen' bias against lazy holders",
+    "Locks as transferable positions that can be given into a token's own 6551 account",
+    "Consignment that moves title but returns use via ERC-4907; buyer names the agreed price",
+    "Dead-man's switch with two public clocks, owner-only life signal, first-knock-fixes-deadline, and ten diagnostic status codes",
+    "/k/<id>/<key>: a session key's own front door; services.json with on-chain-computed selectors so an agent needs only an RPC",
+    "Pages whose JS is a Solidity string constant and whose selectors are keccak'd on chain so the browser ships no hashing"
+  ],
+  "weaknesses": [
+    "IpseityAccount is coupled to the reference 6551 proxy footer (0x4d) and to the hub's 4-word statsOf; a unified hub must preserve both or re-point _mark",
+    "ERC-1155 cannot be guarded by identity (guardNFT needs ownerOf); spendCap counts native value only; a sealed Reach cannot claim()/vote() on a promised asset or sign any venue order (documented costs)",
+    "V4PositionPlanner on HEAD requires KILN.launcher(coin)==msg.sender, which breaks the advertised flow after the NFT is sold; fixed only on an unmerged branch; increase/decrease accept a caller-supplied PoolKey",
+    "Lease: native ETH only, one renter, no renewals; a holder who breaks a lease and never settles forfeits (B6); obligations() is a helper not an invariant",
+    "Locker: ERC-20 only; locksOf index stale after give; claim has no recipient argument",
+    "Consign: uint96 price ceiling, native ETH only, push-only indexes, consigned token's Reach cannot act for the term",
+    "Succession: requires stillHere once per quiet period; namedTo stale; needs a standing ERC-721 approval; heir resolution does not special-case a heir token sitting in Consign",
+    "Docs drift: Standards.sol cites a non-existent test/Standards.t.sol; test counts quoted as 158, 135, 140 and 73 in different places (I count 149 test* functions); verify-vault quoted at 97 assertions while the file has 116 call sites; DEPLOYMENTS 'Live now' lags deployments/*.json",
+    "No audit; MAINNET_READINESS lists audits of IpseityAccount and Lease as blocking gates; forge test never run natively (tools/forge.mjs shim only)",
+    "A token transferred into its own Reach/Grip by plain transferFrom is frozen on hubs deployed before 2026-08-20 (isTransferable fix is source-only for those deployments)"
+  ],
+  "website_delivery": "Entirely from chain, no server/IPFS. (1) tokenURI(id) returns JSON whose animation_url is the whole WebGL2 instrument (engine/ipseity.html, SSTORE2 shards in Engine + gzip loader in Renderer) as a nested data: URI — 103,808 B, 19.99M gas; it carries its own keccak/ABI coder/wallet client and reads state from window.IPSE. (2) Premises.request() (ERC-5219, resolveMode '5219') serves a multi-page HTML site over web3://<premises>/… : Chrome (CSS, nav, EIP-6963 wallet picker WALLET_JS), Desk (shared JS client IP with call/tryCall/connect/send), immutable Page* contracts each emitting a JSON config with on-chain keccak'd selectors. Area routes: /token/<id>/vault (two hands: give to Grip, draw, verify ERC-1271), /token/<id>/rent, /seal, /keys, /k/<id>/<key>, /estate, /lock, /c/<id> console. /token/<id>/live serves the instrument as a first-class HTML response (54,432 B, 4.48M gas) because a data: document has an opaque origin and wallets do not inject into it. HTTP gateways (tools/gateway.mjs, w3link.io) are optional conveniences; ENS ERC-6821 contentcontract record resolves a name into the site.",
+  "wallet_gating": "No SIWE, no signed challenge, no server session, no gated bytes; reading is never gated. Browser side: EIP-6963 picker → eth_requestAccounts (Desk.sol L312-317), eth_chainId checked against the page's chain (L299-301), then eth_call ownerOf(id) compared lowercase with the connected account to toggle UI state — body.held/.gate in Chrome.sol (L178-184: 'The gate is a courtesy, not a secret … What ownership actually gates is writing, and that is gated by the contract'), MINE in PageSeal (L173), mine/ag in DeskEstate (L126-128), the console crest 'you' (console.js L196-200), the instrument's needOwner() throwing 'Only the holder can change this token' (ipseity.html L2585-2589); /k/<id>/<key> also refuses a wallet that is not the key address (PageKey.sol L259-260). Enforcement is on chain: hub onlyOwner (holder or the token's Reach), onlyHolder (adds ERC-721 approvee), onlyOperator (adds live ERC-4907 user) (Ipseity.sol L291-320); Reach onlySigner (ownerOf == msg.sender, no cycle); executeAsSession (active, unexpired, mark == hub xfers, allowlisted); strict owner (or owner-or-Reach) in Lease/Consign/Succession. A wrong wallet gets the revert the page already predicted.",
+  "measured_numbers": [
+    "Bytecode: IpseityAccount 12,315 B (50% of EIP-170), 'the Reach spends 7,302 policing a capability it has'; GripVault 1,933 B (8%); Lease 6,764 B (28%) (README L1029-1062). Locker/Consign/Succession/Planner sizes not published.",
+    "Constants: MAX_SEAL 365d; MAX_MANIFEST 16; MAX_PIECES 8; MAX_LIST 16; MAX_SESSION 365d; MAX_BATCH 16; Lease MAX_DAYS 365, MAX_PER_DAY 1e30; Locker MAX_TERM 3650d; Consign MAX_CUT 5000 bps, term 1-730d; Succession quiet 30-3650d, notice 7-365d; Timelock 7d delay, 14d grace",
+    "Selectors: transfer 0xa9059cbb, transferFrom 0x23b872dd, approve 0x095ea7b3, increaseAllowance 0x39509351, setApprovalForAll 0xa22cb465, Permit2 approve 0x87517c45; ERC-1271 magic 0x1626ba7e; IERC6551Account 0x6faff5f1; IERC6551Executable 0x51945447; registry 0x000000006551c19487814612e58FE06813775758; proxy footer offset 0x4d; GRIP_SALT keccak256('IPSEITY.GRIP.v1')",
+    "Tests counted: Lease.t.sol 26, Locker.t.sol 1, V4PositionPlanner.t.sol 6, Timelock.t.sol 9, Ipseity.t.sol 42; 149 test* functions in test/. README says 158 (L1304) and 135 (L1313); INVARIANTS L1560 says 73; commit c56e12a says 140",
+    "Verifier assertions published: verify-vault 97, verify-kernel 36, verify-timelock 24 (README L1305-1306); estate 67 (commit 15844fe), earlier 56→64 (3d36eda); site 395 (README) / 422 (DEPLOYMENTS L223) / 546 (3d36eda). Call sites counted: vault 116, estate 70, timelock 25, kernel 37",
+    "tokenURI 103,808 B / 19.99M gas; tokenURIs 129,088 B / 37.06M; /token/1/live 54,432 B / 4.48M (README L965-973); tokenURISizeKiB 104.6 and 21/21 deployment checks on the 2026-09-24 Eth Sepolia campaign",
+    "Eth Sepolia (11155111, 2026-09-24, blocks 11768827-11768874): Ipseity 0x11e79cdf3e84a49d4fd2c12fb8a3be7936e5cb3b; Reach impl 0x640453e89c08bdc5d710962a466ccff8c423c698 (blk 11768836); Grip impl 0x6c647713cdb3ed6abfdfb5e7faa9341bb6b761a0 (11768837); Lease 0xa4cb5b8eb50e71e93475cba6f95c82033f861aab (11768841); V4PositionPlanner 0xd4ac9d6faee235f0ae2d2e5a66afffda6dcf8b8d (11768845); Locker 0xeb509debf410003458fd9cec968708a8eaa1475b (11768846); Succession 0x96fa547a561b7645c34fff20c2bb8e4a32778d47 (11768862); Consign 0x7a6347ee6acaff6c1b516cbe23f2ff0518e04ee3 (11768863)",
+    "Base Sepolia (84532): Ipseity 0x36c49f58c6437ee994766ce80f6654c4d797b8db; Reach 0x691e45d10b60ed96ebd5934a9f7979146dd77a85; Grip 0x2e554f5a6680f4a7d2a7b797c5473379faed3ed4; Lease 0x749efb0458d66843c0e0673acd86847c9990570b; Locker 0x6c9fc4e5ec467fe47073067cdf126e2c35fe5702; Succession 0x3635ac662a46c3ea786c471dd43f99bec7acff23; Consign 0x3919fdc54879f99aa402ef7e629b88ea08abc51c; no planner recorded",
+    "Deploy cost: Base Sepolia 68.41M gas/~40 tx (2026-08-18); 136.06M/~35 tx = 0.0214 ETH; Eth Sepolia 137.86M = 0.2148 ETH; /estate page 36,792 B",
+    "Live exercise 2026-08-18: 235 functions, 231 exercised, 4 skipped, 159 assertions, 101 transactions (DEPLOYMENTS L94-97)",
+    "Git: area files created in f0f2835 (2026-08-20) except V4PositionPlanner (6b89a86, 2026-09-18); IpseityAccount 4 commits, Succession 5, Lease 2, Locker 2; 103 commits total; 44 remote branches, only origin/codex/list-nft-functions-and-suggest-upgrades-hciyvv (2 commits) touches an area file (V4PositionPlanner)"
+  ],
+  "pitfalls": [
+    "The Reach's code and storage are frozen per deployment because the account address derives from the implementation — settle the design (session keys here vs. elsewhere) before mainnet",
+    "The hub must keep statsOf's 4-word shape (or _mark fails closed), rawUserOf/userExpires/setUserVia/leaseAgentOf for Lease, account/grip/detailOf/royaltyInfo for the estate, and clear user, lease agent, approvals and _ownerEpoch on transfer",
+    "Never let embody/embodyGrip or any operator-reachable stamp count as a sign of life for Succession",
+    "Keep isTransferable refusing transfers to a token's own Reach/Grip (computed, so undeployed accounts are covered)",
+    "Pages must read sessionCurrent, not only expiry, or a previous holder's key shows as live (INVARIANTS 126)",
+    "grantSession's two dynamic arrays encode opposite ways (address right-aligned, bytes4 left-aligned); getting it backwards grants a permission nobody chose (verify-site L2095-2101); an empty selector list permits nothing — bare value needs bytes4(0) granted",
+    "verify-site drives warp the harness to wall-clock because the pages compute dates from Date.now() and MAX_SESSION/MAX_TERM are measured from block.timestamp",
+    "Re-measure every published count before quoting; test/Standards.t.sol is cited but absent",
+    "Carry the branch version of V4PositionPlanner, not HEAD's",
+    "Nothing is audited; a stub kernel verifier must never be shipped (write-once)"
+  ],
+  "tests_and_tooling": "Solidity suites run by tools/forge.mjs (a cheatcode-precompile shim; native forge never run): test/Lease.t.sol (26, incl. 2 fuzz), test/Locker.t.sol (1), test/V4PositionPlanner.t.sol (6), test/Timelock.t.sol (9, incl. 1 fuzz), account/kernel cases in test/Ipseity.t.sol (42 total). Adversarial JS verifiers on an in-process @ethereumjs/vm (tools/evm.mjs): verify-vault.mjs (seal, Grip ABI shape, session keys, blind assets, batch, attestation, manifest renumbering, piece drop, key-survives-sale), verify-estate.mjs (succession 6 attacks, consignment 6 attacks), verify-timelock.mjs, verify-kernel.mjs (36), verify-findings.mjs (claims 3,4,5,7,8,10,11,12 reproduce-then-refute with controls), verify-site.mjs drives /lock, /keys, /estate, /token/<id>/rent, /k through the real pages with a stubbed wallet, verify-recover.mjs checks record routes against source, probe-reach.mjs (scratch, not in check). Mocks: Breakable, Drainer, Permit2ish, SealBreaker, Trap, HighBit, Broker, Nasty.RogueAgent, ERC6551Registry. All run under `npm run check` (26 steps); live runs: tools/exercise.mjs and tools/testnet-drive.mjs (Chromium) against Base/Eth Sepolia. Measured numbers in docs drift; re-measure."
+}

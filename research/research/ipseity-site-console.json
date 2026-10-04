@@ -1,0 +1,665 @@
+{
+ "repo": "Most-Advanced-NFT-Possible (IPSEITY) — /home/user/Most-Advanced-NFT-Possible @ 297e936",
+ "area": "the web3:// site (Premises/ERC-5219 router), Chrome, Desk* clients, Page* contracts, the /c console (PageConsole, ConsoleRead, ConsoleSkin, engine/console.*), CONSOLE.md, INTERFACE.md, tools/site.mjs, tools/gateway.mjs",
+ "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/ipseity-site-console.md",
+ "summary": "IPSEITY serves an entire web application from contract storage with no server, IPFS or fetch. `Premises.request(string[] resource, KeyValue[] params)` (src/Premises.sol:251) is an ERC-5219 HTTP handler returning (uint16 status, string body, KeyValue[] headers); `resolveMode()` returns the exact word \"5219\" so any ERC-6860 web3:// client resolves it with no gateway; 20 page contracts are immutable constructor args and compose HTML in view functions, while the browser JavaScript ships as Solidity string constants in the Desk* contracts or as frozen SSTORE2 data contracts (two ConsoleSkin instances holding console.css and console.js+console-lanes.js). The artwork routes (/, /token/<id>/raw|live|face/<n>|sigil.svg) are answered by Premises directly from the hub and renderer and never pass through a page — that split is the stated safety argument (a compromised router can frame but not alter the artwork). Every response carries Cache-Control (15 s pages, 86,400 s 301s), bad paths are 404 documents never reverts, and one resource has exactly one URL. An HTTP gateway (tools/gateway.mjs) is a pure convenience: each GET is one eth_call of request(); ENS reaches the contract through the ERC-6821 contentcontract record served by Nameplate.\n\nOwnership gating: reading is never gated anywhere (the contract cannot know the caller; the page's msg.sender is Premises). In the browser, Chrome.WALLET_JS collects EIP-6963 announcers (chosen, never raced; remembered in localStorage 'ipse.wallet'), Desk.CORE_JS connects via eth_requestAccounts and refuses a wrong chain before any read that determines a transaction, and the clients learn which tokens are yours by calling the hub's balanceOf then walking tokenOfOwnerByIndex (cap 64) — no list, no signature challenge, no session. The chat/terminal set a speaking token (`ME`, localStorage 'ipse.me') and toggle body.held so .gate (connect card) hides and .only (composers) show; the console server-renders ownerOf into the crest/seed, rewrites HELD to 'you' when eth_accounts[0] matches, and `onlyHolder()` withholds holder-only controls for strangers. Holder controls are deliberately shown to everyone and refused by the chain: the hub's onlyOwner(id) admits the ERC-721 owner or the token's own ERC-6551 Reach; Parley.mayActAs is owner-or-Reach (not the renter); Lease/Consign/Succession take strict-owner doors; session keys are checked by sessionAllows on every call, and /k/<id>/<key> only sends executeAsSession from the key's own wallet.\n\nClient discipline (enforced by tools/verify-site.mjs, 586 assertions at last run, and tools/verify-console.mjs, 58): every 4-byte selector is keccak'd on chain by the contract that serves the page and shipped in a JSON config block written with Web.jsonEsc (so a `</script>` symbol cannot end it); the browser ships no keccak and no ABI coder (four small hand encoders are each proven against a contract that does hash); all amounts are BigInt; every chain string reaches the DOM through textContent; Web.esc is a printable-ASCII whitelist; every satellite read is try/catch plus extcodesize so a chain missing a pool or lease degrades a section instead of reverting the page; 'zero' and 'not reported' are different facts (ConsoleRead.reported bitmask). Unique surfaces: the per-token console at /c/<id>[/verb] (seven plain-English verbs, the token's own hue in :root before any script, a depth-walk drawn as 1px margin rules carried in the URL fragment, a confirm slab before every send that then follows the receipt), a terminal that is one code path for people and agents (TERM.run(line), TERM.commands() as data, 46 words registered from three contracts), an indexer-free chat client that walks Parley's back-pointers one eth_getLogs block at a time with sealed DMs from a wallet-signature-derived P-256 key, a machine-readable shopfront ipseity.services/2 with selectors and a session-key service, a launchpad whose CREATE2 hook salt is mined by eth_call, and /hook/<addr> reading v4 permissions off address bits with no call.\n\nState of the code: 35 site-only runtime contracts (44 deployed by deploySite in a load-bearing order with a nonce-predicted Nameplate), five of them within 2–6% of EIP-170 (DeskTerm 23,908 B = 97.3%, PageLaunch 23,494, Desk 23,401, Chrome 23,310, PageManifest 23,105); the console shipped as four contracts with raw JS rather than the spec's 14 contracts with gzipped lanes, its TRADE/SPEAK lanes are 'unbuilt' notes on main (filled on the unmerged branch origin/claude/claude-md-docs-8vvyc8), no 302 redirects retire the 19 flat pages, Chrome is 94.8% of the ceiling and still carries CSS for a deleted tesseract, the console and /k use window.ethereum only (not the EIP-6963 chooser), DeskEstate listens for an 'ip:account' event nobody dispatches, and several doc numbers (README size table, test counts, five-chain partition) are stale. Nothing is audited. Live on Ethereum Sepolia (Premises 0x7e1bdcd82e2a1d197f5792ff41e6548e01ad7a31, PageConsole 0x975579ec…) and Base Sepolia (Premises 0xc59f75d2…).",
+ "components": [
+  {
+   "name": "Premises",
+   "path": "src/Premises.sol",
+   "purpose": "ERC-5219 router: request(resource, params) → (status, body, headers); resolveMode() = \"5219\"; serves the artwork routes itself and delegates every other route to an immutable page contract.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "resolveMode() external pure returns (bytes32) — line 244",
+    "request(string[] resource, KeyValue[] params) external view returns (uint16, string, KeyValue[]) — line 251",
+    "constructor(IHub hub, IChrome chrome, Pages memory p) — line 202; 23 public immutables P_DOOR…P_KEY (158-180)",
+    "_toAddr/_toUint/_exists/_eq/_moved(301, max-age 86400)/_notFound(404 doc)/_headers(Content-Type + public,max-age=15)"
+   ],
+   "design_decisions": [
+    "Premises never serves the artwork through a page contract (/raw, /live, /face, /sigil.svg answered from hub+renderer; lines 78-95)",
+    "/ is the live instrument of tokenByIndex(0); before the first mint /door answers (274-287)",
+    "/live exists because a data: document has an opaque origin and no wallet injects into it (504-512)",
+    "the still is its own request after the iframed counter measured 21M gas vs 0.2M (519-529)",
+    "one resource, one URL: trailing slash dropped, extra segments 404, leading zeros refused, mixed-case addresses 301 — because every response is cacheable (259-267, 658-670)",
+    "face takes an exact 4-segment path so /token/1/face cannot panic on resource[3] (483-490)",
+    "/c/<id>/<verb> with unknown verb opens the console unexpanded rather than 404 (396-418)",
+    "seventeen flat constructor args exceeded the stack even under viaIR → one Pages struct (200-201)"
+   ],
+   "security_invariants": [
+    "no state-changing function; ABI contains no transfer/withdraw/approve/execute/admin (verify-premises)",
+    "deployed code holds none of the engine bytes",
+    "a request for nonsense is a 404, never a revert; the path is never echoed",
+    "every response carries Cache-Control"
+   ],
+   "standards": [
+    "ERC-5219",
+    "ERC-6860/ERC-4804 web3://",
+    "ERC-6944 resolveMode",
+    "ERC-6821 (via Nameplate)",
+    "ERC-7160 faces"
+   ],
+   "reuse_notes": "Runtime 15,372 B (62.5%). Keep the four invariants and the artwork-never-through-a-page split verbatim; regenerate the route table for swap/social/launchpad/vault/console. Add the spec's 302 redirects if two surfaces coexist."
+  },
+  {
+   "name": "Site.sol interfaces",
+   "path": "src/interfaces/Site.sol",
+   "purpose": "The one shared read-interface file for the site: IHub (20 views), IRendererDoc, ISigilDraw, MarketView struct, IPoolRead, ILeaseRead, IDesk, IParley, ITalkDesk, Look/PoolState, IVenue, IChrome.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "IHub.viewOf/ownerOf/account/grip/userOf/sectionOf/… (16-39)",
+    "IPoolRead.market 12-tuple, quote, pendingCurve, openCount, openIds (75-94)",
+    "ILeaseRead.listing 9-tuple, cost, MAX_DAYS (96-107)",
+    "IParley.mayActAs, sealX, stateOf, topics (120-137)",
+    "IChrome.head/wallet/tabs/nav/navTop/foot (219-226)"
+   ],
+   "design_decisions": [
+    "declared once because a page with its own copy keeps compiling after the contract changed shape (6-14)",
+    "MarketView exists because printing twelve return values plus four ERC-20 reads runs out of stack even through IR (54-57)"
+   ],
+   "standards": [
+    "ERC-721 Enumerable",
+    "ERC-4907",
+    "Uniswap v3 reads"
+   ],
+   "reuse_notes": "Keep the practice; shapes follow the merged hub/pool/lease."
+  },
+  {
+   "name": "Chrome",
+   "path": "src/Chrome.sol",
+   "purpose": "Shared shell: stylesheet (head), EIP-6963 wallet chooser (wallet → window.IPW), per-token nav, counter tabs, 14-tab navTop, footer naming the ERC-5219 address with lore-folding script.",
+   "reuse_verdict": "rewrite",
+   "key_functions": [
+    "head(string title) pure — 25",
+    "wallet() pure → WALLET_JS (window.IPW: pv,nm,pick,ask,choose,keep,drop,all) — 276-324",
+    "nav(uint256 id, uint8 here) — 326",
+    "tabs(string t, uint8 here) — 344",
+    "navTop(uint8 here) — 360",
+    "foot(address premises, uint256 chainId) — 391"
+   ],
+   "design_decisions": [
+    "EIP-6963 announcers are collected and chosen, never taken first — 'MetaMask loses the sprint on every page load'; the chosen wallet supplies terms AND signs (264-274)",
+    "the gate is a courtesy, not a secret (224-228)",
+    "lore paragraphs fold behind a ✦ chip; with JS off everything is simply on the page"
+   ],
+   "security_invariants": [
+    "INVARIANTS #79/#99: the provider that supplies transaction terms is the provider that signs",
+    "wallet icons only if data:image/, names via textContent"
+   ],
+   "standards": [
+    "EIP-6963"
+   ],
+   "reuse_notes": "23,310 B (94.8%) — near the ceiling, carries dead tesseract CSS, and the console spec retires it. Keep the chooser and the .gate/.only pattern; one shell only, in the console's visual language."
+  },
+  {
+   "name": "Desk",
+   "path": "src/Desk.sol",
+   "purpose": "The application client for the token's own market and lease: config(id) JSON block (addresses, decimals, symbols, reserves, 12 pool + 8 lease selectors) and window.IP core (BigInt words, decimal parse/format, ticker whitelist, ERC-20 string decode, call/send with chosen wallet and chain check, generic data-call buttons) plus SWAP_JS, POOL_JS, RENT_JS.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "config(uint256 id) view — 69",
+    "bare() view — 104",
+    "selectors() pure (12) — 146",
+    "leaseSelectors() pure (8) — 163",
+    "core()/swap()/pool()/rent() pure — 191-209",
+    "CORE_JS: W,S,SW,AD,pad,parse,fmt,TK,STR,call,tryCall,word,connect,send,chainOk,acct — 212"
+   ],
+   "design_decisions": [
+    "no ABI coder, no keccak: selectors arrive from the contract (24-32)",
+    "no floating point for amounts (34-38)",
+    "config written with jsonEsc so a </script> symbol cannot end the block (40-45); symbols scrubbed again client-side because JSON escaping is not HTML escaping",
+    "signed word S() because a zero-padded negative tick mints a position nobody chose",
+    "one button whose label is the current step (Approve X / Swap X for Y)",
+    "recorded bug: paint() wrote to a missing element and killed the card — origin of the DOM-driving suite"
+   ],
+   "security_invariants": [
+    "chain checked before any read that determines a transaction",
+    "over-long values refused rather than truncated"
+   ],
+   "standards": [
+    "ERC-20",
+    "EIP-6963 via IPW"
+   ],
+   "reuse_notes": "23,401 B (95.2%). Pattern reusable verbatim; selector tables follow the merged pool/lease; move to exact-amount approvals (branch) and the console's ES5 style."
+  },
+  {
+   "name": "DeskUni",
+   "path": "src/DeskUni.sol",
+   "purpose": "Uniswap v3/v4 data desk: config() with venue addresses, routerKind, tiers+spacings, a derived asset list (lib/Assets over the collection's open markets, SCAN=32), 50 selectors; base() → window.UNI (meta, pools, slot0, picker, goChain EIP-3326/3085).",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "config() view — 86",
+    "selectors() pure (_selErc 6, _selPool 10, _selSwap 3, _selPos 8, _selVenue 7, _selCivic 16) — 158-264",
+    "base() pure → BASE_JS — 282"
+   ],
+   "design_decisions": [
+    "two routers share exactInputSingle; structs differ by one field; the wrong one shifts recipient and every amount — so kind travels with the address (24-30)",
+    "QuoterV2 selector follows the struct declaration order, not the NatSpec comment (33-44)",
+    "token list derived from the pool that would execute the trade, never fetched (lib/Assets.sol)"
+   ],
+   "security_invariants": [
+    "INVARIANTS #98 router shape travels with its address"
+   ],
+   "standards": [
+    "Uniswap v3 factory/QuoterV2/SwapRouter/SwapRouter02/NonfungiblePositionManager",
+    "EIP-3326",
+    "EIP-3085"
+   ],
+   "reuse_notes": "17,328 B. Drop _selCivic/_selPos (no page sends them; CONSOLE.md D.9 rules them deleted)."
+  },
+  {
+   "name": "DeskTrade",
+   "path": "src/DeskTrade.sol",
+   "purpose": "The Uniswap swap card client: quotes every fee tier through QuoterV2 by eth_call (30M gas), builds 8-word (v3 SwapRouter) or 7-word (SwapRouter02) exactInputSingle, single hop only.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "swap() pure → SWAP_JS — 21"
+   ],
+   "design_decisions": [
+    "amountIn==0 refused: on SwapRouter02 zero is the CONTRACT_BALANCE sentinel; recipient 0x1/0x2 refused",
+    "no multi-hop because a path is a bytes argument and there is no ABI coder; says so on the card"
+   ],
+   "standards": [
+    "Uniswap v3"
+   ],
+   "reuse_notes": "7,669 B. The limit-order/position client described in its trailing comment was never written."
+  },
+  {
+   "name": "DeskLaunch",
+   "path": "src/DeskLaunch.sol",
+   "purpose": "Launchpad client: hand-encodes launch(uint256,string,string,uint8,uint256,bytes32) with ASCII-only names, mines a v4 hook CREATE2 salt via Kiln.mine eth_call windows (60,000 × 12, 30M gas), deploys Gate/Facet hooks, initialises a v4 pool with six flat words, mints liquidity through V4PositionPlanner-encoded calldata and Permit2.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "launch() pure → LAUNCH_JS — 41"
+   ],
+   "design_decisions": [
+    "printable-ASCII names so one char is one byte and the advertised length is the real one",
+    "the Facet argument is packed by the Kiln, not the client",
+    "dynamic fee needs a Facet; a Facet needs a dynamic pool — both guarded before the wallet is asked",
+    "liquidity is encoded by Solidity (planner), never approximated here"
+   ],
+   "standards": [
+    "Uniswap v4 PoolManager.initialize, hook address bits, PositionManager, Permit2",
+    "CREATE2"
+   ],
+   "reuse_notes": "17,079 B; PageLaunch 23,494 B (95.6%) with step-4 markup in LaunchView.sol."
+  },
+  {
+   "name": "DeskTerm (+DeskRooms, DeskWill)",
+   "path": "src/DeskTerm.sol; src/DeskRooms.sol; src/DeskWill.sol",
+   "purpose": "The terminal: config() with 7 addresses and 53 selectors; TERM_JS = window.TERM{def, run, commands, me, use}; 31 built-in words, +3 from DeskRooms and +12 from DeskWill registered through the same def; ENC two-pass dynamic encoder; run(line) returns one string for people and agents alike.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "config() view — DeskTerm:48",
+    "core() pure → TERM_JS — 138",
+    "TERM.run(line), TERM.commands() → {cmd,usage,what,writes}",
+    "DeskWill.core() view — own config block W with 15 selectors",
+    "DeskRooms.core() pure — invite/evict/roster"
+   ],
+   "design_decisions": [
+    "a surface that is different for machines is a surface with two sets of bugs (header)",
+    "every offset computed before anything is written — an offset written while the tail grows is a lie",
+    "DeskTerm at 25,195 B (103%) was split rather than rewritten: companions register words through def (DEPLOYMENTS.md:385-388)"
+   ],
+   "security_invariants": [
+    "INVARIANTS #94 one code path for fingers and models",
+    "#95 hashes nothing, pads nothing wrong"
+   ],
+   "standards": [
+    "ERC-721",
+    "ERC-20",
+    "Parley/Kiln/Locker ABIs"
+   ],
+   "reuse_notes": "DeskTerm 23,908 B (97.3%) — the fullest contract in the repo; the `go` map is a drifted third door list (INTERFACE.md names a DeskGo companion)."
+  },
+  {
+   "name": "DeskTalk",
+   "path": "src/DeskTalk.sol",
+   "purpose": "The messaging client: config(room, other, group) with the Said topic0 and 23 selectors; TALK_JS (window.IPT/PARL) walks a room backwards one single-block eth_getLogs at a time from stateOf(room).last via prev pointers (guard 64), polls heads() every 9 s, sends speak/whisper with a hand-laid bytes tail, renders only via textContent; ROOMS_JS (roomsOf, found, join/leave/invite, 256-token roster windows, evict); DOOR_JS (held tokens → /c, /live, counter, dm).",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "config(uint256 room, uint256 other, uint256 group) view — 56",
+    "core() pure → TALK_JS — 123",
+    "rooms() pure → ROOMS_JS — 127",
+    "door() pure → DOOR_JS — 302",
+    "IPT.back(room,want), IPT.send(text), IPT.become(id), IPT.hello()"
+   ],
+   "design_decisions": [
+    "no keccak, no innerHTML for chain strings, no range scans (15-32)",
+    "a pointer that did not go backwards would be a loop that never ends — the guard is not decorative",
+    "holding nothing is information, not an error (DOOR_JS)",
+    "the commons gets the roster without evict doors because the chain refuses evict there"
+   ],
+   "security_invariants": [
+    "INVARIANTS #81 one query per block that has one",
+    "#90 nothing off the chain becomes markup",
+    "#91 the client computes no hashes",
+    "#92 zero state-changing functions"
+   ],
+   "standards": [
+    "eth_getLogs single-block",
+    "ERC-721 Enumerable holding scan"
+   ],
+   "reuse_notes": "20,422 B. The social-layer client to carry; retarget to the merged Parley."
+  },
+  {
+   "name": "DeskSeal",
+   "path": "src/DeskSeal.sol",
+   "purpose": "End-to-end sealed DMs in WebCrypto: P-256 key derived from personal_sign over 'IPSEITY seal v1 · chain · token', PKCS#8 import to recover the point, Parley.announce(token,x,y), static-static ECDH → SHA-256 → AES-256-GCM, kind=1 bodies, window.UNSEAL; keyOf returns zero after a sale.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "core() pure → SEAL_JS — 37"
+   ],
+   "design_decisions": [
+    "the key exists without being stored (RFC 6979 determinism)",
+    "no forward secrecy, stated",
+    "own key checked before theirs; publish button returns on mismatch (INVARIANTS #113)"
+   ],
+   "security_invariants": [
+    "INVARIANTS #105, #112 a seal claims only what it checked"
+   ],
+   "standards": [
+    "P-256 ECDH",
+    "AES-256-GCM",
+    "personal_sign"
+   ],
+   "reuse_notes": "4,783 B; a real differentiator for the social layer."
+  },
+  {
+   "name": "DeskEstate",
+   "path": "src/DeskEstate.sol",
+   "purpose": "Client for /estate (Succession + Consign): two readers never inferring state from the DOM, ten wouldPass reasons, heir as address or #token, up() guard against unmounted pages.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "core() pure → ESTATE_JS — 19"
+   ],
+   "design_decisions": [
+    "split out of PageEstate at 6% past the ceiling",
+    "readers survive their page being gone (INVARIANTS #121)"
+   ],
+   "standards": [
+    "ERC-721 approve/getApproved"
+   ],
+   "reuse_notes": "11,686 B. Listens for 'ip:account' which nothing dispatches. Keep only if succession/consignment survive the merge."
+  },
+  {
+   "name": "Page contracts (Door, Token, Market, Pool, Services, Talk, Rooms, Terminal, Swap, Gallery, Launch, Lock, Hook, Cast, Seal, Keys, Name, Estate, Key)",
+   "path": "src/Page*.sol (excluding PageConsole, PageManifest)",
+   "purpose": "One view function per route composing CHROME.head → nav → server-rendered facts from live reads → JSON config block with on-chain selectors → wallet/core/feature scripts → foot. All read-only.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "PageDoor.door() (door map → window.DOORS, mint button via TERM.run)",
+    "PageToken.token(id)/faces(id)",
+    "PageMarket.market(id)/open(page) PAGE=24 PICK=40",
+    "PagePool.pool(id)",
+    "PageServices.rent(id)/vault(id)",
+    "PageTalk.chat()/dm(other)",
+    "PageRooms.rooms()/room(index)",
+    "PageTerminal.terminal()",
+    "PageSwap.swap()",
+    "PageGallery.gallery(page) PER_PAGE=24",
+    "PageLaunch.launch()",
+    "PageLock.lockPage()",
+    "PageHook.hook(address)",
+    "PageCast.cast() (first SVG drawn during render)",
+    "PageSeal.sealPage() MAX_DAYS=365",
+    "PageKeys.keys() (grantSession hand-encoded; chips with on-chain selectors)",
+    "PageName.namePage() (DNS wire format; bind/unbind/claimParent/renew)",
+    "PageEstate.estatePage()",
+    "PageKey.keyPage(id, key) (/k/<id>/<key>: envelope, sessionAllows check, executeAsSession)"
+   ],
+   "design_decisions": [
+    "holder controls render for everyone and are refused by the contract",
+    "the counter page stays cheap: still as <img src=/token/<id>/sigil.svg>, instrument as a link",
+    "market picker seeded from Pool.openIds, never a hosted list",
+    "exact msg.value for rent with maxPerDay price guard",
+    "an empty selector list permits nothing; bytes4(0) is bare value (PageKeys)",
+    "a namehash you could not check is a namehash you should not sign (PageName)",
+    "the allowlists are non-enumerable and the page says so (PageKey)"
+   ],
+   "security_invariants": [
+    "Web.esc on every chain string; jsonEsc in config blocks",
+    "every page contract has zero state-changing functions (verified for 32 contracts)",
+    "PageKey sends only when eth_requestAccounts[0] == key"
+   ],
+   "standards": [
+    "ERC-4907",
+    "ERC-5192",
+    "ERC-6551",
+    "ERC-1271",
+    "EIP-712",
+    "EIP-2612",
+    "ERC-7160",
+    "ENS/ENSIP-10",
+    "Uniswap v4 hook bits"
+   ],
+   "reuse_notes": "Sizes 3,252–23,494 B; PageLaunch and PageName are the tight ones. Content and gating survive; markup should be regenerated in the console's language. PageHook/PageCast are reusable almost verbatim."
+  },
+  {
+   "name": "PageManifest",
+   "path": "src/PageManifest.sol",
+   "purpose": "The machine-readable shopfront: /token/<id>/services.json (schema ipseity.services/2; services trade, rent{use:commit,setTrait}, give, draw, verify, session{grant,act,check,revoke,door}) and /services.json (band, EDITION, mint{invoke}, pool, lease, ROUTES[21], parley{said topic, invoke, walk}, kiln, locker, deskTerm, venue{routerKind…}, paged offering).",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "token(uint256 id) view — 78",
+    "index(uint256 page) view — 285 (PAGE=24)",
+    "_call(sig, kind) → {sig, selector, kind}",
+    "SCHEMA = \"ipseity.services/2\"; EDITION, ROUTES constants"
+   ],
+   "design_decisions": [
+    "generated by the same contract from the same reads in the same block, so it cannot drift from the page",
+    "each service carries its selector so a caller needs an RPC endpoint and nothing else",
+    "not an ERC; explicit schema string",
+    "recorded bugs: duplicate `quote` key, literal 5 vs parts.length, services joined not concatenated"
+   ],
+   "security_invariants": [
+    "raw bytes contain no literal angle bracket (\\u003c) because JSON is pasted into HTML",
+    "EDITION equals tools/site.mjs BANDS and tiles the edition (INVARIANTS #130)"
+   ],
+   "standards": [
+    "self-declared ipseity.services/2"
+   ],
+   "reuse_notes": "23,105 B (94.0%). The agent surface; extend to swap/social/launch/vault services with on-chain selectors."
+  },
+  {
+   "name": "PageConsole",
+   "path": "src/PageConsole.sol",
+   "purpose": "/c/<id>[/verb]: one server-rendered document per token — inline stylesheet from ConsoleSkin with :root{--h:hue}, crest (token/chain/held/LED/walk crumb), the still as an <img> of /token/<id>/sigil.svg, three identity sentences, seven verb rows with clocks, the chosen lane's state, ticker, command line, confirm slab, and window.CON seed (addresses, reported bits, band, 6 selectors) followed by the client bytes from ConsoleCore.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "doc(uint256 id, uint8 verb) external view — 137",
+    "verbName/verbSub/verbWord(uint8) pure; verbOf(string) pure — 92-134",
+    "_crest, _still, _ident, _verbs, _clock, _lane, _foot, _seed(_seedWho,_seedWhat), _sels, _hue, _chainName"
+   ],
+   "design_decisions": [
+    "organised by what a person came to do, not by contract (header)",
+    "the walk is drawn as hue: depth is the number of 1px rules in the left margin (29-50)",
+    "what opens three levels down is the still, never the instrument — two raymarchers on one thread is what made the phone hot",
+    "crest, still, identity and seven rows are in the served bytes so the no-script page is a correct page (51-58)",
+    "the still is a route reference, not an inlined base64 blob (one third fewer bytes, cacheable)",
+    "_seed and _sels split for 'too deep in the stack by 1 slots'",
+    "a mint lane reads price() because no injected wallet reads a price"
+   ],
+   "security_invariants": [
+    "verbWord and console.js WORDS held equal by verify-console",
+    "no URL the contract writes carries a fragment",
+    "exactly one route to /live, no iframe"
+   ],
+   "standards": [
+    "ERC-5219 route",
+    "ERC-721 ownerOf/viewOf"
+   ],
+   "reuse_notes": "19,252 B (78.3%). The per-token control room the GOAL describes; take the lane fill from origin/claude/claude-md-docs-8vvyc8."
+  },
+  {
+   "name": "ConsoleRead",
+   "path": "src/ConsoleRead.sol",
+   "purpose": "One view look(id) → (TokenView, Clocks{lease*, bond*, market*, user*, reported}) reading hub, pool, lease with extcodesize + try/catch each, recording which satellite answered in a uint16 bitmask; bits() exposes the assignments.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "look(uint256 id) external view returns (TokenView, Clocks) — 104",
+    "bits() external pure returns (hub=1,pool=2,lease=4,owner=8,user=16) — 178",
+    "_live(address) private view (extcodesize) — 66"
+   ],
+   "design_decisions": [
+    "a clear bit means nobody answered; a set bit with zero means the answer was zero (26-33)",
+    "try alone does not survive a codeless address: the decoder's extcodesize check reverts before the call (53-65)",
+    "ownerOf read even after viewOf — has caught a stale index",
+    "no bit for a service not yet wired"
+   ],
+   "security_invariants": [
+    "never renders a TokenView of zeroes as a real token (BIT_HUB gate)",
+    "vested/userExpires saturate rather than wrap on down-cast"
+   ],
+   "standards": [
+    "ERC-4907",
+    "ERC-721"
+   ],
+   "reuse_notes": "3,408 B. Generalise to the merged satellites (pool, parley, launchpad, vault, roster); keep the three-valued rule."
+  },
+  {
+   "name": "ConsoleSkin (two instances: skin + core)",
+   "path": "src/ConsoleSkin.sol",
+   "purpose": "Curated, freezable SSTORE2 byte store: load(bytes) in ≤24,000-byte shards, dropLast, freeze (curator=0), css() concat; holds console.css raw (one shard) and console.js+console-lanes.js (two shards).",
+   "reuse_verdict": "reuse-verbatim",
+   "key_functions": [
+    "load(bytes) onlyCurator",
+    "dropLast() onlyCurator",
+    "freeze() onlyCurator (one-way)",
+    "setCurator(address)",
+    "css() view returns (bytes)",
+    "size(), shardCount()"
+   ],
+   "design_decisions": [
+    "a stylesheet cannot be gzipped because it must exist before first paint — paint correctness beats bytes (14-31)",
+    "--h is written by the document, not the stylesheet; bands re-derive --a (33-45)"
+   ],
+   "security_invariants": [
+    "errors NotCurator/IsFrozen/Empty; events Loaded(index,pointer,length), Frozen()",
+    "after freeze nothing can change"
+   ],
+   "standards": [
+    "SSTORE2 pattern"
+   ],
+   "reuse_notes": "1,807 B runtime; generic enough to hold any site asset."
+  },
+  {
+   "name": "engine/console.js",
+   "path": "engine/console.js",
+   "purpose": "Console client core: the walk in the URL fragment (#w=id:hue,…; MAX_DEPTH 3; 22px bands with tappable rungs), wallet crest (connect, HELD→'you', wrong-chain offer with EIP-3326 switch, accountsChanged/chainChanged repaint), WORDS/ALIAS command line, Escape and / keys. No localStorage.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "readWalk/paintWalk/walkTo/walkOut",
+    "connect(loud)/checkChain/switchChain/paintAccount/paintChain",
+    "run(raw) — #1024 walks, 'connect', verb or alias",
+    "C.say ticker (fades to .55 after 7 s, never disappears)"
+   ],
+   "design_decisions": [
+    "the walk rides in the fragment because ERC-5219 never sees the hash: no contract byte, no cache key (19-28)",
+    "unknown input is an error sentence, never a guess (338-341)",
+    "the crest cell is the connect control (167-179)"
+   ],
+   "security_invariants": [
+    "two naming tables held equal by test",
+    "no localStorage"
+   ],
+   "standards": [
+    "EIP-1193",
+    "EIP-3326"
+   ],
+   "reuse_notes": "16,573 B. Uses window.ethereum only — swap in the EIP-6963 chooser."
+  },
+  {
+   "name": "engine/console-lanes.js",
+   "path": "engine/console-lanes.js",
+   "purpose": "The seven lanes' controls: smallest ABI coder (addr/uint words), BigInt wei/eth, propose() confirm slab naming To/Value/Function and refusing the wrong chain, watch() receipt polling (4 s × 45), lanes TURN (commit), HOLD (balances, embody, pay into Grip), TRADE (unbuilt), HAND (transferFrom; links /keys and /k), SPEAK (unbuilt), MAKE (mint with price()), LOOK (walk, nearby chips).",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "propose(title, lines, tx, fn)",
+    "watch(hash)",
+    "onlyHolder(parent)",
+    "LANE[1..7](holder)"
+   ],
+   "design_decisions": [
+    "no path from a text field to a broadcast: every send raises a slab and a person presses (28-33)",
+    "lanes paint after the wallet answers (C.ready) — a lane painted before told a holder to connect while the crest said 'you'",
+    "a lane says what it cannot do, in place (unbuilt)",
+    "dust is still custody: <0.00001 rather than 0"
+   ],
+   "security_invariants": [
+    "chainOk===false refuses before a slab exists",
+    "exactly one eth_sendTransaction per press (verify-console)"
+   ],
+   "standards": [
+    "EIP-1193"
+   ],
+   "reuse_notes": "23,060 B on main; +692 lines on the unmerged branch fill TRADE/HAND/SPEAK with exact-amount approvals and quote-at-review swaps."
+  },
+  {
+   "name": "engine/console.css",
+   "path": "engine/console.css",
+   "purpose": "The console stylesheet served raw: hue tokens derived from --h, .sub bands re-declaring --a, .rung tap targets, fixed crest/column/lane/ticker/command regions (46/300/36 px), ≤900px lane slide-in, five type classes, no ambient motion.",
+   "reuse_verdict": "reuse-verbatim",
+   "key_functions": [],
+   "design_decisions": [
+    "a custom property containing var() is substituted where declared, so each band re-derives --a (84-89)",
+    "body fade is a CSS animation so a thrown script cannot leave the page invisible (47-55)",
+    ".sub.past is pointer-events:none; #root must not be — 'the entire console unclickable while every screenshot of it looked perfect' (96-104)"
+   ],
+   "standards": [],
+   "reuse_notes": "18,359 B, one shard. The visual language the owner's spec chose."
+  },
+  {
+   "name": "CONSOLE.md / INTERFACE.md",
+   "path": "CONSOLE.md; INTERFACE.md",
+   "purpose": "The console build specification (six rulings, 101-action surface map, refused list, state/failure rules, visual spec, voice rules, build plan, not-in-v1) and the 2026-08-23 audit record of what shipped and what remains.",
+   "reuse_verdict": "reuse-verbatim",
+   "key_functions": [],
+   "design_decisions": [
+    "verb-first spine; hue-rule walk; server-rendered first paint; no twelve-node ring; no reconstructed history; refuse dashboards, inboxes, localStorage, cross-chain sums",
+    "reading is never gated and holding is never login; controls shown and refused by the chain"
+   ],
+   "standards": [],
+   "reuse_notes": "Treat as decisions already taken; note what is spec-only (gzipped lanes, 14 contracts, 302 redirects, palette, latent sentences)."
+  },
+  {
+   "name": "tools/site.mjs",
+   "path": "tools/site.mjs",
+   "purpose": "deploySite(): the 44-contract site deployment in a load-bearing order (Parley reused on redeploy; DeskTerm before PageManifest; SSTORE2 loads before the nonce-predicted Nameplate); BANDS/assertTiles (Ethereum-only 1..4096), UNISWAP and LAYERZERO wiring tables, encRequest/decResponse hand ABI for request(), PAGES/VIA/EXPECTED recovery tables.",
+   "reuse_verdict": "adapt",
+   "key_functions": [
+    "deploySite(c, A, {hub,pool,lease,sigil,parley?,uniswap})",
+    "encRequest(resource)/decResponse(hex)/getter(c, premises)",
+    "assertTiles(bands)/bandFor/bandOrWhole/bandArgs",
+    "predictCreate(sender, nonce)",
+    "PAGES, VIA, EXPECTED"
+   ],
+   "design_decisions": [
+    "a second copy of a deployment sequence is a second thing to forget to update",
+    "the resolver's address is predicted at nonce+2 and asserted the moment it exists",
+    "two routes to one address in VIA is a free check the site came from a single deployment"
+   ],
+   "security_invariants": [
+    "assertTiles refuses overlaps/holes/unexhausted editions at import"
+   ],
+   "standards": [
+    "ERC-5219 ABI",
+    "CREATE address derivation"
+   ],
+   "reuse_notes": "818 lines; keep the shape, swap the tables."
+  },
+  {
+   "name": "tools/gateway.mjs",
+   "path": "tools/gateway.mjs",
+   "purpose": "HTTP gateway: GET /a/b → eth_call Premises.request([a,b],[]) → status/headers/body verbatim; POST /__rpc allowlist of 12 read methods; POST /__wallet dev-key signing on chain 31337 only; 128 KB body cap.",
+   "reuse_verdict": "reuse-verbatim",
+   "key_functions": [
+    "GET handler (120-130)",
+    "PAGE_RPC allowlist (82-86)",
+    "/__wallet (110-118)"
+   ],
+   "design_decisions": [
+    "this file holds no content — turn it off and every byte it ever served is still on the chain",
+    "not a general JSON-RPC relay: exposing admin methods would make a convenience gateway a public control plane"
+   ],
+   "security_invariants": [
+    "refuses eth_sendRawTransaction and hardhat_* through /__rpc (testnet-drive)"
+   ],
+   "standards": [
+    "ERC-5219",
+    "JSON-RPC"
+   ],
+   "reuse_notes": "146 lines; the dev gateway."
+  }
+ ],
+ "standards_implemented": [
+  "ERC-5219 (contract as HTTP resource)",
+  "ERC-6860/ERC-4804 web3:// with ERC-6944 resolveMode=\"5219\"",
+  "ERC-6821 contentcontract + ERC-3770 (via Nameplate, explained on /name)",
+  "ERC-137 addr fallback",
+  "EIP-6963 wallet discovery",
+  "EIP-1193 provider",
+  "EIP-3326 / EIP-3085 chain switching",
+  "EIP-2612 permit (PageLock)",
+  "EIP-712 typed data",
+  "ERC-1271 (0x1626ba7e on the vault page)",
+  "ERC-6551 (Reach/Grip, session keys, /k door)",
+  "ERC-4907 (renter semantics)",
+  "ERC-5192 (bound)",
+  "ERC-7160 (faces, /face/<n>)",
+  "ERC-721 Enumerable (tokenOfOwnerByIndex holding scan)",
+  "ERC-20 metadata/allowance/approve",
+  "Uniswap v3 (QuoterV2, SwapRouter, SwapRouter02, factory, positions) and v4 (PoolManager.initialize, hook address bits, PositionManager, Permit2)",
+  "ENS DNS wire format, ENSIP-10 wildcard, registrar renew",
+  "WebCrypto P-256 ECDH + AES-256-GCM (sealed DMs)",
+  "self-declared ipseity.services/2 manifest (not an ERC)"
+ ],
+ "unique_ideas": [
+  "The website is served by the NFT's own contracts over ERC-5219/web3:// — pages are view functions, JS is contract bytecode or SSTORE2 shards, and the artwork routes never pass through a replaceable page.",
+  "resolveMode() = \"5219\" as the four bytes that make a conformant web3:// client find the site without any gateway.",
+  "Every 4-byte selector the browser sends is keccak'd on chain by the contract serving the page and shipped in a jsonEsc'd JSON block; the browser carries no keccak and no ABI coder, and the few hand encoders are proven against contracts that do hash.",
+  "The per-token console /c/<id>/<verb>: seven plain-English verbs, the token's hue in :root before any script, server-rendered state so the no-script page is correct, controls that appear once the wallet proves holding, a confirm slab before every send that then follows the receipt.",
+  "The depth walk carried in the URL fragment (#w=id:hue,…) and drawn as 1px margin rules — the fragment never reaches ERC-5219, so no contract byte and no cache key.",
+  "ConsoleRead's reported bitmask: a clear bit is 'not reported', a set bit with zero is 'none' — plus extcodesize before try/catch because try alone reverts on a codeless address.",
+  "A terminal that is an API with a keyboard: TERM.run(line) and TERM.commands() are the same code path for people and agents; words register from companion contracts to dodge EIP-170.",
+  "Indexer-free chat: each message carries the block of the previous one, so a client walks history with single-block eth_getLogs and no range scan; token number is identity.",
+  "Sealed DMs with a key derived from a wallet signature (nothing stored), recovered via a PKCS#8 import so no curve arithmetic ships; the published point dies with the sale.",
+  "services.json/2: a machine-readable shopfront generated from the same reads as the page, with selectors, rent.use powers, and a session-key service plus /k/<id>/<key> as the agent's own door.",
+  "Holding verified by enumerating the collection itself (balanceOf + tokenOfOwnerByIndex) — no list, no login; holder controls shown to everyone and refused by the chain.",
+  "A CREATE2 hook salt mined by eth_call (Kiln.mine windows) so the browser never needs keccak; /hook/<addr> reads v4 permissions off address bits with no call.",
+  "The market picker and token list are derived from the pool that would execute the trade, never fetched from a hosted list.",
+  "Hostile-ERC-20 hardening on the rendering path (Web._label: offset must equal 32 before dereference; 30k/50k gas stipends; 32-char labels) after an OffsetBombToken cost 2,151M gas of memory expansion.",
+  "A confirm-slab rule with no exception: no path from a text field to a broadcast transaction.",
+  "Companion-contract pattern for EIP-170 (DeskRooms/DeskWill via TERM.def, DeskEstate, LaunchView) and a nonce-predicted resolver address asserted at deploy."
+ ],
+ "weaknesses": [
+  "Two interfaces coexist: 19 flat routes in Chrome's language and the console; the spec's 302 redirects and Chrome retirement never shipped.",
+  "Console lanes are thin on main (TRADE and SPEAK are 'unbuilt' notes; HAND = transfer only; MAKE = mint only); the fill exists only on unmerged branch origin/claude/claude-md-docs-8vvyc8.",
+  "Five contracts within 2–6% of EIP-170 (DeskTerm 97.3%, PageLaunch 95.6%, Desk 95.2%, Chrome 94.8%, PageManifest 94.0%); dead bytes (DeskUni _selCivic/_selPos, the terminal go map, tesseract CSS) remain.",
+  "Wallet discovery is inconsistent: console.js, console-lanes.js and PageKey use window.ethereum only, so INVARIANTS #99 (chosen, never raced) does not hold there.",
+  "DeskEstate listens for an 'ip:account' event that nothing dispatches.",
+  "Flat swap/pool cards grant unlimited approvals ((1n<<256n)-1n); the console branch moved to exact amounts.",
+  "Stale documentation: README size table and test counts, README/INVARIANTS #106 still describe the deleted door tesseract, CONSOLE.md still describes a five-chain partition after the Ethereum-only change, AGENT.md says services/1.",
+  "Console gas is unmeasured (no /c row in tools/gas.mjs; spec estimate 0.6–1.2M) and doc() uses repeated string.concat against the spec's single-buffer rule.",
+  "/rooms cannot be server-rendered (needs the speaking token); /c 404s before the first mint while / falls back to /door.",
+  "DeskTrade's position/limit-order client is prose only; DeskUni position selectors are unused.",
+  "No Solidity tests for the site; all coverage is the JS DOM shim + Playwright (behaviourally strong, no coverage tooling).",
+  "Nothing audited; MAINNET_READINESS.md lists every blocking gate open."
+ ],
+ "measured_numbers": [
+  "runtime bytes (out/solc.json, solc 0.8.36 viaIR runs 800, 2026-10-02): DeskTerm 23,908 (97.3%); PageLaunch 23,494 (95.6%); Desk 23,401 (95.2%); Chrome 23,310 (94.8%); PageManifest 23,105 (94.0%); PageName 21,567; DeskTalk 20,422; PageConsole 19,252 (78.3%); PageMarket 18,917; PageKeys 18,868; PageServices 17,789; PageSwap 17,523; DeskUni 17,328; DeskLaunch 17,079; PageToken 16,273; PageLock 15,541; PageDoor 15,388; Premises 15,372 (62.5%); PageEstate 14,982; PagePool 11,961; DeskEstate 11,686; PageSeal 11,324; PageKey 11,275; PageTalk 10,193; DeskWill 9,546; PageRooms 9,008; DeskTrade 7,669; PageCast 7,610; PageHook 6,620; PageGallery 4,857; DeskSeal 4,783; ConsoleRead 3,408; PageTerminal 3,252; LaunchView 2,226; DeskRooms 2,106; ConsoleSkin 1,807 — ceiling 24,576",
+  "engine/console.js 16,573 B; console-lanes.js 23,060 B; console.css 18,359 B; deployed as 1 CSS shard + 2 JS shards (≤24,000 B each)",
+  "eth_call gas (past tools/gas.mjs run): /token/1/live 4.48M (54,432 B) vs tokenURI() 19.99M (103,808 B); /door 0.31M; /chat 0.23M; /rooms 0.24M; /room/1 0.29M; /dm/2 0.24M; /token/1 0.17M; /token/1/market 0.28M; /token/1/pool 0.25M; /token/1/rent 0.25M; /token/1/vault 0.18M; /open 0.08M; /token/1/sigil.svg 3.32M; /services.json 0.11M; /token/1/services.json 0.17M; old iframed counter 21M; /estate body 36,792 B",
+  "assertions: verify-site 586 (latest commit; README's 395 stale), verify-console 58 (INTERFACE says 55), verify-premises 30, verify-plate 73, verify-launch 49, verify-estate 67, forge.mjs 135–158 Solidity tests, selftest 55",
+  "deploy cost: ~136–138M gas across ~35 tx per chain (Base Sepolia 136.06M, Ethereum Sepolia 137.86M); earlier site-only run 68.41M across ~40 tx",
+  "addresses: Ethereum Sepolia Premises 0x7e1bdcd82e2a1d197f5792ff41e6548e01ad7a31, PageConsole 0x975579ec6b68d80775de944947e7915c697504a2, ConsoleRead 0x6ce50463bf95f0209cf708bb7e6d4989b6c9257a, Parley 0x99f5d809b069c4ad45ca531b949dd3c89fdc8705, hub 0x11e79cdf3e84a49d4fd2c12fb8a3be7936e5cb3b; Base Sepolia Premises 0xc59f75d298ebf81551aab8d0aa8026b19bf83161, PageConsole 0x3a2757f9ef164da9875e2e62f1b70bd2c3a2465a (deployments/*.json; DEPLOYMENTS.md 'Live now' lags)",
+  "constants: Cache-Control 15 s pages / 86,400 s redirects; PAGE 24, PICK 40, PER_PAGE 24, SCAN 32, launch PAGE 20; Web.MAX_LABEL 32; decimalsOf stipend 30,000 gas, _label 50,000; Parley MAX_BODY 1,024, MAX_NAME 48; account MAX_LIST 16, MAX_SESSION 365 d; PageSeal.MAX_DAYS 365; estate 30/3650/7/365/730 d, cut ≤5,000 bps; Locker MAX_TERM 3,650 d; fee cap 500 bps; DYNAMIC_FEE 0x800000; mining 60,000 × 12 windows at 30M gas; QuoterV2 call 30M gas; held-token scan cap 64; locks list cap 50 (page)/12 (terminal); roster window 256; chat poll 9 s; receipt watch 4 s × 45; MAX_DEPTH 3; 22 px per walk level; crest 46 px, column 300 px, command line 36 px; ticker fade 7 s",
+  "counts: 20 page contracts + 10 desks + Chrome + Premises + ConsoleRead + 2 ConsoleSkin = 35 site runtime contracts; 44 deployed by deploySite; 54 names in EXPECTED; 21 ROUTES in the manifest; 46 terminal words (31+3+12); 7 verbs; 6 manifest services; selectors emitted: 12 pool + 8 lease (Desk), 53 (DeskTerm), 23 (DeskTalk), 50 (DeskUni); 34 routes checked by verify-site",
+  "unmerged branch origin/claude/claude-md-docs-8vvyc8: +692 lines console-lanes.js, +135 PageConsole.sol, +82 ConsoleRead.sol, +313 verify-console.mjs (6 commits, 2026-08-24)"
+ ],
+ "tests_and_tooling": "No .t.sol covers this area. tools/verify-premises.mjs (30): root is the instrument, /raw == tokenURI, /live == the inner document byte for byte, six nonsense paths 404 not revert, no state-changing function, no engine bytes in code. tools/verify-site.mjs (3,195 lines, 586 assertions at last run): ScriptToken and eight hostile ERC-20s (Silent, Bytes32, Huge, Liar, MadDecimals, GasBurner, two OffsetBomb) through real markets and every route; 34 routes answer with the right Content-Type; resolveMode exact word; one-URL canonicalisation (trailing slash, junk, leading zero, face arity); manifest /2 (every selector vs keccak, rent.use, session service, mint door, deskTerm, parley.invoke, EDITION vs BANDS, every advertised route answers); /k envelope/301/404; config selectors (12+8); the market picker; a hand-rolled DOM shim mounting each page and driving the shipped scripts against the in-process EVM — swap card, holder's side, rental counter, commons ('every one of them asked for exactly one block'), DM, terminal (TERM.run mint/say/launch/lockup asserted on chain), Uniswap card on both router shapes, launchpad, seals, rooms/roster, estate, session keys ('the account permits exactly the selector that was chosen'), name page, vault, nameplate, sealed DM, projector, lease solvency after every op; read-only ABI sweep over 32 contracts. tools/verify-console.mjs (58): verbWord vs WORDS, every alias names a verb; ConsoleRead bits against codeless pool/lease; /c shapes; no fragment in contract-written URLs; still is a route reference, no iframe, one /live link; :root{--h} recomputed from sectionOf; seven rows and identity server-rendered; engine LANDING='/c/'+S.id and top.location; Playwright Chromium 420×900 with a stub window.ethereum: no page errors, body visible, HELD→'you', controls painted after the wallet answers, slab raised and nothing sent before the press, exactly one send after, wrong chain 9999 names itself and refuses a slab, mint refuses without price(), LOOK chip walks to /c/<n>#w=1:<hue> with two rules and two crumbs. tools/gas.mjs budgets 22 routes against 10/30/50/100M caps and fails over 50M. tools/verify-recover.mjs reads PAGES/VIA/EXPECTED back off a chain. tools/testnet-drive.mjs checks the gateway's /__rpc refusals and drives a Chromium journey over hardhat node + gateway. tools/preview-site.mjs + site-viewer.mjs dump every route with its gas. CI (ci.yml) runs npm run check (26 steps) with Chromium.",
+ "wallet_gating": "Reading is never gated (the contract cannot know the caller; a page's msg.sender is Premises). Client side: Chrome.WALLET_JS collects EIP-6963 announcers and chooses one (localStorage 'ipse.wallet'); Desk.CORE_JS connect() = eth_requestAccounts + eth_chainId check against the page's chain; holding is proven by calling the hub's balanceOf(address) and walking tokenOfOwnerByIndex (cap 64) — DeskTalk held(), DeskTerm mine() — then become(id) sets the speaking token (localStorage 'ipse.me') and body.held toggles .gate (connect card hidden) / .only (composers shown). The console server-renders ownerOf into the crest and window.CON.owner, rewrites HELD to 'you' when eth_accounts[0] matches, and onlyHolder() withholds holder-only controls for strangers while the state still renders; /k/<id>/<key> refuses to send unless eth_requestAccounts[0] equals the key. On chain the contracts decide: hub onlyOwner(id) = ERC-721 owner or the token's ERC-6551 Reach (src/Ipseity.sol:291-299); Parley.mayActAs = owner or Reach, not the renter (src/Parley.sol:168-173); Lease/Consign/Succession strict-owner; session keys via sessionAllows on every executeAsSession. Rule stated in INTERFACE.md: reading is never gated and holding is never login; controls are shown and refused by the chain, never hidden. No SIWE, no server session, no signature challenge.",
+ "website_delivery": "Entirely from chain. Premises.request(string[] resource, KeyValue[] params) (ERC-5219) returns (uint16 status, string body, KeyValue[] headers); resolveMode() returns \"5219\" so ERC-6860 web3:// clients resolve it natively (web3://<premises>[:chainId]/...). Twenty page contracts (immutable constructor args) compose HTML in view functions from live reads; browser JS ships as Solidity string constants in Desk*.sol (window.IP, window.TERM, window.IPT, window.UNI…) or, for the console, as raw bytes in two frozen SSTORE2 ConsoleSkin stores (console.css; console.js+console-lanes.js) concatenated into the document by PageConsole.doc(). Every page carries a <script type=application/json> config block with addresses and on-chain-hashed selectors. The artwork routes (/, /token/<id>/live|raw|face/<n>|sigil.svg) are answered by Premises from the hub/renderer directly; /live serves Renderer.document() on a real origin so EIP-6963 wallets inject (a data: document has an opaque origin). An HTTP gateway (tools/gateway.mjs; w3link.io publicly) is optional: each GET is one eth_call of request() relaying the contract's status/Content-Type/Cache-Control. ENS names reach the contract via the ERC-6821 contentcontract record served by Nameplate. Measured: /token/1/live 4.48M gas (54,432 B) vs tokenURI 19.99M; flat pages 0.08–0.31M; the still 3.32M. The instrument's own /connect binds a wallet and leaves for /c/<id> (engine/ipseity.html:578, LANDING).",
+ "pitfalls": [
+  "`try` does not survive a codeless address: check extcodesize first (ConsoleRead._live) or the whole page reverts on chains missing a satellite.",
+  "An ERC-20 string return must be validated (offset == 32, len ≤ payload) before dereference — an attacker-chosen offset cost 2,151M gas of memory expansion and killed a 24-row directory.",
+  "JSON escaping is not HTML escaping: a jsonEsc'd `\\u003cscript\\u003e` comes back as `<script>` from JSON.parse — scrub symbols again at the one place every ticker passes.",
+  "address args are right-aligned, bytes4 args left-aligned; swapping them in grantSession silently grants a selector nobody chose.",
+  "Two Uniswap routers share exactInputSingle with structs differing by one field; the wrong shape does not revert, it shifts recipient and amounts — store the router kind beside the address.",
+  "QuoterV2's NatSpec parameter order differs from its struct order; hash the declaration.",
+  "Zero amountIn on SwapRouter02 is the CONTRACT_BALANCE sentinel, not an empty trade.",
+  "A negative tick zero-padded instead of sign-extended mints a position in a range nobody chose — use two's complement words.",
+  "A custom property containing var() is substituted where it is declared: re-declare --a on every band or every level is the first token's colour.",
+  "pointer-events:none on the standing band makes the console unclickable while every screenshot looks perfect.",
+  "A body fade implemented as a class the script adds leaves the server-rendered page invisible when a script throws — use a CSS animation.",
+  "Painting lane controls before eth_accounts answers tells a holder to connect while the crest says 'you'.",
+  "A payable mint proposed at zero value reverts; no injected wallet reads a price — read price() and attach it, or refuse.",
+  "Seventeen flat constructor args, or six reads inside one string.concat, exceed the stack even under viaIR — pass a struct, split into private functions.",
+  "A duplicate JSON key is legal and every parser keeps the last one — the manifest silently lost the quote asset to a `quote` call entry.",
+  "Variable-length SSTORE2 loads must not sit between a nonce prediction and the contract it predicts.",
+  "A load-balanced public RPC answers 0x for a contract that exists on another replica — retry before believing absence (redeploy-site, DEPLOYMENTS).",
+  "Source bytes are not runtime bytes: size with the compiler gate, never by reading the file; four site contracts sit at 94–97% of EIP-170.",
+  "Two copies of one naming table drift (verbs, door map, bands, routes) — derive one from the other or hold them equal with a test.",
+  "Chrome's EIP-6963 chooser is bypassed by the console and /k (window.ethereum only); DeskEstate's 'ip:account' listener has no dispatcher.",
+  "Unlimited ERC-20 approvals on the flat cards; the console branch uses exact amounts."
+ ]
+}

@@ -1,0 +1,279 @@
+{
+  "repo": "Cutting-edge-technologically-advanced-NFT (ANIMA) — /home/user/Cutting-edge-technologically-advanced-NFT @ e345828b7bee393022d512ace90c6d5e710b2fce (main, 2026-09-16)",
+  "area": "ERC-6551 account + registries: contracts/account/AgentAccount.sol, contracts/registry/{BondVault,ReputationRegistry,ValidationRegistry,AgentHandles,AnimaRoles,AnimaBindings}.sol",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/anima-account-registry.md",
+  "summary": "ANIMA's token is an ERC-721 whose every holder gets an ERC-6551 wallet (AgentAccount, an ERC-1167 clone addressed through the canonical registry 0x000000006551c19487814612e58FE06813775758) and whose accountability lives in six standalone registries, because the monolith token is 23,971 of 24,576 EIP-170 bytes. AgentAccount's defining idea is the 'leash': the token owner is never rate-limited and can always rescue funds, while session keys (what an autonomous agent actually runs with) are bounded by the AutonomyPolicy published on the token (perTxWei, calendar-day dailyWei, expiry, allowDelegateCall, allowUnlistedTargets, merkle targetsRoot), by a per-key lifetime cap, by a (target,selector) allowlist namespaced to the granting owner, and by the agent's live status (Paused/Disputed => no session spend). It bumps ERC-6551 state() on every execution AND on every authorisation widening so a buyer's integrity pin catches re-arming; keeps an append-only audit hash chain keccak(prev, chainId, account, signer, to, value, selector, dataHash, op, state, timestamp) replayable by sdk replayAuditLog; refuses ERC-1271 from session keys; and implements ERC-4337 with the rule that the EntryPoint is never a principal (all userOps must enter via executeUserOp so the responsible session key is charged).\n\nThe registries: BondVault holds a single-ERC-20 slashable stake per agent with reserve/release (per-module ownership), requestUnbond/cancelUnbond/withdraw (queued collateral stays slashable for UNBONDING_PERIOD and belongs to whoever queued it), and arbiter slash that consumes free then unbonding but never another job's reserved coverage. ReputationRegistry is ERC-8004 feedback plus an 'attested' flag and 'weight' set only by settlement modules, with an O(1) stake-weighted aggregate (attestedSummaryOf) so spam cannot make reputation unreadable. ValidationRegistry is ERC-8004 validation with expiring requests keyed by keccak(requester, requestHash) to defeat squatting, single-answer named validators, PASS_THRESHOLD 50, plus ERC-8126 risk attestations from a separate provider allowlist. AgentHandles binds verifier-attested email/domain/DID/ENS/social/libp2p/phone/API-key handles one-to-one to an agent, stale on transfer or expiry. AnimaRoles is an admin-free ERC-7432 registry that locks the token in place via the token's module hook instead of escrowing it, caps irrevocable roles at 365 days, and refuses to overwrite a live irrevocable role. AnimaBindings is an immutable ERC-8217 bridge to the singleton ERC-8004 registry.\n\nMeasured: AgentAccount 10,709 runtime bytes; registries 5,714 / 9,159 / 6,024 / 4,879 / 5,107 / 1,687; accountOf 26,863 gas monolith vs 31,594 diamond; 268 it() cases in test/*.test.ts (docs say 279). All six registries plus the account implementation are deployed on Base Sepolia, Ethereum Sepolia, Unichain Sepolia, Robinhood and BSC testnets (addresses in deployments/*.json), with the owner keys destroyed. One real defect is unmerged: branch codex/fix-high-priority-bug-in-handle-reclamation (a767f7c) fixes AgentHandles releasing a handle while an older attestation is still fresh.\n\nNo web UI is minted by the NFT. The 'Sanctuary' is an off-chain Vite SPA on GitHub Pages; AnimaWeb3Renderer is a separate ERC-4804 manual-mode contract serving HTML for /token/{id}/live that imports viem from esm.sh; tokenURI minted by the Sanctuary is a self-contained data: JSON+SVG. Ownership 'verification' is client-side ownerOf(id)==connected address over 1..totalMinted; enforcement is only the contracts' own owner/controller/session checks. For the unified NFT, AgentAccount (adapt), AnimaRoles (reuse/adapt), AgentHandles (adapt, with the fix) and BondVault/ReputationRegistry (adapt) are the carry-overs; ValidationRegistry only with an escrow; AnimaBindings drop.",
+  "components": [
+    {
+      "name": "AgentAccount",
+      "path": "contracts/account/AgentAccount.sol",
+      "purpose": "ERC-6551 token-bound account for each agent token: owner is unrestricted; session keys are bounded by the token's AutonomyPolicy, a per-key lifetime cap, a calendar-day cap, a (target,selector) allowlist/merkle root and the agent's live status; keeps an audit hash chain; ERC-1271 for owner only; ERC-4337 via executeUserOp.",
+      "key_functions": [
+        "token() view returns (chainId, tokenContract, tokenId) — extcodecopy at 0x4d (:164)",
+        "state() view; owner() view (0 on foreign chain or self-ownership) (:173-186)",
+        "isValidSigner(address,bytes) view returns bytes4 (:198)",
+        "grantSession(address signer, uint64 validAfter, uint64 validUntil, uint128 spendCapWei) owner-only (:212)",
+        "revokeSession(address signer) owner or anima().guardianOf (:232)",
+        "setAllowedCall(address target, bytes4 selector, bool allowed) owner-only, bumps state (:247); allowedCall(target,selector) view keyed by current owner (:257)",
+        "execute(address to, uint256 value, bytes data, uint8 operation) payable nonReentrant (:273)",
+        "executeWithProof(to, value, data, operation, bytes32[] proof) payable nonReentrant (:289)",
+        "executeBatch(Call[] calls) payable nonReentrant returns bytes[] (:305)",
+        "auditRoot() public bytes32 (:110); event AuditEntry(root, previousRoot, signer, to, value, selector, dataHash, state)",
+        "isValidSignature(bytes32,bytes) view — owner's signature only (:444)",
+        "validateUserOp(PackedUserOperation,bytes32,uint256) onlyEntryPoint (:463); executeUserOp(PackedUserOperation,bytes32) onlyEntryPoint nonReentrant (:505)",
+        "supportsInterface(bytes4) pure: IERC165, IERC6551Account 0x6faff5f1, IERC6551Executable 0x51945447, IERC1271, IERC721Receiver, IERC1155Receiver (:632)"
+      ],
+      "design_decisions": [
+        "Owner is not on a leash: 'They must be able to rescue a paused or misconfigured agent's funds without asking anyone.' (:376-378)",
+        "Session.grantedBy voids keys on sale: 'otherwise a seller keeps a live, funded key on the buyer's wallet, invisible to every integrity check the sale performed.' (:62-65)",
+        "Allowlist namespaced by granting owner 'so a buyer inherits an empty allowlist rather than whatever surface the seller opened up.' (:97-99)",
+        "setAllowedCall bumps state(): 'A silent widening would let a seller re-arm a dormant key after the pin was taken.' (:243-246)",
+        "EntryPoint is never a principal — earlier version let a session key point callData at execute and skip every cap; all 4337 traffic must enter via executeUserOp (:365-371)",
+        "Audit chain binds chainId and account 'so a record from one deployment can never be replayed as evidence about another.' (:338-339)",
+        "Session keys cannot sign ERC-1271: 'a budget cap means nothing if the key can instead sign an unbounded off-chain order that some other protocol honours.' (:441-443)",
+        "Paused/Disputed agent cannot spend: 'This is what makes the guardian's kill switch real rather than advisory.' (:401-402)",
+        "Memory-arg duplicate path kept 'line-for-line identical' because sharing calldata/memory needs an external self-call (:538-541) — but merkle branch is missing on the memory path"
+      ],
+      "security_invariants": [
+        "Owner never rate-limited; session keys always are (SECURITY.md #9)",
+        "Session keys cannot produce ERC-1271 signatures (#10)",
+        "Paused or disputed agent cannot spend from a session key (#11)",
+        "state() increments on every state-changing call (#12)",
+        "Audit root append-only and reproducible off-chain (#13)",
+        "Account owned by its own token has no owner (#14)",
+        "A key granted by a previous owner is dead whatever its expiry says (:395-396)"
+      ],
+      "standards": ["ERC-6551 (account + executable)", "ERC-1271", "ERC-165", "ERC-721Receiver", "ERC-1155Receiver", "ERC-4337 (PackedUserOperation v0.7/0.8 ABI)", "ERC-7562 validation-rule aware"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Best-engineered piece; maps to the GOAL's in-NFT wallet/vault. Adapt: decouple policy/status reads from IAnima (or keep on the unified hub), add ERC-20 spend caps (native-only today), add the merkle branch to the 4337 memory path, decide on OpenZeppelin dependency (SignatureChecker, MerkleProof, ReentrancyGuardTransient), consider pairing with a receive-only vault."
+    },
+    {
+      "name": "BondVault",
+      "path": "contracts/registry/BondVault.sol",
+      "purpose": "Slashable ERC-20 bond per agent: anyone deposits, only the owner queues withdrawals (slashable during UNBONDING_PERIOD and paid to the queuer), modules reserve/release coverage per job with per-module ownership, arbiters slash free then unbonding, never another job's reserved coverage; slashed value goes to the harmed party.",
+      "key_functions": [
+        "constructor(IERC20 asset, IERC721 agents, uint64 unbondingPeriod, address owner)",
+        "setModule(address,bool) / setArbiter(address,bool) onlyOwner",
+        "bondOf(uint256) view returns Bond{total,reserved,unbonding,readyAt,unbondTo}",
+        "availableCoverage(uint256) view = total - reserved - unbonding; slashableOf = total - reserved; reservedBy(agentId, module)",
+        "deposit(uint256 agentId, uint256 amount) nonReentrant (balance-delta, ExactERC20)",
+        "requestUnbond(uint256 agentId, uint256 amount) token owner, one pending; cancelUnbond(agentId) by queuer; withdraw(agentId) permissionless after readyAt",
+        "reserve(agentId, amount) / release(agentId, amount) onlyModule",
+        "slash(uint256 agentId, uint256 amount, address beneficiary, bytes32 reason) onlyArbiter nonReentrant"
+      ],
+      "design_decisions": [
+        "'Unbonding stays slashable… Otherwise an agent front-runs its own accountability by withdrawing the moment it knows a job went badly.' (:26-28)",
+        "'Slashing cannot consume reserved capital… one failure cascade into everyone else's protection.' (:29-31)",
+        "'Coverage is reserved, not merely counted' (:32-33); 'Slashed value is not burned. It routes to the harmed party' (:35-36)",
+        "cancelUnbond gated on the queuer, not the holder — a buyer could otherwise re-queue the seller's collateral to themselves (:201-204)",
+        "'judge an agent by availableCoverage, never by slashableOf' (:218-219)",
+        "UNBONDING_PERIOD 'Must outlast the dispute window of any module that reserves against this vault' (:61-63)"
+      ],
+      "security_invariants": ["total >= reserved + unbonding", "queued collateral stays slashable", "slash consumes free before reserved", "queued withdrawal pays whoever queued it", "one bond cannot back two jobs", "escrow clamps release/slash to vault state"],
+      "standards": ["none (bespoke); uses OZ Ownable2Step, ReentrancyGuardTransient, SafeCast; ExactERC20 value-conserving transfers"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep the accounting for any stake/escrow feature; single-ERC-20 and admin-set module/arbiter sets must become constructor-pinned for a no-admin design. Not the holder's asset vault (that is the ERC-6551 account)."
+    },
+    {
+      "name": "ReputationRegistry",
+      "path": "contracts/registry/ReputationRegistry.sol",
+      "purpose": "ERC-8004 reputation registry plus provenance: feedback filed by settlement modules on behalf of paying clients is marked attested and weighted by value at stake; an O(1) running aggregate (attestedSummaryOf) is the integrator read path; ERC-8004 getSummary stays byte-compatible and counts everything.",
+      "key_functions": [
+        "giveFeedback(agentId, int128 value, uint8 valueDecimals, tag1, tag2, endpoint, feedbackURI, bytes32 feedbackHash) permissionless",
+        "giveAttestedFeedback(agentId, address client, value, valueDecimals, tag1, tag2, endpoint, feedbackURI, feedbackHash, uint128 weight, bytes32 jobId) settlement module only; client != ownerOf",
+        "revokeFeedback(agentId, uint64 index) by client; adjusts aggregate",
+        "appendResponse(agentId, client, index, responseURI, responseHash) anyone, event-only",
+        "getSummary(agentId, address[] clients, tag1, tag2) view O(n) → (count, int128 mean@2dp, 2)",
+        "attestedSummaryOf(agentId) view O(1) → (count, weightedMean, totalWeight)",
+        "getAttestedSummary(agentId, clients, tag1, tag2) view O(n)",
+        "readFeedback / readFeedbackDetail / getResponseCount / getClients / clientCount / getClientsPaged(agentId, offset, limit) / getLastIndex",
+        "setSettlementModule(address,bool) onlyOwner; SUMMARY_DECIMALS = 2"
+      ],
+      "design_decisions": [
+        "'consumed naively it is a sybil farm: an agent can mint a thousand addresses and rate itself perfect for the price of gas.' (:14-15)",
+        "'Faking it costs exactly as much as the jobs are worth.' (:26)",
+        "O(1) aggregate because spam on the client list is 'a denial of service against a competitor' (:60-64)",
+        "Anyone may respond to feedback; responses are events (:219-221)",
+        "Fixed SUMMARY_DECIMALS removes 'an entire class of integration bug' (:49-52)"
+      ],
+      "security_invariants": ["attested feedback requires a registered settlement module and a non-owner client", "weight = min(price, coverage) at the escrow (flash-loan regression)", "aggregate maintained on write and revoke"],
+      "standards": ["ERC-8004 IReputationRegistry (draft 2025-08-13)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Useful social-layer trust signal; bound valueDecimals (unchecked 10**x overflow for decimals > 79, client-controlled through WorkEscrow.acceptDelivery), pin settlement modules at construction."
+    },
+    {
+      "name": "ValidationRegistry",
+      "path": "contracts/registry/ValidationRegistry.sol",
+      "purpose": "ERC-8004 validation with expiring requests keyed by keccak256(requester, requestHash) (anti-squatting), single answer from the named validator before expiry, 0-100 score with PASS_THRESHOLD 50; plus ERC-8126 agent security attestations from a separate provider allowlist.",
+      "key_functions": [
+        "requestKeyOf(address requester, bytes32 requestHash) pure",
+        "validationRequest(validator, agentId, requestURI, requestHash) — 7-day default; validationRequestWithExpiry(..., uint64 expiry)",
+        "validationResponse(bytes32 requestKey, uint8 response, responseURI, responseHash, tag) named validator, once",
+        "getValidationStatus / hasPassed / requestOf / getSummary(agentId, validators, tag) / getAgentValidations / getValidatorRequests",
+        "recordAgentVerification(agentId, uint8 overallRiskScore, bytes32 etv, mcv, scv, wav, wv, summaryProofId) provider only",
+        "getLatestRiskScore(agentId) / latestVerificationOf(agentId)",
+        "setValidator / setVerificationProvider / setRestrictValidators onlyOwner"
+      ],
+      "design_decisions": [
+        "Keying by requestHash alone 'is front-runnable… a denial of service with a payout' — namespacing by opener removes the attack while keeping the ERC-8004 event shape (:181-192)",
+        "Requests expire so an agent cannot point at 'pending review' forever (:15-18)",
+        "Only the named validator may answer, once — no verdict shopping, no revision (:19-21)",
+        "Self-validation refused: 'is not validation, it is marketing' (:229)",
+        "Security badges always need an allowlisted provider even when the validator market is open (:127-129)",
+        "Unanswered requests contribute nothing: 'a validator's silence says something about the validator, not about the agent' (:304-306)"
+      ],
+      "security_invariants": ["one answer per request", "no answer after expiry", "validator != agent holder", "risk score <= 100"],
+      "standards": ["ERC-8004 IValidationRegistry (with namespaced-key deviation)", "ERC-8126 (optional on-chain surface)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Adapt only if the unified protocol keeps a work/dispute flow; otherwise drop. Carry the opener-namespaced key idea."
+    },
+    {
+      "name": "AgentHandles",
+      "path": "contracts/registry/AgentHandles.sol",
+      "purpose": "Verifier-attested off-chain identities (Email, Domain, DID, ENS, Social, MeshPeer, Phone, ApiKeyId) bound to an agent one-to-one; attestations have an evidence hash, optional expiry, are revocable by verifier or current owner, and go stale when the token changes hands or is burned.",
+      "key_functions": [
+        "setVerifier(HandleKind kind, address verifier, bool allowed) onlyOwner — per-kind authorisation",
+        "handleKey(HandleKind, string) pure = keccak256(abi.encode(uint8 kind, value))",
+        "attest(agentId, kind, string value, uint64 expiresAt, string evidenceURI, bytes32 evidenceHash) returns index — HandleTaken if another agent has a fresh claim",
+        "revoke(agentId, index) by attesting verifier or current token owner",
+        "handlesOf(agentId) / handleCount(agentId)",
+        "isFresh(agentId, index) view — unrevoked, unexpired, ownerAtAttestation == current owner (staticcall-tolerant)",
+        "controls(agentId, kind, value) view; agentFor(kind, value) view reverse lookup; claimedBy(bytes32) public"
+      ],
+      "design_decisions": [
+        "'a way for a counterparty to check that a given inbox belongs to a given agent, without asking the agent' (:17-19)",
+        "'Verification does not survive a sale' — mirrors the token's rule for autonomy (:26-30)",
+        "'What a verifier attests to is off-chain and only as good as the verifier' — evidenceHash for audit (:32-34)",
+        "Per-kind verifiers: 'an inbox provider should not be able to certify DNS ownership' (:69-70)",
+        "Burned token must make the handle reclaimable rather than squat it via ownerOf revert (:208-210)"
+      ],
+      "security_invariants": ["one handle, one agent (fresh claims only)", "attestation stale on transfer/expiry/revoke", "only per-kind allowlisted verifiers may attest"],
+      "standards": ["bespoke (no ERC); OZ Ownable2Step"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Good fit for the social layer (handles shown on the on-chain site, DM routing). Apply unmerged fix a767f7c (branch codex/fix-high-priority-bug-in-handle-reclamation): _hasFreshClaim must return true if ANY matching attestation is fresh and revoke must not clear claimedBy while another is fresh. Prefer on-chain proofs (ENS) over admin-chosen verifiers."
+    },
+    {
+      "name": "AnimaRoles",
+      "path": "contracts/registry/AnimaRoles.sol",
+      "purpose": "Standalone ERC-7432 roles registry (OPERATOR, PAYER, AUDITOR, TRAINER or any bytes32) for one collection; locks the token in place through the token's module hook instead of escrowing it; irrevocable roles capped at 365 days; no admin.",
+      "key_functions": [
+        "grantRole(Role{roleId, tokenAddress, tokenId, recipient, expirationDate, revocable, data}) owner or role-approved operator; locks token on first role",
+        "revokeRole(tokenAddress, tokenId, roleId) grantee always / anyone if expired / owner if revocable",
+        "unlockToken(tokenAddress, tokenId) permissionless once activeRoleCount == 0 and now >= lockedUntil",
+        "setRoleApprovalForAll(tokenAddress, operator, approved)",
+        "ownerOf / recipientOf / roleData / roleExpirationDate / isRoleRevocable / isRoleApprovedForAll (ERC-7432 views)",
+        "hasRole(tokenId, roleId, account) view (non-standard convenience)",
+        "supportsInterface: 0xd00ca5cf (ERC-7432), ERC-165; constants OPERATOR/PAYER/AUDITOR/TRAINER, MAX_IRREVOCABLE_DURATION = 365 days"
+      ],
+      "design_decisions": [
+        "External because the token is 605 bytes under EIP-170; 'Measured, not assumed.' (:22-25)",
+        "ERC-7432 'IS NOT an extension of ERC-721' — designed for standalone registries (:27-32)",
+        "'Locking instead of escrow… The owner keeps the token in their own wallet, it stays visible to every marketplace and indexer, and it simply cannot move while a role is live.' (:34-39)",
+        "'Irrevocable roles are capped… a grant the owner cannot end is a lock the owner cannot lift' (:41-45, :65-67)",
+        "'Roles do not survive a sale, structurally' because a live role locks the token (:47-49)",
+        "Cannot overwrite a live irrevocable role (fix recorded in TESTNET_AUDIT_2026-09-02) (:137-143)"
+      ],
+      "security_invariants": ["token locked while any role record exists or lockedUntil in future", "irrevocable duration <= 365 days", "owner cannot revoke or overwrite a live irrevocable role", "grantee may always walk away"],
+      "standards": ["ERC-7432 (Final, 0xd00ca5cf)", "ERC-165"],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Admin-free and standards-conformant; only coupling is IAnimaRoleLocking.lockAgent/unlockAgent and being registered as a token module. Adapt the hook name to the unified hub's lock; roles are advisory unless modules consult hasRole."
+    },
+    {
+      "name": "AnimaBindings",
+      "path": "contracts/registry/AnimaBindings.sol",
+      "purpose": "ERC-8217 immutable binding of an ERC-8004 agent id to a master ERC-721/1155 NFT so control follows the NFT; binder must own both the agent id and the master token; controllerOf resolves to the master's ownerOf.",
+      "key_functions": [
+        "constructor(address identityRegistry)",
+        "bind(uint256 agentId, TokenStandard standard, address tokenContract, uint256 tokenId) — permanent; ERC-6909 refused",
+        "bindingOf(agentId) view; controllerOf(agentId) view; bindingMetadataValue() view = abi.encodePacked(address(this)); BINDING_METADATA_KEY = 'agent-binding'"
+      ],
+      "design_decisions": [
+        "'Bindings are immutable… re-point at another, which is identity laundering with extra steps.' (:53-55)",
+        "'The binder must own the master token at bind time… borrow its standing.' (:57-59)",
+        "Must own the agent id too, or 'an attacker can pre-bind somebody else's (or the next anticipated) ERC-8004 id permanently' (:87-89)"
+      ],
+      "security_invariants": ["one binding per agent id, forever", "caller owns agentId in IDENTITY_REGISTRY and the master token"],
+      "standards": ["ERC-8217 (draft 2026-04-05)", "ERC-8004 dependency"],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Not needed for swap/social/launchpad/vault. Reuse verbatim only if the unified token must appear in the singleton ERC-8004 registry. scripts/deploy.ts:163 deploys it with no constructor arg (stale)."
+    },
+    {
+      "name": "AnimaWeb3Renderer (context, outside area)",
+      "path": "contracts/web/AnimaWeb3Renderer.sol",
+      "purpose": "ERC-4804 manual-mode contract serving on-chain HTML for / and /token/{id}/live (owner, ERC-6551 account, tabbed console with wallet connect and a raw simulate-and-execute panel); separate from the token; imports viem from esm.sh.",
+      "key_functions": ["resolveMode() pure returns bytes32('manual')", "fallback(bytes calldata path) returns abi.encode(string html)"],
+      "standards": ["ERC-4804 / web3:// manual mode"],
+      "reuse_verdict": "rewrite",
+      "reuse_notes": "22,592 runtime bytes, no ownership gate, external CDN import — the pattern (serve HTML from a contract keyed by token id) is right, the implementation is not self-contained; IPSEITY's Engine/Premises approach is the better base."
+    }
+  ],
+  "standards_implemented": [
+    "ERC-6551 (token-bound account + executable; canonical registry 0x000000006551c19487814612e58FE06813775758)",
+    "ERC-1271 (owner signatures only)",
+    "ERC-4337 (PackedUserOperation; EntryPoint v0.7 0x0000000071727De22E5E9d8BAf0edAc6f37da032 wired on testnets)",
+    "ERC-165, ERC-721Receiver, ERC-1155Receiver",
+    "ERC-8004 Reputation + Validation registries (draft 2025-08-13; validation key namespaced by opener)",
+    "ERC-8126 agent security attestations (optional on-chain surface)",
+    "ERC-7432 NFT roles (Final, 0xd00ca5cf) — AnimaRoles",
+    "ERC-8217 agent/NFT bindings (draft 2026-04-05) — AnimaBindings",
+    "Consumed from the token: ERC-5192 lock hook (lockAgent/unlockAgent), ERC-4907 lease, ERC-5646 fingerprint, EIP-712 wallet binding"
+  ],
+  "unique_ideas": [
+    "Owner-unrestricted / session-leashed asymmetry: the counterparty can read the agent's spending limits (policyOf) before trading with it",
+    "Session.grantedBy and owner-namespaced allowlists make a sale structurally void every key and permission the seller set, with no enumeration",
+    "ERC-6551 state() bumped on authorisation widening (setAllowedCall/grantSession), not just execution, so an integrity pin catches a dormant key being re-armed",
+    "Audit hash chain over every executed call bound to (chainId, account), replayable off-chain (sdk replayAuditLog) — verifiable operating history for a second-hand agent",
+    "EntryPoint is never a principal: all 4337 traffic must go through executeUserOp so the session key, not the bundler, is charged",
+    "Guardian can revoke a session and pause but never spend or un-pause",
+    "Merkle targetsRoot lets an owner commit to a large allowlist in 32 bytes (executeWithProof)",
+    "BondVault: coverage reserved not counted, per-module reservation ownership, unbonding stays slashable and belongs to the queuer, slash order free→unbonding never reserved, slashed value paid to the harmed party",
+    "Attested vs open reputation with stake-weighted O(1) aggregate; weight = min(price, coverage) so flash-loaned self-hires cannot buy standing",
+    "Validation requests keyed by keccak(requester, requestHash) to defeat mempool squatting; single answer from a named validator; expiring requests",
+    "ERC-7432 roles that lock the token in place via the token's module hook instead of escrowing it; irrevocable roles capped at a year",
+    "Handles one-to-one per agent, per-kind verifiers, stale on transfer, reclaimable after burn via staticcall-tolerant ownerOf",
+    "Per-facet immutable ERC-6551 config verified by animaConfigHash rather than paid for with three cold SLOADs (+11,081 gas → +4,731)"
+  ],
+  "weaknesses": [
+    "AgentAccount: ERC-4337 memory path (_enforceSessionMemory :567-568) lacks the merkle targetsRoot branch present in _enforceSession (:412-418) despite the 'line-for-line identical' comment",
+    "AgentAccount: spend caps are native-value only; ERC-20/NFT movement by a session key is bounded only by the (target,selector) allowlist (SPEC.md itself says a msg.value-only cap is 'a spending limit in name only')",
+    "AgentAccount: 'rolling' daily cap is a UTC calendar-day bucket shared across all session keys; grantSession does not validate validUntil > validAfter; re-grant resets spentWei",
+    "AgentAccount: audit state semantics differ between execute (post-increment) and executeBatch (pre-increment); owner() reverts for a burned token so account assets are stuck; no CREATE/CREATE2 ops; depends on OpenZeppelin",
+    "AgentHandles on main releases a handle when the newest attestation expires/revokes even if an older attestation is still fresh — fix exists unmerged on branch codex/fix-high-priority-bug-in-handle-reclamation (a767f7c)",
+    "ReputationRegistry._normalise uses unchecked 10**(decimals-2): valueDecimals > 79 overflows silently, and WorkEscrow.acceptDelivery passes a client-chosen ratingDecimals straight through (aggregate poisoning or checked-arithmetic revert blocking settlement)",
+    "BondVault is single-ERC-20, no native ETH, one pending unbond per agent; owner can add arbiters who may slash any free collateral to any beneficiary",
+    "Four of six registries have an Ownable2Step admin (modules, arbiters, settlement modules, validators, providers, verifiers) — the token's 'immutable, no admin' promise does not extend to them",
+    "ValidationRegistry/ReputationRegistry O(n) summaries over unbounded, permissionlessly growable lists (mitigated only by the O(1) attested aggregate and paging)",
+    "AnimaRoles roles are advisory: nothing in AnimaAgent or AgentAccount consults hasRole; expired roles must be collected (revokeRole) before unlockToken",
+    "AnimaBindings does not write/verify the agent-binding metadata in the ERC-8004 registry; scripts/deploy.ts deploys it with no constructor arg",
+    "Test count drift: 268 it() in test/*.test.ts vs 279 claimed in README/SECURITY/DEPLOYMENT; Base Sepolia deployment owner keys destroyed"
+  ],
+  "website_delivery": "Not minted by the NFT. Three surfaces: (1) 'Sanctuary' — an off-chain Vite SPA (index.html, src/main.js) published to GitHub Pages by .github/workflows/pages.yml, hard-coding token 0xb3d92c766e3cb356db381feb21958a9ebb974365 and RPC https://sepolia.base.org; (2) contracts/web/AnimaWeb3Renderer.sol — a separate, stateless, ownerless ERC-4804 manual-mode contract (22,592 runtime bytes) whose fallback(bytes path) returns HTML for '/' and '/token/{id}/live' (web3://0x9160be4d943516a2463ac5f3abac5f5cce7975cd:84532/token/{id}/live, also via *.basesep.w3link.io), with a CONNECT WALLET button and a raw simulate-and-execute console; its module script imports viem@2.55.19 from https://esm.sh so the on-chain page still depends on an off-chain CDN and a public RPC; deployed/recorded by scripts/deploy-web3-renderer.ts and .github/workflows/deploy-web3-renderer.yml; (3) tokens minted from the Sanctuary carry a self-contained data:application/json tokenURI with an inline SVG (metadata, not an app). README additionally describes ENS records (com.anima.agent, com.anima.account, contenthash) via the CLI /bind wizard as a naming layer, not storage.",
+  "wallet_gating": "Client-side and advisory only. Sanctuary: connect() → walletClient.requestAddresses() → switch to Base Sepolia → discover() reads totalMinted and calls ownerOf(id) for ids 1..n, keeping ids whose owner equals the connected address, then renders the 'Command Chamber' for those ids (any id is also inspectable read-only without connecting). No signature challenge, no session cookie, no server. The on-chain renderer page has no gate at all; it relies on simulateContract surfacing the contract revert before the wallet signs. Real enforcement is entirely in the contracts: AnimaAgent._requireOwnerOf / _requireController / isController (owner ∨ live ERC-4907 user ∨ operator at current epoch), AgentAccount._requireOwner and _authorize (owner unrestricted; session keys leashed by policy/status/caps/allowlist; EntryPoint refused), and module/arbiter/verifier allowlists on the registries.",
+  "measured_numbers": [
+    "AgentAccount runtime 10,709 bytes (creation 10,868) — README says 10.7 KB",
+    "BondVault 5,714 / ReputationRegistry 9,159 / ValidationRegistry 6,024 / AgentHandles 4,879 / AnimaRoles 5,107 / AnimaBindings 1,687 runtime bytes",
+    "AnimaAgent 23,971 runtime bytes (605 under EIP-170 24,576); AnimaWeb3Renderer 22,592",
+    "accountOf: 26,863 gas monolith vs 31,594 diamond (+4,731); getStateFingerprint 54,818 vs 60,204 (+5,386); earlier storage-held config cost +11,081 on accountOf",
+    "Diamond overhead flat +4,300..+5,400 gas per call; Gas.test.ts bound 25% relative or 6,000 absolute",
+    "268 it() cases across test/*.test.ts (AgentAccount 18, Accountability 23, Roles 14, Handles 9, Bindings 3, Verification 3, Regressions 22); docs claim 279",
+    "MAX_IRREVOCABLE_DURATION 365 days; UNBONDING_PERIOD 7 days in fixture/testnets; validation default expiry 7 days, escrow dispute expiry 14 days; PASS_THRESHOLD 50; SUMMARY_DECIMALS 2",
+    "ERC-6551 proxy footer offset 0x4d, runtime 0xad (173) bytes; _FOOTER_OFFSET read 0x60 bytes",
+    "Base Sepolia (84532.json): accountImpl 0xB97ea50e956E36606eC5DD159dC7f25CA732bc6d, bonds 0xcfd3E22a9b8B419fE53E47886b2bf621d327cC76, reputation 0xb201eF54e44A81c4e141ced20f2fFCBF06350579, validation 0x0eFca108B2A456649D40F4F69DD0FFc7dd69162d, handles 0x9e8c0dE328201Ed7Ee4f41a16b9A829aE933CDE6, roles 0xF4dA6c25F2972B0833BaCCC8235773ea1dF36F8f",
+    "Base Sepolia signer-scoped record: bindings 0x4e0446853C042720F39b1D94ED858Abe5890EaD7, web3Renderer 0x9160bE4d943516a2463Ac5f3ABAc5F5cce7975Cd, token 0xb3d92c766e3cb356db381feb21958a9ebb974365",
+    "Protocol deploy cost on Base Sepolia 0.00628 ETH (README); EntryPoint v0.7 0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+    "Live txs: handle attestation 0x5ced698b193479540e2a9a5edcab6fe9d087d58b381ffed03833832ef96fb1cb; final role revoke+unlock 0x9c86151a73dc3b75c202ca0f3b472f81aa1ecf5e4361cb7d5d5818229d522d06"
+  ],
+  "pitfalls": [
+    "AgentAccount.token() hard-codes the canonical registry proxy footer offset (0x4d); a custom registry/proxy silently breaks owner()",
+    "Two integrity numbers exist (ERC-6551 state() and ERC-5646 getStateFingerprint); the market pins state(), SPEC says fingerprint dominates — choose one",
+    "Edit the calldata and memory authorisation paths in lockstep; they already diverge on merkle proofs",
+    "Native-only caps: a session key can move ERC-20s freely to allowlisted targets",
+    "Registries are Ownable2Step-governed; wiring (setModule/setArbiter/setSettlementModule/setValidator/setVerifier) is the security-critical step and must be constructor-pinned for a no-admin protocol",
+    "Apply the unmerged AgentHandles fix (a767f7c) before reuse",
+    "Bound valueDecimals in ReputationRegistry before exposing acceptDelivery-style client input",
+    "Do not trust doc counts (279 vs 268 tests); re-measure bytes and gas from artifacts/Gas.test.ts",
+    "deployments/84532.json owner keys are destroyed — deploy fresh; scripts/deploy.ts is stale for AnimaBindings",
+    "The on-chain renderer imports viem from esm.sh — violates a no-external-dependency rule"
+  ],
+  "tests_and_tooling": "Hardhat 3 + viem + node:test, TypeScript ESM. deployProtocol() in test/helpers.ts deploys ERC6551Registry mock, AgentAccount impl (EntryPoint zero unless opts.entryPoint), AnimaAgent (monolith or diamond via ANIMA_IMPL), MockERC20 USDC, BondVault(7d), ReputationRegistry, ValidationRegistry, WorkEscrow, AgentMarket, AgentComms, InferenceMeter, AgentSwapRouter and wires modules/arbiter/settlement/validator. expectRevert matches error names or 4-byte selectors (needed for diamond). Files: test/AgentAccount.test.ts (18: leash caps, pause kill-switch, allowlist, delegatecall, guardian revoke, ERC-1271, audit chain byte-for-byte replay, 4337 EntryPoint bypass + real session userOp), test/Accountability.test.ts (23: BondVault coverage/unbond/slash/reservation ownership; escrow lifecycle; disputes incl. squatting regression; reputation attested vs open, weighting, self-feedback, decimals), test/Roles.test.ts (14), test/Handles.test.ts (9), test/Bindings.test.ts (3), test/Verification.test.ts (3, ERC-8126), test/Regressions.test.ts (session keys die on sale; allowlist bumps state; collateral belongs to the queuer; attested weight capped at coverage; constant-time reputation), test/Market.test.ts (expectedAccountState drain pin), test/Diamond.test.ts (animaConfigHash agreement, accountOf gas), test/Gas.test.ts (monolith vs diamond bounds), test/Lifecycle.test.ts (whole life incl. grantSession), test/AnimaAgent.test.ts (accountOf determinism, setAgentWallet EIP-712). Scripts exercising the area live: scripts/testnet-scenario.ts (account.execute), testnet-modules.ts (handles attest/uniqueness, roles grant), testnet-town.ts (attacker cannot execute/unbond), testnet-everything.ts (bindings.bind, session-key swaps/perps). SDK: sdk/src/index.ts replayAuditLog and lockedDownPolicy."
+}

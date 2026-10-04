@@ -1,0 +1,279 @@
+{
+  "repo": "Cutting-edge-technologically-advanced-NFT (ANIMA)",
+  "area": "web app / Sanctuary site / CLI (plus the ERC-4804 on-chain renderer and the unmerged Sanctuary Commons branch)",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/anima-webapp.md",
+  "summary": "ANIMA has three human surfaces delivered three ways. (1) The Sanctuary (index.html + src/main.js 26,881 B + src/style.css 17,569 B) is a Vite single-page app published to GitHub Pages by .github/workflows/pages.yml, loading Google Fonts; it is not on chain. It targets Base Sepolia ANIMA 0xb3d92c766e3cb356db381feb21958a9ebb974365 over the public RPC https://sepolia.base.org with a hand-written viem ABI subset, offers Connect wallet / mint / inspect-by-id, and a 'command chamber' console with setStatus and deployAccount, wallet_watchAsset, and a self-contained data:application/json + data:image/svg+xml metadata built client-side at mint. Ownership verification is purely client-side enumeration: after eth_requestAccounts it reads totalMinted() and calls ownerOf(id) for every id, keeping the ones equal to the connected address (src/main.js:178); there is no signature challenge, no SIWE and no server, and the only real gate is the token contract's own authorisation surfaced via simulateContract before signing. (2) contracts/web/AnimaWeb3Renderer.sol is a stateless, ownerless ERC-4804 manual-mode contract whose fallback(bytes path) returns ABI-encoded HTML for /token/{id}/live (web3://0x9160bE4d…:84532/token/{id}/live, or the w3link gateway). It is the only UI served from chain: 22,592 runtime bytes (1,984 under EIP-170), ~15.8 KB of literal HTML/CSS/JS per page, four tabs (overview, identity, control, advanced raw-call console), no viewer gating, and writes authorised by the contract via simulate-then-sign. Its fatal flaw for the GOAL is that the embedded module script imports viem from https://esm.sh/viem@2.55.19, and it hard-codes RPC/explorer for two chains and mislabels the six-value SealPolicy enum with three strings. (3) cli/anima.mjs is a readline wizard that binds an ENS name to an agent: it requires isController(agentId, signer), writes addr/com.anima.agent/com.anima.account/url/contenthash atomically via resolver multicall, and optionally transfers .eth custody into the agent's ERC-6551 account only for mainnet-homed agents and only if the signer is ownerOf; it pins the GUI as an IPFS CID in ENS contenthash.\n\nThe machine-discovery surface (public/.well-known/anima.json, llms.txt, the generated 29-contract/657-function anima-functions.json, the strict ERC-8004 registration-v1 manifest schema with a gui block, and the example manifest that advertises the renderer as the agent GUI) is well designed and schema-tested (test/ManifestSchema.test.mjs). The deployment tooling (scripts/deploy-web3-renderer.ts with web3RendererHistory, testnet-batch-mint.ts with checkpoints and RPC-lag defences, testnet-batch-exercise.ts with a 32-tx read-back audit) is solid and reusable as patterns.\n\nThe unmerged branch upgrade/sanctuary-commons-3d-20260904 is the only messaging/social work in the repo: AnimaCommons.sol (12,941 B; circles, invitations, moderators, bans, two-step stewardship, slow mode, 1,024-byte posts, revisions, tombstones, reactions, accepted replies, exact-hash WorkEscrow links, fingerprint-pinned agent badges, a domain-separated history root), 29 contract tests passing on both token builds (322 total), plus a 50 KB SPA with a dependency-free WebGL scene, a block-pinned bounded-read bridge with epoch-guarded simulate/review/re-simulate/commit, and Playwright checks executing real transactions on a loopback Hardhat EVM. It was never deployed and explicitly refuses to claim the ~443 KB client is on chain.\n\nVerdicts: keep and harden the ERC-4804 renderer (remove esm.sh, split into router + module pages because of EIP-170, add controller/role-aware gating in the client); adapt the Sanctuary's wallet/mint/console flows but drop the static page, fictional data, O(n) ownership scan and CDN fonts; reuse the CLI's contenthash/custody helpers and adapt the wizard to web3:// targets; adapt AnimaCommons as the social contract and the bridge/model safety patterns; drop the 3D scene and the GitHub Pages pipeline. Two concrete bugs to not inherit: the Sanctuary commits manifestHash = keccak256(uriString) rather than of the served bytes, and neither transact nor mintAgent checks receipt.status.",
+  "components": [
+    {
+      "name": "Sanctuary SPA (landing + owner portal + mint + console)",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/src/main.js",
+      "purpose": "Static Vite app: marketing landing with fictional agents, then a full-screen 'Sanctuary' where a holder connects a wallet, is matched to tokens by ownerOf enumeration, mints a testnet agent with self-contained data: metadata, and runs setStatus/deployAccount from a console.",
+      "key_functions": [
+        "discover() — totalMinted() then ownerOf(id) for 1..total, keep ids whose owner == connected address, loadAgent each; empty state offers mint (src/main.js:178)",
+        "loadAgent(id) — parallel ownerOf/modelOf/statusOf/sealPolicyOf/brainEpoch/accountOf/locked/getStateFingerprint/policyOf + getCode(account) (src/main.js:168-174)",
+        "connect() — requestAddresses, switchChain(84532) else wallet_addEthereumChain (src/main.js:179)",
+        "transact(button) — simulateContract({account}) -> writeContract -> waitForTransactionReceipt -> reload (src/main.js:180)",
+        "mintAgent() — prompt name; model {weightsRoot:keccak(seed:model), attestationKind 0, modelId anima/<slug>}; one Memory shard; uri = data: JSON+SVG; manifestHash = keccak256(toHex(uri)); mintAgent(...,SealPolicy.None,[]); token id from Transfer log; then deployAccount; then wallet_watchAsset (src/main.js:181)",
+        "metadataURI(name,hue) — data:application/json with embedded data:image/svg+xml sigil; external_url = location.origin+pathname (src/main.js:147-154)",
+        "addNFTToWallet(agent) — wallet_watchAsset type ERC721 (src/main.js:156-162)",
+        "inspectAgent(id) and ?agent=<id> deep link — read-only inspection without a wallet (src/main.js:187-191)",
+        "showConsole(a) — fingerprint, seal/epoch, ERC-6551 account deployed?, dailyWei, Pause/Awaken, Activate web3 address, Add NFT to Brave, provenance link (src/main.js:177)"
+      ],
+      "design_decisions": [
+        "Comment (src/main.js:147-148): 'The metadata is stored with the token instead of pointing at this website. Wallets such as Brave can therefore render a freshly minted ANIMA without an IPFS gateway or hosted API.'",
+        "No account/email: 'Your signature on the chain is the key' — ownership is proven by reading ownerOf, authorisation by the contract through simulation before signing.",
+        "Hard-coded Base Sepolia (0xb3d92c76…, switched from 0x0aeb6f78… in commit 9cb1ebb) and a single public RPC; vite base './' so one build works on localhost, IPFS directory and GitHub Pages."
+      ],
+      "security_invariants": [
+        "No private key ever enters the page; writes always go through simulateContract then the wallet provider.",
+        "Names interpolated into HTML/SVG pass safe() escaping; addresses come from getAddress."
+      ],
+      "standards": ["ERC-721 (ownerOf/totalMinted/Transfer)", "ERC-6551 (accountOf/deployAccount)", "ERC-5646 (getStateFingerprint)", "EIP-1193/EIP-3085/EIP-747 wallet calls", "ERC-721 metadata as data: URI"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep the wallet connect/switch, watchAsset, id-from-log and simulate-confirm-wait patterns; drop the static host, fictional data, CDN fonts and O(totalMinted) ownership scan; fix manifestHash (hash served bytes) and check receipt.status (see unmerged codex/find-access-method-for-nft-gui diff)."
+    },
+    {
+      "name": "Sanctuary stylesheet",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/src/style.css",
+      "purpose": "Dark editorial theme (Playfair Display / Manrope / DM Mono via Google Fonts) for landing, sanctuary overlay, owned grid and console metrics; mobile breakpoint at 800px; prefers-reduced-motion block.",
+      "key_functions": [],
+      "design_decisions": ["17,569 bytes in a handful of very long lines; relies on fonts fetched from fonts.googleapis.com in index.html:33"],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_verdict": "drop",
+      "reuse_notes": "External font dependency and marketing layout are unsuitable for a chain-served page; the colour tokens (--ink/--night/--gold) may be borrowed."
+    },
+    {
+      "name": "index.html + vite.config.js + pages.yml (static hosting pipeline)",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/index.html",
+      "purpose": "Vite entry with OG/JSON-LD metadata and Google Fonts; relative base; GitHub Actions workflow builds dist/ and deploys to GitHub Pages on push to main.",
+      "key_functions": ["npm run ui / ui:build / ui:preview", ".github/workflows/pages.yml: npm ci && npm run ui:build -> upload-pages-artifact(dist) -> deploy-pages"],
+      "design_decisions": ["README:483-507 documents enabling Pages click-by-click so 'no command line is required' for the repository owner"],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_verdict": "drop",
+      "reuse_notes": "GOAL requires the site to be served from chain; a static mirror built from the same on-chain HTML could remain as a convenience only."
+    },
+    {
+      "name": "AnimaWeb3Renderer (ERC-4804 manual-mode on-chain console)",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/contracts/web/AnimaWeb3Renderer.sol",
+      "purpose": "Stateless, ownerless contract that serves a complete HTML/CSS/JS agent console for /token/{id}/live from current ANIMA state, reachable via web3:// or a w3link gateway; the only UI in the repo delivered from chain.",
+      "key_functions": [
+        "constructor(IAnimaWeb3View anima_) — reverts ZeroAddress() on 0 (:26-29)",
+        "function resolveMode() external pure returns (bytes32) — bytes32('manual') (:32-34)",
+        "fallback(bytes calldata path) external returns (bytes memory) — '/' -> index; '/token/<digits>/live' -> try ownerOf -> token page with ownerOf/accountOf; else not-found; always abi.encode(string) (:37-47)",
+        "_tokenPath(bytes) private pure returns (bool, uint256) — prefix/suffix byte compare, decimal parse without overflow guard (:49-64)",
+        "_token(id, owner, account) — header/chain pill/#connect; main#app data-token/data-contract/data-chain=block.chainid; tabs overview/identity/control/advanced (:76-99)",
+        "_script() — <script type=module> importing viem from https://esm.sh/viem@2.55.19; rpc map {11155111, 84532}; 14-entry ABI; refresh(); connect(); send(fn,args) simulate->write->wait->refresh; raw parseAbiItem console (:126-137)",
+        "IAnimaWeb3View { ownerOf(uint256); accountOf(uint256) } (:6-9)"
+      ],
+      "design_decisions": [
+        "NatSpec (:11-17): 'A Web3URL client sends the URL path as raw fallback calldata. The fallback response is an ABI-encoded string, as required by manual mode. Keeping this separate from the immutable ANIMA diamond lets an existing collection gain a browser without changing token logic.'",
+        "deploy script (:36-37): 'The renderer is immutable, stateless and has no privileged owner. Any funded account may deploy it, which makes recovery possible without the original collection deployer key.'",
+        "Configuration is read from data-* attributes so one bytecode serves any chain; three iterations in one day (2d74176 static view -> 9cb1ebb link to GitHub Pages -> 20bfda6 full console) and test now asserts doesNotMatch(/github\\.io/)."
+      ],
+      "security_invariants": [
+        "No state, no owner, no events; every response is a view over the token contract.",
+        "All writes are simulated with account:user before the wallet is asked to sign; authorisation is entirely the token contract's."
+      ],
+      "standards": ["ERC-4804 (manual mode resolveMode)", "ERC-721 ownerOf", "ERC-6551 accountOf", "ERC-5646 getStateFingerprint (client)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "The keeper. Must remove the esm.sh import (embed or SSTORE2 a minimal coder, or use the wallet provider as transport), fix the 3-of-6 seal labels at :131, drop hard-coded RPC/explorer maps, add controller/role-aware client gating, and split into router + per-module page contracts: 22,592/24,576 bytes used, so swap/launchpad/vault/messaging cannot fit here."
+    },
+    {
+      "name": "ANIMA terminal (ENS binding CLI)",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/cli/anima.mjs",
+      "purpose": "Interactive /bind wizard that writes ENS addr, com.anima.agent, com.anima.account, url and contenthash records atomically for an agent and optionally transfers .eth custody into the agent's ERC-6551 account.",
+      "key_functions": [
+        "export function encodeContenthash(uri) — ipfs:// CIDv1 base32 -> 0xe301<cid>, or pre-encoded 0x hex (:70-81)",
+        "export function assertMainnetEnsCustody(chainId) — throws unless chainId === 1 (:83-87)",
+        "async function bind() — prompts; key only from ANIMA_PRIVATE_KEY; ENS RPC must be chain 1; requires isController(id, signer); resolver multicall of setAddr/setText/setContenthash; optional custody via NameWrapper safeTransferFrom or BaseRegistrar reclaim+safeTransferFrom, owner-only, typed confirmation (:98-166)",
+        "async function send(publicClient, wallet, request, label) — simulate, write, wait, require receipt.status success (:89-96)",
+        "identity string eip155:<chainId>:<contract>:<id> written to text record com.anima.agent (:132-139)"
+      ],
+      "design_decisions": [
+        "README:559-562: 'ENS is naming, not storage. Pin the exact GUI CID with multiple independent providers… The HTTPS URL is a compatibility route; the ENS contenthash is the independently recoverable route.'",
+        "README:548-556: custody 'only available when the agent's home chain is Ethereum mainnet; cross-chain agent accounts cannot control mainnet assets'; operators/tenants may update records but 'cannot choose permanent custody'."
+      ],
+      "security_invariants": [
+        "Key is never prompted, echoed or stored; every tx simulated first; custody requires ownerOf == signer, chain 1, and retyping the name.",
+        "Comment (:69): 'ENS contenthash is varint(ipfs-ns = 0xe3) followed by the CID bytes.'"
+      ],
+      "standards": ["ENS (registry, public resolver multicall, NameWrapper ERC-1155, BaseRegistrar ERC-721)", "EIP-1577 contenthash", "ERC-6551 account as record target"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "encodeContenthash and assertMainnetEnsCustody are reuse-verbatim (tested in test/Cli.test.mjs); the wizard should point ENS at a web3:// renderer route instead of an IPFS CID and keep owner-only custody."
+    },
+    {
+      "name": "Machine directory and discovery files",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/public/.well-known/anima.json",
+      "purpose": ".well-known/anima.json (schema-validated directory of chain, all contract addresses, standards, discovery rules, renderer URL templates, safety rules), llms.txt (LLM index + hash-before-parse recipe), anima-functions.json (generated 29-contract/657-function ABI index with selectors), robots.txt, sitemap.xml.",
+      "key_functions": [
+        "rendering.urlTemplate https://0x9160be4d943516a2463ac5f3abac5f5cce7975cd.basesep.w3link.io/token/{agentId}/live; rendering.web3UrlTemplate web3://0x9160bE4d…:84532/token/{agentId}/live (:60-64)",
+        "discovery.manifestVerification 'keccak256(exactResponseBytes) == manifestHash' (:53)",
+        "scripts/generate-agent-function-index.mjs — reads artifacts/contracts, excludes interfaces|mocks|libraries, maps addresses from deployments/84532-0xc591….json, sorts by signature"
+      ],
+      "design_decisions": ["Safety rules: treat endpoints as untrusted until exact-byte hash verification; re-read owner/status/policy/bond/locks/model/account immediately before transacting; a registration advertises, it does not prove."],
+      "security_invariants": ["identityRegistry must equal contracts.anima (schema test); directory schema forbids unknown top-level fields"],
+      "standards": ["ERC-8004 registry identity (eip155:chainId:address)", "ERC-4804 URL templates"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Good pattern; regenerate for the merged protocol and consider serving the directory from the renderer's '/' route rather than a static host."
+    },
+    {
+      "name": "Agent manifest schema, directory schema and example manifest",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/schemas/anima-agent-manifest-v1.schema.json",
+      "purpose": "Strict JSON Schema 2020-12 for an ERC-8004 registration-v1 document with the namespaced anima extension (registry, agentId, mcp, pricing, model, gui{canonical,contentUri,entrypoint,version,modules}, mesh, handles, markets); example manifest advertises the ERC-4804 renderer as the GUI.",
+      "key_functions": ["gui block :171-206; registration pattern ^[a-z0-9]+:[1-9][0-9]*:0x[0-9a-fA-F]{40}$; agentId pattern ^(0|[1-9][0-9]*)$"],
+      "design_decisions": ["additionalProperties:false everywhere; sse transport kept only for legacy MCP servers; GUI modules are declarative strings, 'never executable manifest code' (sdk/src/index.ts:188)"],
+      "security_invariants": ["test/ManifestSchema.test.mjs rejects unknown fields and agentId '02'"],
+      "standards": ["ERC-8004 registration-v1", "MCP transports 2025-06-18", "A2A/OASF service descriptors"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep the shape; point gui.contentUri at web3:// routes of the unified renderer."
+    },
+    {
+      "name": "SDK GUI helpers (AgentGui, agentWebUrl)",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/sdk/src/index.ts",
+      "purpose": "AgentGui type for manifests and agentWebUrl(origin, chainId, contract, agentId) -> https://<origin>/<chainId>/<contract>/<id> with https/credential/query/id validation.",
+      "key_functions": ["export function agentWebUrl(origin, chainId, contract, agentId) (:193-204)", "export interface AgentGui (:179-190)"],
+      "design_decisions": ["docs/AGENT_ECOSYSTEM_RESEARCH_2026-09-17.md:76-78 argues for an ERC-7656-style module service with immutable package hashes rather than loading manifest JavaScript; ERC-5169 rejected as primary discovery"],
+      "security_invariants": ["Origin must be https without credentials/query/fragment; agentId must be a decimal integer (test/Sdk.test.ts:32-41)"],
+      "standards": [],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Trivial but correct; extend to produce web3:// URLs."
+    },
+    {
+      "name": "Renderer deploy script and workflow",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/scripts/deploy-web3-renderer.ts",
+      "purpose": "Deploys or reuses AnimaWeb3Renderer for a recorded deployment, keeps contracts.web3RendererHistory, prints w3link URLs for every minted token, writes GitHub step summary; workflow deploy-web3-renderer.yml runs it from a base-sepolia environment and commits deployments/84532.json.",
+      "key_functions": ["ANIMA_REDEPLOY_RENDERER=true forces a new deployment and archives the old address (:30-47)", "root https://<renderer>.<sep|basesep>.w3link.io/ (:49-57)"],
+      "design_decisions": ["Any funded key may deploy because the renderer has no admin; the workflow does not need the collection deployer key (docs/DEPLOYMENT.md:141-147)"],
+      "security_invariants": ["Checks chain id of the record and that ANIMA and any recorded renderer have code before use"],
+      "standards": [],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Workflow defaults to deployments/84532.json (the 0x0aeb historical record) while the recorded renderer lives in the 84532-0xc591 file; fix the default."
+    },
+    {
+      "name": "Batch mint and batch exercise scripts",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/scripts/testnet-batch-mint.ts",
+      "purpose": "Resumable checkpointed batch mint (ANIMA_MINT_COUNT 1-100, six testnets, deployer-only) with RPC-lag defences; testnet-batch-exercise.ts runs 32 lifecycle transactions across ten Sepolia agents with an EIP-712 wallet binding and a read-back audit.",
+      "key_functions": ["batch checkpoint in record.batchMint (:86-96, :128)", "wait until getBlockNumber >= last receipt block then re-read ownerOf with 40 retries (:132-153)", "EIP-712 AgentWalletBinding domain {name AnimaAgent, version 1} (exercise :143-152)"],
+      "design_decisions": ["Comment (:132-133): 'Public RPC URLs commonly sit in front of nodes at different heights. Do not let a receipt returned by one backend race the ownership reads served by another backend.'"],
+      "security_invariants": ["Refuses a signer that is not the recorded deployer (:82)"],
+      "standards": ["ERC-721", "ERC-4907", "EIP-712"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Use as the template for checkpointed live rehearsals of the merged protocol."
+    },
+    {
+      "name": "AnimaCommons (unmerged branch upgrade/sanctuary-commons-3d-20260904)",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT (git: origin/upgrade/sanctuary-commons-3d-20260904:contracts/comms/AnimaCommons.sol)",
+      "purpose": "Additive public social contract: circles with rules/stewards/moderators/invitations/bans/slow mode, typed posts (Discussion/Question/WorkRequest/Update) with 1,024-byte bodies, revisions, tombstones, reactions, accepted replies, fingerprint-pinned agent badges, exact-hash WorkEscrow job links and a domain-separated history root.",
+      "key_functions": [
+        "createCircle(name<=64B,purpose<=256B,rules 1..2048B,inviteOnly,slowMode<=1 day) returns id",
+        "publish(circleId,parentId,agentId,expectedAgentState,kind,body) — member, slow-mode, visible in-circle parent; agent badge requires ANIMA.isController(agentId,msg.sender) && getStateFingerprint(agentId)==expectedAgentState!=0 and records ownerOf (:210-235)",
+        "revise/withdraw/moderate(id,hidden,reason)/react(id,0..3)/acceptReply/attachJob(postId,jobId) — attachJob requires job.client==author and job.specHash==keccak256(body) (:281-290)",
+        "postsPage(circleId,cursor,limit<=50) returns (ids,nextCursor); circleOf; postOf; postCount",
+        "join/leave/invite/setModerator/ban/proposeSteward/acceptSteward/configureCircle",
+        "_advance: historyRoot = keccak256(abi.encode(keccak256('anima.commons.history.v1'), chainid, this, circleId, prev, leaf)) (:309-313)"
+      ],
+      "design_decisions": [
+        "Header: 'Does not custody funds, grant account permissions, modify the token, or replace AgentComms' paid/private transport. All text, membership and moderation are PUBLIC… A wallet is the social principal… buying a token does not buy its previous operator's human profile, circle role, or correspondence.'",
+        "':286 A clickable work card is evidence-linked, not a self-asserted \"paid\" badge.'",
+        "Added as a separate contract because AnimaAgent has only 605 bytes of EIP-170 headroom (branch VERIFICATION.md)."
+      ],
+      "security_invariants": [
+        "NFT transfer does not transfer human posts, circle roles or moderation; A->B->A does not revive a stale agent-authored draft (StateChanged).",
+        "Hidden/withdrawn are visibility flags; storage bytes remain public.",
+        "Byte-length limits, not character limits (256 x U+1FAB4 passes, 257 fails)."
+      ],
+      "standards": ["Uses ERC-5646 fingerprint via ANIMA", "reads WorkEscrow.jobOf"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Best available starting point for the GOAL's social/messaging layer (29 tests on both token builds, 12,941 B). Add holder-gated circles keyed on the unified NFT, event back-links for indexer-free history, and a separate encrypted DM transport; never merge the 3D client into chain storage."
+    },
+    {
+      "name": "Sanctuary Commons client (bridge/model/scene/app, unmerged branch)",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT (git: origin/upgrade/sanctuary-commons-3d-20260904:src/commons/)",
+      "purpose": "Six-place SPA (Sanctuary, Circles, Work atelier, Observatory, Tool garden, Library) with local-rehearsal vs live mode, a block-pinned bounded-read CommonsBridge with epoch-guarded prepare/review/re-simulate/commit, a defensive versioned localStorage model, and a dependency-free WebGL/CPU 3D scene; plus console.html preserving the old Sanctuary as src/legacy.js.",
+      "key_functions": [
+        "bridge.configure(raw) — validateConfig (chains 84532/31337 only, https or loopback, no credentials), chain id check, bytecode at every address, WorkEscrow.ANIMA()==anima, Commons.ANIMA()/WORK() bindings (:16-26)",
+        "bridge.circles/posts — getBlockNumber({cacheTime:0}) then readContract({blockNumber}); 20 per page newest-first (:38-58)",
+        "bridge.agent(id) — owner/account/status/locked/brainRoot/fingerprint/policy/model/manifest + BondVault.availableCoverage + ReputationRegistry.attestedSummaryOf (:59-66)",
+        "bridge.prepare/commit — simulate, snapshot epoch/address/chain/contract, re-check eth_accounts/eth_chainId, re-simulate, reject on epoch change (:69-82)",
+        "model.restoreState/validateBody(1024 UTF-8 bytes)/escapeHTML/safeHttp/parseTokenId(BigInt)/workBrief",
+        "scene.makeGeometry/createScene/createCompatibilityScene — procedural geometry, WebGL with CPU painter fallback"
+      ],
+      "design_decisions": ["'Explicit pagination: never scan every token, event, or circle by default.' (bridge.js:41)", "'Re-simulate immediately before sending; an agent draft retains its originally reviewed fingerprint.' (bridge.js:77)", "No analytics, no wallet prompt on arrival, 3D is a map not a gate, flat mode is equivalent"],
+      "security_invariants": ["Untrusted text reaches the DOM only through escapeHTML; stale reviewed transactions fail before any wallet send (test/CommonsModel.test.mjs)"],
+      "standards": [],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Adapt bridge.js and model.js safety patterns; drop app.js (50 KB) and scene.js (14 KB) as too large/opinionated for chain storage; the IA and copy are a design reference."
+    },
+    {
+      "name": "Area tests and CI",
+      "path": "/home/user/Cutting-edge-technologically-advanced-NFT/test/Web3Renderer.test.ts",
+      "purpose": "Web3Renderer.test.ts (2 tests: manual-mode page via eth_call with raw path bytes; usage/not-found without revert), Cli.test.mjs (3 tests on contenthash and custody), ManifestSchema.test.mjs (4 tests on manifest, directory, function index), Sdk.test.ts agentWebUrl; ci.yml runs hardhat test only.",
+      "key_functions": ["page(publicClient,address,path) = call({to,data:toHex(path)}) then decodeAbiParameters([{type:'string'}])"],
+      "design_decisions": ["Renderer test asserts doesNotMatch(/github\\.io/) so the on-chain page can never point back at the static host"],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "No tests execute the embedded JS or the Sanctuary; the commons branch's Playwright + loopback-EVM harness is the pattern to adopt."
+    }
+  ],
+  "standards_implemented": [
+    "ERC-4804 manual mode (resolveMode + fallback path routing) in AnimaWeb3Renderer",
+    "ERC-721 / ERC-6551 / ERC-5646 reads from the UIs",
+    "ERC-8004 registration-v1 manifest shape with anima extension (schema, example, SDK types)",
+    "EIP-1193 / EIP-3085 (wallet_addEthereumChain) / EIP-747 (wallet_watchAsset) wallet flows",
+    "ENS addr/text/contenthash (EIP-1577 ipfs-ns 0xe3) via resolver multicall; NameWrapper and BaseRegistrar custody",
+    "EIP-712 AgentWalletBinding in the batch-exercise script",
+    "ERC-721 metadata as self-contained data: URI with data:image/svg+xml image (client-generated)"
+  ],
+  "unique_ideas": [
+    "A separate, stateless, ownerless ERC-4804 renderer contract that gives an already-immutable token collection a browser without touching token logic, re-deployable by any key (recovery after the deployer key was destroyed).",
+    "Configuration injected via data-token/data-contract/data-chain attributes so one renderer bytecode serves any chain; three renderer iterations archived in web3RendererHistory.",
+    "ADVANCED tab: user types any Solidity function signature + JSON args; page parses with parseAbiItem, simulates, then asks the wallet — a generic on-chain console with simulate-before-sign.",
+    "Self-contained data:application/json + data:image/svg+xml token metadata built at mint so wallets need no server/IPFS.",
+    "ENS binding of an agent: addr -> ERC-6551 account, text com.anima.agent = eip155:chain:contract:id, optional transfer of the .eth NFT into the agent account so the name follows token ownership (mainnet-only, owner-only, typed confirmation).",
+    "Manifest commitment over exact served bytes (keccak256 of the response, hash before parse), strict schema with a declarative gui block, and a machine-readable .well-known directory plus a full ABI/selector index for agents.",
+    "AnimaCommons: fingerprint-pinned agent badges (controller + ERC-5646 state at publication), tombstones that admit they cannot delete, exact-spec-hash links to escrow jobs, per-circle hash-chained history root, byte-counted limits, two-step stewardship.",
+    "CommonsBridge: all reads in a view pinned to one block number, bounded pagination, epoch-guarded review and re-simulation immediately before send, config/chain/binding verification before any write.",
+    "Loopback JSON-RPC proxy with a method allowlist over Hardhat's in-process EVM plus a Playwright EIP-1193 shim so browser tests execute real transactions."
+  ],
+  "weaknesses": [
+    "The user-facing website is a GitHub Pages static bundle with Google Fonts; the on-chain renderer imports viem from https://esm.sh (AnimaWeb3Renderer.sol:128), so no surface is actually dependency-free.",
+    "Renderer: seal labels wrong (3 strings for 6 enum values, :131); RPC/explorer hard-coded for 84532/11155111 (:129); 22,592/24,576 bytes used so no room for module UIs; capability chips are badges with no functionality; _tokenPath decimal parse has no overflow guard.",
+    "Sanctuary: ownership = O(totalMinted) concurrent ownerOf calls with silent per-id failures (:178); only ownerOf, not isController/roles/leases; receipt.status never checked (:180-181); manifestHash = keccak256(uriString) not of served bytes (:181) so verifyManifest fails; fictional bond/trust/'231 proofs' marketing data; external_url bakes the GitHub Pages URL into on-chain metadata.",
+    "Address and documentation drift: src/main.js and .well-known target ANIMA 0xb3d92c76… (deployer 0xc591…) while README step 5, CLAUDE.md, deployments/84532.json and the commons branch describe 0x0aeb6f78… (deployer key destroyed); deploy-web3-renderer.yml defaults to the 0x0aeb record.",
+    "No UI tests on main; CI does not run test:cli, test:manifest-schema, test:diamond or the Vite build; test counts drift between README (279), CLAUDE.md (268), commit 697df74 (235) and the commons branch (322).",
+    "CLI pins the GUI as an IPFS CID in ENS contenthash (contradicts a no-IPFS goal), .eth only, interactive path untested.",
+    "AnimaCommons is unaudited, undeployed, public-only by design, Sybil-exposed reactions, and social principals are addresses that may themselves be transferable token-bound accounts.",
+    "Minting is permissionless on the token; the Sanctuary relies on it; no pricing/gating exists."
+  ],
+  "website_delivery": "Primary human UI (the Sanctuary) is delivered from a centralised static host: Vite build of index.html + src/main.js + src/style.css published to GitHub Pages (https://venividis.github.io/Cutting-edge-technologically-advanced-NFT/) by .github/workflows/pages.yml, with fonts from Google Fonts; it is not on chain and not on IPFS, and the mint path bakes that URL into the token's external_url. A second UI is served from chain: contracts/web/AnimaWeb3Renderer.sol is an ERC-4804 manual-mode contract (resolveMode()=='manual') whose fallback(bytes path) returns abi.encode(string html) for '/', '/token/{id}/live' and a not-found page, reachable as web3://0x9160bE4d943516a2463Ac5f3ABAc5F5cce7975Cd:84532/token/{id}/live or via https://0x9160be4d943516a2463ac5f3abac5f5cce7975cd.basesep.w3link.io/token/{id}/live (public/.well-known/anima.json:60-64). The served page (~15.8 KB; contract runtime 22,592 B) carries its own CSS, markup and a <script type=module> that reads live state over a hard-coded public RPC and submits simulate-then-sign writes through window.ethereum — but that script imports viem from https://esm.sh/viem@2.55.19, so the on-chain page still depends on a CDN. The NFT's own tokenURI is a plain stored string (AnimaAgent.sol:360-363); the Sanctuary writes a self-contained data:application/json + data:image/svg+xml document into it at mint, so wallets render the NFT without a server, but no website is minted with the token. A third route, the CLI, pins a GUI as an IPFS CID in an ENS contenthash. The unmerged commons branch builds a ~443 KB standalone HTML client and explicitly states it is not deployed on chain.",
+  "wallet_gating": "No surface uses a server, SIWE or a signature challenge. Sanctuary: connect() calls eth_requestAccounts and switches/adds Base Sepolia (src/main.js:179); discover() reads totalMinted() and calls ownerOf(id) for every id 1..total, treating ids whose owner equals the connected address as 'yours' (src/main.js:178); the owner console is then shown, but all writes (setStatus, deployAccount, mintAgent) are gated only by the token contract, surfaced through simulateContract({account}) before writeContract (src/main.js:180-181); anyone can inspect any token id without a wallet (src/main.js:187). On-chain renderer: no viewer gating at all — every visitor sees owner, ERC-6551 account and fingerprint for the token in the URL; CONNECT WALLET uses eth_requestAccounts + switchChain/wallet_addEthereumChain, and every control (deployAccount, setStatus 1/2/4, setGuardian, setOperator, arbitrary signature) is simulated with the connected account and then signed; a non-holder simply gets a simulation revert (AnimaWeb3Renderer.sol:133-135). CLI: refuses unless ANIMA.isController(agentId, signer) (cli/anima.mjs:119-125); permanent ENS custody additionally requires ownerOf(id)==signer, home chain 1, and retyping the name (:145-151). Commons branch: the wallet address is the social principal; an agent badge on a post requires isController plus an exact current getStateFingerprint, and the contract snapshots ownerOf at publication; the client's requireWrite() demands a verified deployment, explicit wallet connection and matching chain (bridge.js:37). None of the UIs recognises operators, ERC-4907 users, guardians or ERC-7432 roles when deciding what to show; the GOAL's 'holder or authorised by holder' check should be implemented client-side with isController/roles for display and left to the contracts for enforcement.",
+  "tests_and_tooling": "In-area tests: test/Web3Renderer.test.ts (2 tests; emulates a manual-mode gateway with eth_call data=toHex(path) and asserts the four panels, simulate-before-sign strings, owner/account addresses and no github.io link), test/Cli.test.mjs (3 tests on encodeContenthash vectors and mainnet-only custody), test/ManifestSchema.test.mjs (4 tests: example validates, function index counts reconcile and contains manifestOf/accountOf/getStateFingerprint, directory validates with identityRegistry==contracts.anima, unknown fields/leading-zero ids rejected), test/Sdk.test.ts agentWebUrl case. No tests cover src/main.js, src/style.css or the renderer's embedded JavaScript. Tooling: npm run ui/ui:build/ui:preview (Vite 7), npm run anima (CLI), test:cli, test:manifest-schema, catalog:generate (ABI index from Hardhat artifacts), testnet:web3-renderer, testnet:batch-mint, testnet:batch-exercise; CI (ci.yml) runs audit:prod, hardhat build, hardhat test; pages.yml deploys the site; deploy-web3-renderer.yml deploys/reuses the renderer and commits the record. The unmerged commons branch adds test/Commons.test.ts (29 cases, both token builds, 322 total), test/CommonsModel.test.mjs (19 pure cases), scripts/commons-check.mjs (ABI drift + EIP-170 gate), scripts/commons-local.ts (loopback allow-listed JSON-RPC over Hardhat EVM), scripts/commons-browser-check.py (37 Playwright checks executing real transactions through an EIP-1193 shim) and a validation workflow.",
+  "measured_numbers": [
+    "src/main.js 26,881 bytes; src/style.css 17,569 bytes; index.html 1,955 bytes; cli/anima.mjs 10,855 bytes (190 lines); vite.config.js 236 bytes",
+    "public/anima-functions.json 451,868 bytes: 29 contracts, 657 functions; schema 8,108 bytes; directory schema 1,749 bytes; .well-known/anima.json 3,763 bytes (updated 2026-09-17); llms.txt 2,706 bytes",
+    "AnimaWeb3Renderer runtime 22,592 bytes, initcode 22,757 bytes (1,984 under EIP-170); literal page content 16,157 bytes (_style 5,843, _script 5,483, _token 4,291, _index 233, _head 169, _notFound 138); token page ~15.8 KB",
+    "AnimaAgent runtime 23,971 bytes (605 under EIP-170); AgentComms 7,368 bytes; AnimaCommons (branch) 12,941 bytes",
+    "Base Sepolia ANIMA targeted by the Sanctuary/.well-known/renderer: 0xb3d92c766e3cb356db381feb21958a9ebb974365 (deployer 0xc591C669162cD4da8aB9BfA2c2e68d538A312C00); renderer 0x9160bE4d943516a2463Ac5f3ABAc5F5cce7975Cd with history 0xbD714258d540F1b720466e95724b9a00d05C3A29 and 0x1E07De2923542769Cc72a43a024d7c5AABDf5bC8; batchMint tokens 30-32 to 0xb88Fbf05268802100E5E55ADBa211d6453aF8b5b; townRun 130 successful tx and 48 expected reverts with agents 18-29",
+    "Historical Base Sepolia ANIMA 0x0aeb6f783ebade8fd5ffca74317266d4ea3e71b3 (deployer 0xb76d63330A3Fff184322Ca06270368e901A33bc7, key destroyed; deploy cost 0.00628 ETH per README)",
+    "Sepolia ANIMA 0xbbd203d76eb2a2e493f458dff74b10c6659d12a3; batch tokens 14-23; batchExercise 32 transactions completed 2026-09-15T20:53:03Z with 8 assertion groups",
+    "Tests in area: 2 (renderer) + 3 (CLI) + 4 (manifest/directory/index) + 1 (agentWebUrl); repo counts drift: README 279 per mode, CLAUDE.md 268, commit 697df74 235, commons branch 322 (29 Commons + 19 model); commons browser checks 37; commons standalone HTML ~443 KB",
+    "ENS constants: registry 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e, BaseRegistrar 0x57f1887a8BF19b14fC0dF6Fd9B2acc9Af147eA85, NameWrapper 0xD4416b13d2b3a9aBae7AcD5A6bF1c4945aE05Dd6; contenthash prefix 0xe301; CLI test vector 0xe30101701220c3c4733ec8affd06cf9e9ff50ffc6bcd2ec85a6167eb060e4fb685fa3e3b8ad8",
+    "Renderer chain-name support: 84532 and 11155111 only; Sanctuary chain: 84532 only; commons bridge: 84532 and 31337 only",
+    "Commons limits: MAX_BODY_BYTES 1024, MAX_PAGE 50, circle name <=64 B, purpose <=256 B, rules 1..2048 B, slowMode <=86,400 s; UI pages 20 per read; catchup <=5 items"
+  ],
+  "pitfalls": [
+    "Two live Base Sepolia deployments with different deployer keys; UI code targets 0xb3d9… while README/CLAUDE.md/deployments/84532.json narrate 0x0aeb… — always read addresses from deployments/*.json.",
+    "The 'on-chain console' needs esm.sh for viem and a w3link gateway (or ERC-4804-aware browser) to be usable; it is not self-sufficient today.",
+    "fallback() in the renderer cannot be view; gateways call it with eth_call — never put state writes behind it.",
+    "tokenURI is an arbitrary controller-set string; the Brave-ready data: SVG metadata is a client convention, not a contract guarantee; manifestHash must be computed over the bytes the URI serves (the Sanctuary gets this wrong).",
+    "mintAgent is permissionless; the Sanctuary's one-click mint depends on that, and a unified protocol will need gating/pricing and a regenerated function index.",
+    "Public RPC lag: wait for code before constructors inspect fresh deployments, take ids from receipt logs, block until the endpoint reaches the receipt block (testnet-batch-mint.ts:132-140); the commons bridge also disables client caching after a real cache bug.",
+    "expectRevert in tests matches 4-byte selectors because facet errors cannot be decoded through the diamond; new tests must verify they are not vacuous.",
+    "The renderer's seal label array must track IAnima.SealPolicy (6 values); the Sanctuary's array is correct, the renderer's is not.",
+    "Workflows: deploy-web3-renderer.yml defaults to the historical record and commits to main with the bot identity; pages.yml cancels in-progress deploys; ci.yml does not run the UI build or node:test suites.",
+    "NatSpec: a bare '@' in a doc comment breaks compilation (CLAUDE.md), relevant when embedding HTML/email-like strings in Solidity renderers."
+  ]
+}

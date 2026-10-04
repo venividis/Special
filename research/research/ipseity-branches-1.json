@@ -1,0 +1,307 @@
+{
+  "repo": "Most-Advanced-NFT-Possible (IPSEITY) at /home/user/Most-Advanced-NFT-Possible, base origin/claude/advanced-3d-nft-gui-6490lk (297e936, 2026-09-23)",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/ipseity-branches-1.md",
+  "branches": [
+    {
+      "name": "claude/claude-md-docs-8vvyc8",
+      "commits_ahead": 6,
+      "merged": false,
+      "unique_work": "Second console tranche (2026-08-23/24): TRADE lane (openMarket/deposit/withdraw/setFee/bond/syncCurve/closeMarket + quote-first swap with exact-amount approve-as-current-step, floor and 15-minute deadline), HAND lane (ascending-finality sections, setUser free loan, lock/unlock bolt, transfer), SPEAK lane (1024-byte composer + single-block eth_getLogs back-pointer walk of Parley) and a federated 'HEARD FROM OTHER CHAINS' archive walking the LayerZero port's Echoed logs labeled by origin chain. ConsoleRead.sels() 29-entry on-chain selector table (PageConsole squeezed from 98% to 81% of EIP-170); PageConsole constructor gains parley + port; redeploy-site reads deployments/port-<chainId>.json. INVARIANTS.md 150-156, CONSOLE.md/INTERFACE.md/OMNICHAIN.md updates, verify-console 55->96 assertions. Three live Base Sepolia Premises redeploys recorded (0xd4e64108..., 0xc64dff66..., 0xa2519f12...), token #3 minted, Reach 0xed5560d3..., session key 0x31b23c2e... granted, cross-chain message rendered from block 45,828,666. None of it is in the base (base console-lanes.js 23 KB vs 53 KB).",
+      "valuable": true,
+      "why": "The only implementation anywhere of the holder-gated web app the GOAL demands: wallet connects, lanes for swap, handing-on and messaging (including cross-chain) rendered from chain with every selector derived on chain and 96 Chromium-driven assertions. Deployment records are historical (base is now Ethereum-only) but contracts/client are directly reusable.",
+      "files_of_interest": [
+        "engine/console-lanes.js",
+        "src/ConsoleRead.sol",
+        "src/PageConsole.sol",
+        "tools/verify-console.mjs",
+        "tools/site.mjs",
+        "tools/redeploy-site.mjs",
+        "INVARIANTS.md",
+        "CONSOLE.md",
+        "DEPLOYMENTS.md",
+        "deployments/base-sepolia.json",
+        "OMNICHAIN.md",
+        "INTERFACE.md"
+      ]
+    },
+    {
+      "name": "codex/fix-console-door-hard-coding-issue",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip aa06327 'Fix console door across token ID bands' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/fix-dom-based-xss-in-launch-preview",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip c2c28c2 'Escape launch symbols in preview' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/fix-high-priority-bug-in-ens-custody",
+      "commits_ahead": 1,
+      "merged": false,
+      "unique_work": "One-line fix in tools/site.mjs: chain 11155111 nameWrapper 0xD4416b13... (mainnet NameWrapper) -> 0x0635513f179D50A207757E05759CbD106d7dFcE8 (canonical Sepolia NameWrapper). Base still carries the mainnet address for Sepolia. Because Nameplate only trusts the configured NAME_WRAPPER, every wrapped .eth name's custody check fails on Sepolia, so the 'name in your token's Reach means your token' feature is dead on the rehearsal chain.",
+      "valuable": true,
+      "why": "Trivial to apply; without it the ENS custody path cannot be rehearsed on Sepolia.",
+      "files_of_interest": ["tools/site.mjs"]
+    },
+    {
+      "name": "codex/fix-high-priority-bug-in-preflight-checks",
+      "commits_ahead": 1,
+      "merged": false,
+      "unique_work": "New tools/deployment-budget.mjs + verify-deployment-budget.mjs; testnet.mjs preflight adds a 0.05 ETH rollup L1-data-fee reserve for OP-stack/Arbitrum chain ids (10, 11155420, 130, 1301, 4663, 46630, 8453, 84532, 42161, 421614) on top of 180M gas x 1.5 + two seed mints. Motivated by a Base Sepolia run that measured 0.0214 ETH against a preflight that underquoted.",
+      "valuable": true,
+      "why": "Ops lesson for any L2 deployment of the unified protocol (ANIMA targets Base): a half-deployment is irrecoverable; reserve for L1 data fees eth_gasPrice cannot see.",
+      "files_of_interest": ["tools/deployment-budget.mjs", "tools/verify-deployment-budget.mjs", "tools/testnet.mjs"]
+    },
+    {
+      "name": "codex/fix-high-priority-issues-from-codex-review",
+      "commits_ahead": 1,
+      "merged": false,
+      "unique_work": "Security fix in DeskSeal (sealed DM client): the AES-GCM pair key was captured once at arm time; if the peer token transferred while the page stayed open, every later send kept encrypting to the former holder's key. Fix re-reads the recipient's published key on chain before every encryption and falls back to plaintext with a warning if it is absent or rotated; verify-site drives arm -> transfer -> send and asserts the log's sealed flag is 0. Also tools/redeploy-site.mjs --new-parley to deliberately start a new Parley archive (old address recorded in rec.archivedParleys) when registry semantics change.",
+      "valuable": true,
+      "why": "Concrete confidentiality bug in the messaging layer the GOAL requires; small, tested fix. Parley migration flag is a useful operational pattern for retiring an on-chain message archive.",
+      "files_of_interest": ["src/DeskSeal.sol", "tools/redeploy-site.mjs", "tools/verify-site.mjs"]
+    },
+    {
+      "name": "codex/fix-high-priority-issues-from-codex-review-tlo4vf",
+      "commits_ahead": 1,
+      "merged": false,
+      "unique_work": "Byte-identical duplicate of codex/fix-high-priority-issues-from-codex-review (empty diff between tips).",
+      "valuable": false,
+      "why": "Nothing beyond the canonical branch."
+    },
+    {
+      "name": "codex/fix-issues-from-codex-review-#31",
+      "commits_ahead": 1,
+      "merged": false,
+      "unique_work": "Security fix for the Uniswap v4 Facet hook: syncFee() copied the live artwork section at mining time, so an ERC-4907 renter could commit a new orientation between the owner's read and the sync and set the pool fee the owner never saw. Fix: syncFee(uint256 expectedSection) reverting SectionMoved on mismatch; launch page gains a 'Synchronize fee to the current section' control that reads the Facet's own TOKEN()/HUB() and sectionOf and carries the expectation; copy corrected to state snapshot semantics; new verify-launch test 'a renter cannot front-run the section the owner approved'. Base Facet.syncFee() still takes no argument.",
+      "valuable": true,
+      "why": "Front-running fix on the launchpad's dynamic-fee hook; must also be applied to GateFacet from the hciyvv branch.",
+      "files_of_interest": ["src/Facet.sol", "src/DeskLaunch.sol", "src/PageLaunch.sol", "tools/verify-launch.mjs"]
+    },
+    {
+      "name": "codex/fix-provider-selection-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip 4066a07 'Transaction reads follow the chosen wallet' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/fix-user-overwrite-vulnerability-in-lease-contract",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip f6dcdda 'Authenticate expired lease users' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/fix-vulnerability-in-token-indexing-logic",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip e321fdf 'Fix site enumeration for nonzero token bands' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/list-nft-functions-and-suggest-upgrades",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip 6b89a86 'Complete non-custodial Uniswap v4 launch liquidity' merged as PR #38; it brought V4PositionPlanner.sol and LaunchView.sol into the base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/list-nft-functions-and-suggest-upgrades-hciyvv",
+      "commits_ahead": 2,
+      "merged": false,
+      "unique_work": "Parallel line to the merged PR #38 with two further commits. Unique vs base: (1) src/GateFacet.sol, one immutable v4 hook combining launch gate (NotOpenYet before OPENS), liquidity lock (StillLocked for negative liquidityDelta until UNLOCKS, zero-delta fee collection still allowed) and artwork-driven dynamic fee between FLOOR and CEILING; Kiln.gateFacetArg packing and recipe kind 2; GateFacet.t.sol. (2) V4PositionPlanner hardening: authority via KILN.mayActAs only (base also requires launcher==msg.sender, which strands authority after an NFT transfer); increase/decrease/collect/burn plans read the real PoolKey from PositionManager.getPoolAndPositionInfo instead of a caller-supplied key (base let the form substitute SETTLE_PAIR/TAKE_PAIR currencies); mintPlan prices liquidity from Uniswap StateView.getSlot0 with livePrice() reporting the block. (3) Launch page: 'manage a position' section (inspect/collect/increase/decrease/burn), Permit2 allowance read/skip/revoke, explicit position-owner-and-fee-controller selector, Desk.wait receipt helper so each launch stage waits for confirmation; new verify-launch assertions; README paragraph; stateView/v4Positions/permit2 chain config.",
+      "valuable": true,
+      "why": "Launchpad security and feature work beyond what the base merged: authority-follows-the-NFT and PoolKey-from-PositionManager are correctness/security fixes; GateFacet is the schedule+lock+artwork-fee hook. Needs rebasing onto the base's planner and the #31 syncFee fix applied to GateFacet; ignore the deployment-record deletions a two-dot diff would imply.",
+      "files_of_interest": [
+        "src/GateFacet.sol",
+        "src/V4PositionPlanner.sol",
+        "src/Kiln.sol",
+        "src/LaunchView.sol",
+        "src/DeskLaunch.sol",
+        "src/PageLaunch.sol",
+        "src/Desk.sol",
+        "test/GateFacet.t.sol",
+        "test/V4PositionPlanner.t.sol",
+        "tools/site.mjs",
+        "tools/verify-launch.mjs",
+        "README.md"
+      ]
+    },
+    {
+      "name": "codex/locate-container-key-in-project",
+      "commits_ahead": 2,
+      "merged": false,
+      "unique_work": "Merge commit of PR #25 wrapping 9f3e6fd (the preflight rollup-fee fix). Nothing beyond codex/fix-high-priority-bug-in-preflight-checks; branch name is unrelated to its content.",
+      "valuable": false,
+      "why": "Duplicate wrapper."
+    },
+    {
+      "name": "codex/prepare-repo-for-production-readiness",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip 6dc39e4 'The production review catches up with the branch it must join' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-cookie-bomb-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip 28ef2da 'Sandbox portal documents to isolate cookies' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-css-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip b3edc94 'Keep financial warnings visible' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-custody-vulnerability",
+      "commits_ahead": 1,
+      "merged": true,
+      "unique_work": "Commit 4b0b35b 'Authenticate ENS name custody' is not an ancestor of the base, but its content is: base Nameplate has the NAME_WRAPPER immutable, wrapper-only _ownsNode/heldBy ('Registry control is not NFT custody') and verify-plate's 'registry control cannot counterfeit custody' test. Vulnerability it closed: heldBy trusted any code-bearing registry owner's ownerOf answer, so a fake wrapper could counterfeit custody for any token's account, and plain registry control (reclaimable by the .eth registrant) counted as custody.",
+      "valuable": false,
+      "why": "Already in base in substance; nothing unique to port. Write-up kept in the report for the record.",
+      "files_of_interest": ["src/Nameplate.sol", "tools/verify-plate.mjs"]
+    },
+    {
+      "name": "codex/propose-fix-for-custody-vulnerability-iodub2",
+      "commits_ahead": 2,
+      "merged": false,
+      "unique_work": "Merge commit of PR #26 wrapping adedb26 (the Sepolia NameWrapper one-liner). Nothing beyond codex/fix-high-priority-bug-in-ens-custody.",
+      "valuable": false,
+      "why": "Duplicate wrapper."
+    },
+    {
+      "name": "codex/propose-fix-for-ens-registration-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip e9e1224 'Use unpredictable ENS commitment secrets' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-facet-pool-fee-vulnerability",
+      "commits_ahead": 2,
+      "merged": false,
+      "unique_work": "Merge commit of PR #36 wrapping eeeff29 (the Facet syncFee front-running fix). Nothing beyond codex/fix-issues-from-codex-review-#31.",
+      "valuable": false,
+      "why": "Duplicate wrapper."
+    },
+    {
+      "name": "codex/propose-fix-for-inheritance-blockage-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip 15844fe 'The first summons fixes the inheritance deadline' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-known-default-key-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip f56c66b 'Require private key for port writes' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-locker-reentrancy-issue",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip dfad0c7 'Guard Locker token flows against reentrancy' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-market-picker-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip a4cc885 'Fix market picker selection outside initial window' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-nft-approval-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip 237608e 'Protect guarded NFTs from deferred approvals' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-renewal-ui-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip afc5d55 'The expiry clock outlives the wildcard claim' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-roster-scanning-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip 0522015 'Scan sparse room rosters through token supply' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-sealing-client-vulnerability",
+      "commits_ahead": 2,
+      "merged": false,
+      "unique_work": "Merge commit of PR #27 wrapping 7f58e37 (identical to the DeskSeal stale-key fix). Nothing beyond codex/fix-high-priority-issues-from-codex-review.",
+      "valuable": false,
+      "why": "Duplicate wrapper."
+    },
+    {
+      "name": "codex/propose-fix-for-token-picker-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip 7ef8516 'Ignore stale swap token lookups' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-wallet-enabled-xss-vulnerability",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip cb0767c 'Isolate nested token documents from wallet origin' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/propose-fix-for-xss-vulnerability-in-rpc",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip 42dc541 'Validate attestation digest before rendering' is in base).",
+      "valuable": false
+    },
+    {
+      "name": "codex/restrict-to-ethereum-only",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip fe990f7 'Make IPSEITY Ethereum-only' is in base; Nameplate bands now Ethereum-only, with 31337/11155111 holding the whole edition for rehearsal).",
+      "valuable": false
+    },
+    {
+      "name": "codex/run-complete-testnet-on-sepolia",
+      "commits_ahead": 0,
+      "merged": true,
+      "unique_work": "None (tip 4ef317b 'Exercise live Sepolia agents and market' is the base tip, PR #40; added deployments/eth-sepolia-campaign-2026-09-24.json and eth-sepolia-exercise-2026-09-24.json).",
+      "valuable": false
+    },
+    {
+      "name": "idfbi-isolated-ci-20260904",
+      "commits_ahead": 2,
+      "merged": false,
+      "unique_work": "A GitHub workflow plus seven base64 payload files that reconstruct a sha256-locked tarball (3c3be7ea...) and run forge build --sizes / forge test on it. The tarball is a complete separate Foundry project 'i dont fucking believe it!' (symbol IDFBI, ImpossibleNFT): ERC-721 'organism' with commit-reveal mint and proof-routed evolutions with nullifiers, ERC-7496 trait events, ImpossibleAccount (ERC-6551 + ERC-7579 modular + ERC-4337), AgentKernel (ERC-7579 executor + on-chain agent/tool registry with access predicates, memory receipts, reputation, attestations), SessionKeyExecutor, P256PasskeyValidator, CapsuleVault (content-addressed deduplicating bytecode storage), MultiverseMirror (bridge-agnostic proof-adapter state mirroring), ImpossibleRenderer, tests and deploy scripts. Decoded copy at /tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/idfbi/x/.",
+      "valuable": true,
+      "why": "Not mergeable as a tarball, and invisible to grep, but a strong design reference for the agent/vault/cross-chain parts of the GOAL (passkey validator, capsule vault, mirror) that neither IPSEITY nor ANIMA has in this form. If it is one of the four repositories, take its source from that repo instead.",
+      "files_of_interest": [".github/workflows/idfbi-isolated-ci.yml", ".idfbi-ci/payload.00", ".idfbi-ci/payload.06"]
+    }
+  ],
+  "highlights": [
+    "claude/claude-md-docs-8vvyc8 is the only branch implementing the holder-gated web app surface the GOAL needs: TRADE (maker bench + quote-first swap with exact approve, floor, deadline), HAND (loan/bolt/transfer in ascending finality) and SPEAK (Parley back-pointer walk + cross-chain 'HEARD FROM OTHER CHAINS' via the LayerZero port) lanes, with a 29-selector on-chain table in ConsoleRead.sels(), invariants 150-156, 96 Chromium-driven assertions, and three live Base Sepolia Premises (0xd4e64108..., 0xc64dff66..., 0xa2519f12...). None of it is in the base.",
+    "Three unmerged security fixes never reached the base: (1) DeskSeal sealed DMs kept encrypting to a former holder's key after the peer token transferred while the page was open; fix revalidates the published key before every send. (2) Facet.syncFee() let an ERC-4907 renter front-run the owner's fee approval by turning the artwork mid-flight; fix syncFee(expectedSection) + SectionMoved. (3) Sepolia config used the mainnet ENS NameWrapper (0xD4416b13...) so wrapped-name custody fails on Sepolia; fix 0x0635513f179D50A207757E05759CbD106d7dFcE8.",
+    "codex/list-nft-functions-and-suggest-upgrades-hciyvv carries launchpad work beyond the merged PR #38: GateFacet (immutable gate + liquidity lock + artwork-driven fee hook, zero-delta fee collection allowed during lock), V4PositionPlanner authority via mayActAs only (base strands authority after an NFT transfer), PoolKey read from PositionManager instead of a caller-supplied pair, StateView live pricing, full position lifecycle UI with Permit2 read/revoke and receipt-awaiting launch stages.",
+    "codex/propose-fix-for-custody-vulnerability (wrapper-only ENS custody, anti-counterfeit) is already in the base in substance; five other 'ahead' branches are merge-commit wrappers or byte-identical duplicates (iodub2, locate-container-key, facet-pool-fee, sealing-client, -tlo4vf).",
+    "idfbi-isolated-ci-20260904 hides an entire separate Foundry project (IDFBI / ImpossibleNFT: ERC-6551+7579+4337 account, AgentKernel tool registry, P256 passkey validator, session keys, CapsuleVault, MultiverseMirror) inside base64 payload files; decoded to the scratchpad as a design reference.",
+    "Preflight fix (deployment-budget.mjs) adds a 0.05 ETH rollup L1-data-fee reserve after a Base Sepolia deployment measured 0.0214 ETH against an underquoting preflight; the base is now Ethereum-only (codex/restrict-to-ethereum-only merged), so all Base Sepolia records across these branches are historical.",
+    "The base's own deployment records disagree: DEPLOYMENTS.md 'Live now' names Base Sepolia Premises 0x01de7b5d... while deployments/base-sepolia.json names 0xc59f75d2...; the docs branch would move both to 0xa2519f12... (2026-08-24)."
+  ]
+}

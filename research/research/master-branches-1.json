@@ -1,0 +1,90 @@
+{
+  "repo": "MASTER-NFT-PROJECT (ANIMA v7 Master) at /home/user/MASTER-NFT-PROJECT, base origin/main @ f65fb2c",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/master-branches-1.md",
+  "branches": [
+    {
+      "name": "codex/deploy-on-testnet-and-mint-3-nfts",
+      "merged": true,
+      "commits_ahead": 0,
+      "unique_work": "None. Tip 54d26b9 'Support explicit Sepolia mint recipients' is an ancestor of main (PR #2); the --recipient flag is already in scripts/sepolia.mjs on main.",
+      "valuable": false,
+      "files_of_interest": [],
+      "why": "Zero commits ahead, empty diff."
+    },
+    {
+      "name": "codex/deploy-on-testnet-and-mint-3-nfts-pj8cqs",
+      "merged": false,
+      "commits_ahead": 1,
+      "unique_work": "Commit 33f1034 'Record live Sepolia module deployment' (2026-09-19). Adds docs/deployments/sepolia-11155111.json, the only record anywhere of the live Ethereum Sepolia ANIMA v7 deployment: collection 0xCB8Dc18d3Ca5C9c2aeA16c94fa0af6EF4dfc0aC6 (tokenIds 1,2,3), sovereignAccountFactory 0xd99D2e1aee792e074ff34495627D6213737e52d2, deployer 0xc591C669162cD4da8aB9BfA2c2e68d538A312C00, and the module system (ModuleArchiveFactory 0x7751D929…, ExtensionReleaseRegistry 0x0bBdD0Ac…, TokenModuleRegistry 0x2ECcA4AE…, ModuleStateStore 0xf7acB81F…, ChunkedCartridgeRegistry 0xD66A2D34…, ArtifactBinding 0xCDd59f36…, WorkbenchArchive 0x5867e5A3…, ModuleWorkbench 0x1d2bad62…) with 36 tx hashes at blocks 11742089-11742148, explorer eth-sepolia.blockscout.com. Also a SEPOLIA.md paragraph linking the record and a stricter sepolia.mjs that makes --recipient mandatory on every recovery invocation (main only checks it when supplied).",
+      "valuable": true,
+      "files_of_interest": [
+        "docs/deployments/sepolia-11155111.json",
+        "docs/SEPOLIA.md",
+        "scripts/sepolia.mjs"
+      ],
+      "why": "Testnet deployment record with addresses, token ids and transaction hashes that main lacks entirely (main has no docs/deployments/ and no mention of these addresses). Clean 3-file change. Caveat: the deployer address matches the Cutting-edge repo's destroyed burner key, so owner-only functions may be unreachable; verify custody."
+    },
+    {
+      "name": "codex/explain-project-purpose-simply",
+      "merged": true,
+      "commits_ahead": 0,
+      "unique_work": "None. Tip 3082033 'Add resumable Ethereum Sepolia deployment workflow' is an ancestor of main (PR #1).",
+      "valuable": false,
+      "files_of_interest": [],
+      "why": "Zero commits ahead, empty diff."
+    },
+    {
+      "name": "codex/identify-pending-upgrades-and-tasks",
+      "merged": true,
+      "commits_ahead": 0,
+      "unique_work": "None. Tip 9d9b00a 'Repair release integrity and clarify report scope' is an ancestor of main (PR #4).",
+      "valuable": false,
+      "files_of_interest": [],
+      "why": "Zero commits ahead, empty diff."
+    },
+    {
+      "name": "codex/prism-cathedral-simulator",
+      "merged": false,
+      "commits_ahead": 3,
+      "unique_work": "Three commits (2026-09-24): 'Preserve Prism Cathedral interface and recovered source', 'Add exact local mint simulator and guarded frozen replay', 'Record full local mint recovery and browser validation evidence'. 111 files, +12382/-1149, fast-forwardable (main has 0 commits since merge-base). (1) GUI: 'Prism Cathedral II' becomes the default holder interface - seed-bound luminous object with Whole/Interior/Original modes, seven-door Tools dialog (Swap, Launch, Vault, Memory, Commons, Worlds, module workbench), grouped searchable Atlas (Identity/Create/Exchange/Connect/Explore/Advanced), Home/Tools/Memory/Atlas mobile nav, Appearance settings (spectrum, quality, motion), Connect NFT gating retained, external Compare link removed; new prism-presentation.mjs route vocabulary and prism-art.mjs deterministic filament geometry seeded from seed|genome|root. (2) Exact local mint simulator (scripts/lib/prism-simulator.mjs, hooked into master-local.mjs via ANIMA_PRISM_SIMULATOR=1): mints the real contracts on chain 31337, parses tokenURI -> animation_url -> AWE_CHAIN_IDENTITY without evaluating token code, recovers the runtime via the production archive reader and the workbench chunk-by-chunk, requires byte equality with the release build, serves /, /token/1/{live,loader,recover,runtime,metadata,provenance}, /modules.html, /simulator, /simulator/snapshot on loopback behind a pinned read-only JSON-RPC bridge (whitelisted eth_* reads, block tags pinned to the snapshot block, no state overrides/value/accounts/signing, CSP, same-origin only) with EIP-6963 wallet-discovery isolation that survives document.open and fails closed on a non-configurable injected provider. (3) Frozen export (simulator:export): static hosted replay from recorded reads only, 'not recorded' errors instead of fabricated results, full CSP, SHA-256 export manifest, Desktop/Phone (390px) preview. (4) Evidence: reports/prism-simulator/mint-proof.json (collection 0xC976c932…4044, block 0x1b7, runtime 8,120,812 bytes byte-equal, workbench 735,615 bytes byte-equal, 3 installed modules, 4 packages, 6 history entries), validation.json (ui 234/0, confluence 38/0, ownerSafety 8/0, prismFocused 9/0, workbenchFocused 19/0, liveSimulatorFixture 5/0, frozenReplayGuards 6/0, 1638 source files syntax-checked, 'heuristic scan passed; not a security audit'), browser-review.json ('Lumin Crown; chain31337; genesis1', seven-door Tools dialog on phone, Unfold recovered the full immutable application). New tests in test/build, test/confluence, test/genesis; docs/PRISM-SIMULATOR.md and docs/PRISM-FROZEN-EXPORT.md; new npm scripts dev/simulator:start/simulator:export/test:simulator; vite 7.3.6 devDependency. No Solidity changes; regenerated dist/ and onchain-app chunk bytes are tracked.",
+      "valuable": true,
+      "files_of_interest": [
+        "docs/PRISM-SIMULATOR.md",
+        "docs/PRISM-FROZEN-EXPORT.md",
+        "README.md",
+        "scripts/lib/prism-simulator.mjs",
+        "scripts/lib/prism-simulator-export.mjs",
+        "scripts/master-local.mjs",
+        "web/confluence/shell.html",
+        "web/confluence/app.js",
+        "web/confluence/prism-presentation.mjs",
+        "web/confluence/capabilities.mjs",
+        "web/genesis/prism-art.mjs",
+        "web/modules/app.mjs",
+        "reports/prism-simulator/mint-proof.json",
+        "reports/prism-simulator/validation.json",
+        "reports/prism-simulator/browser-review.json",
+        "test/build/prism-simulator.test.mjs",
+        "test/build/prism-simulator-export.test.mjs",
+        "test/browser/current-app.mjs"
+      ],
+      "why": "Directly serves the GOAL: it is a working, byte-verified demonstration that minting the NFT yields a self-contained web app (runtime + module workbench) recovered from the token's own tokenURI, organised into a holder GUI with Swap/Launch/Vault/Commons-messaging/Worlds/modules surfaces and Connect-NFT gating, plus a tested read-only preview pattern that cannot impersonate owner approval. Fast-forward merge with no contract changes."
+    },
+    {
+      "name": "codex/propose-fix-for-factory-nonce-vulnerability",
+      "merged": true,
+      "commits_ahead": 0,
+      "unique_work": "None unmerged. Its single commit fd1c283 'Verify Sepolia workbench archive commitments' (scripts/sepolia.mjs +50, test/sepolia.test.mjs +35, docs/SEPOLIA.md +4) is PR #5, whose merge commit f65fb2c is main's HEAD. The fix is on main.",
+      "valuable": false,
+      "files_of_interest": [],
+      "why": "Zero commits ahead; merged as PR #5."
+    }
+  ],
+  "highlights": [
+    "Only 2 of 6 branches carry unmerged work (pj8cqs deployment record, prism-cathedral-simulator); both apply cleanly on main @ f65fb2c, which has not moved past the Prism branch's merge-base.",
+    "codex/deploy-on-testnet-and-mint-3-nfts-pj8cqs is the sole record of the live Ethereum Sepolia ANIMA v7 deployment: collection 0xCB8Dc18d3Ca5C9c2aeA16c94fa0af6EF4dfc0aC6 (tokens 1-3), sovereignAccountFactory 0xd99D2e1aee792e074ff34495627D6213737e52d2, ModuleWorkbench 0x1d2bad62Fe47a63b7a2e51E03959a50B8767C2aD, TokenModuleRegistry 0x2ECcA4AE5AE809328703c624e7E82963EF4Ad8e1, 36 tx at blocks 11742089-11742148; deployer 0xc591C669… matches the Cutting-edge repo's destroyed burner key, so owner functions may be unreachable.",
+    "codex/prism-cathedral-simulator delivers the Prism Cathedral II holder GUI (Whole/Interior/Original, seven-door Tools: Swap/Launch/Vault/Memory/Commons/Worlds/modules, grouped searchable Atlas, Home/Tools/Memory/Atlas mobile nav, Appearance settings, Connect NFT gating) and an exact local mint simulator that recovers the NFT's own 8,120,812-byte runtime and 735,615-byte module workbench byte-for-byte from tokenURI behind a pinned read-only, wallet-isolated RPC bridge, plus a static frozen export replaying recorded reads only; 234 UI + 38 confluence + 8 owner-safety + 19 workbench + 11 simulator/replay checks recorded passing; no Solidity changes.",
+    "The simulator's read-only bridge (whitelisted eth_* reads, block pinning, no overrides/accounts/signing, EIP-6963 isolation that survives document.open and fails closed on non-configurable wallets) is a reusable, tested 'preview without owner authority' pattern for the unified protocol's web3:// surface.",
+    "No unmerged research/design essays (standards, gamification, fees, privacy) exist on these six branches; the recoverable value is a deployment record and a GUI/simulator implementation with evidence. The pj8cqs --recipient hardening is a stricter superset of what main already has."
+  ]
+}

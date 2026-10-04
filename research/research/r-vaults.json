@@ -1,0 +1,261 @@
+{
+  "topic": "Vaults for NFT-owned assets",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/r-vaults.md",
+  "searches_made": 22,
+  "pages_fetched": 13,
+  "findings": [
+    {
+      "claim": "ERC-4626 (Final, created 2021-12-22) fixes rounding to favour the vault (convertToShares/convertToAssets/previewDeposit/previewRedeem round down; previewMint/previewWithdraw round up) and states preview* methods 'are manipulable ... and are not always safe to be used as price oracles' while convert* may be TWAP-based oracles.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-4626",
+      "verified": true,
+      "relevance": "Rule for any 4626 share held by a token's account: value with convert*, never preview*, with a rate floor."
+    },
+    {
+      "claim": "OpenZeppelin's virtual-offset defence (assets.mulDiv(totalSupply()+10**offset, totalAssets()+1)) makes the inflation attack non-profitable even at offset 0 for full dilution; drawbacks are value capture by virtual shares and worse exits for last users after losses. Issue #5223 shows partial profit remains possible at offset 0 against repeated deposits.",
+      "source_url": "https://docs.openzeppelin.com/contracts/5.x/erc4626",
+      "verified": true,
+      "relevance": "Any share-issuing vault we deploy needs a non-zero offset and a seeded locked first deposit."
+    },
+    {
+      "claim": "Resupply lost $9.56M on 2025-06-26: an empty cvcrvUSD ERC-4626 vault deployed ~90 minutes earlier; attacker donated 2,000 crvUSD, minted 1 wei of shares with 2 crvUSD, and the pair's `_exchangeRate = 1e36 / price` floored to zero, making the LTV check pass for a 10M reUSD borrow.",
+      "source_url": "https://ackee.xyz/blog/resupply-hack-analysis/",
+      "verified": true,
+      "relevance": "Boundary-test every division that feeds a solvency or price check; seed and offset new vaults."
+    },
+    {
+      "claim": "Venus on ZKsync (Feb 2025) suffered ~86 WETH attacker profit plus bad debt via direct donation to a thin wUSDM ERC-4626 vault used as a borrowable base asset (price inflated ~1.7x).",
+      "source_url": "https://www.openzeppelin.com/news/erc-4626-tokens-in-defi-exchange-rate-manipulation-risks",
+      "verified": true,
+      "relevance": "A 4626 share is a position, not a price."
+    },
+    {
+      "claim": "ERC-7540 (Final, created 2023-10-18, requires 7575) defines requestDeposit/requestRedeem with Pending/Claimable/Claimed states, controller+operator model (setOperator/isOperator, OperatorSet; interface ids 0xe3bc4e65 operator, 0xce3bbe50 async deposit, 0x620ee8e4 async redeem), preview* MUST revert on async sides; Security Considerations warn pending assets may be stuck without cancellation and that an operator can move both assets and shares.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7540",
+      "verified": true,
+      "relevance": "The standard shape for a delayed exit from a token's vault; exits must have a cancel path."
+    },
+    {
+      "claim": "OpenZeppelin's community ERC7540 implementation ships Admin/Sync/Delay strategies and warns in code that a controller unable to claim 'will permanently lock the committed assets, since ... there is no cancellation path'.",
+      "source_url": "https://docs.openzeppelin.com/community-contracts/erc7540",
+      "verified": true,
+      "relevance": "Delay strategy = cooling-off withdrawal; include owner fallback claim."
+    },
+    {
+      "claim": "ERC-7575 externalises the vault share (share() on vault, vault(asset) on share, ids 0x2f0a18c5 / 0xf815c03d), entry points SHOULD NOT be ERC-20, and is 'not fully compatible with ERC-4626 because the ERC-20 functionality has been removed'.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7575",
+      "verified": true,
+      "relevance": "Legal form for 'the NFT is the share' with per-asset entry points."
+    },
+    {
+      "claim": "ERC-7535 (Final, created 2023-10-12) makes deposit/mint payable with asset() = 0xEeee...EEeE (ERC-7528) and itself recommends most systems prefer WETH over implementing it.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7535",
+      "verified": true,
+      "relevance": "Only use for an ETH-only chamber."
+    },
+    {
+      "claim": "ERC-6551 is in Review (created 2023-02-23); its Security Considerations list four sale-fraud mitigations (pin state, asset commitments, checking contract, 'locking mechanism on the token bound account implementation') and warn about ownership cycles; the Magicians thread notes approval-based transfers do not change account state.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-6551",
+      "verified": true,
+      "relevance": "Our seal/lock is mitigation #4; approvals are the remaining hole."
+    },
+    {
+      "claim": "Tokenbound's reference Lockable.sol: lock(uint256 _lockedUntil) by root owner, reverts ExceedsMaxLockTime() beyond block.timestamp + 365 days; isLocked() = lockedUntil > block.timestamp; execute checks the lock.",
+      "source_url": "https://raw.githubusercontent.com/tokenbound/contracts/main/src/abstract/Lockable.sol",
+      "verified": true,
+      "relevance": "Independent convergence on the 365-day seal ceiling IPSEITY chose."
+    },
+    {
+      "claim": "ERC-7656 (Final, created 2024-03-15) defines create/compute(implementation, salt, chainId, bytes12 mode, linkedContract, linkedId) deploying ERC-1167 proxies with appended data; LINKED_ID mode is byte-compatible with ERC-6551.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7656",
+      "verified": true,
+      "relevance": "Factory for non-account token services (steward, locker, yield splitter)."
+    },
+    {
+      "claim": "Cruna's InheritanceCrunaPlugin exposes configureInheritance(uint8 quorum, uint8 proofOfLifeDurationInWeeks, uint8 gracePeriodInWeeks, address beneficiary, ...), setSentinel(s), proofOfLife() (owner only), voteForBeneficiary(address) (sentinels), inherit() (approved beneficiary); setSentinels works only if no protector is set.",
+      "source_url": "https://raw.githubusercontent.com/crunaprotocol/cruna-protocol/master/contracts/services/inheritance/InheritanceCrunaPlugin.sol",
+      "verified": true,
+      "relevance": "Sentinel-quorum alternative to pure-silence succession."
+    },
+    {
+      "claim": "ERC-7878 Bequeathable (Final, created 2025-02-01): setWill(executors, moratoriumTTL), announceObit, cancelObit (any executor or owner), getObit, bequeath; recommends moratorium of at least 30 days for high-value tokens.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7878",
+      "verified": true,
+      "relevance": "Standard inheritance interface to expose as an adapter; 30-day floor guidance."
+    },
+    {
+      "claim": "Candide/Safe SocialRecoveryModule: owner sets guardians+threshold, guardians confirm/execute, owner can cancel during the recovery period, finalizeRecovery is public; Safe's default module uses a 14-day period; Ackee's June 2024 audit found 2 issues, the most severe 'M1: Other modules can be used to gain ownership of the wallet'.",
+      "source_url": "https://github.com/candidelabs/candide-contracts",
+      "verified": true,
+      "relevance": "Recovery is only as strong as the account's other modules; supports the no-module account."
+    },
+    {
+      "claim": "ZK Email recovery audits (Ackee 4-12 July 2024, 27 findings; MatterLabs) found zero-guardian/zero-threshold init, premature guardian-weight update, threshold bypass by repeated guardian emails, guardian front-running of its own removal, and that single-guardian setups are allowed.",
+      "source_url": "https://ackee.xyz/blog/zkemail-email-recovery-audit-summary/",
+      "verified": true,
+      "relevance": "Reject empty guardian sets; count each guardian once per nonce; bundle cancel+remove."
+    },
+    {
+      "claim": "Loopring smart wallets lost ~$5M on 2024-06-09 (58 wallets) when the single 'Official Guardian' 2FA service was compromised and used to approve recoveries; wallets with multiple or third-party guardians were unaffected.",
+      "source_url": "https://www.theblock.co/post/299177/loopring-suffers-5-million-hack-after-guardian-two-factor-authentication-service-is-compromised",
+      "verified": true,
+      "relevance": "No default service guardian; redirect-capable guardians need a quorum."
+    },
+    {
+      "claim": "Bybit lost ~$1.46B (401,347 ETH) on 2025-02-21 after malicious JavaScript injected into app.safe.global (modified 19 Feb from a compromised Safe{Wallet} developer's AWS session, removed ~2 minutes after the tx) made signers blind-sign a delegatecall that replaced the Safe's masterCopy with a contract exposing sweepETH/sweepERC20.",
+      "source_url": "https://www.sygnia.co/blog/sygnia-investigation-bybit-hack/",
+      "verified": true,
+      "relevance": "An on-chain UI removes the infra vector; the account must refuse delegatecall and the page must show the calldata digest."
+    },
+    {
+      "claim": "Safe Allowance module packs {uint96 amount, uint96 spent, uint16 resetTimeMin (max ~45 days), uint32 lastResetMin, uint16 nonce} into one word; CHANGELOG records an Ackee-found divide-by-zero when resetTimeMin was 0.",
+      "source_url": "https://github.com/safe-global/safe-modules/blob/main/modules/allowances/README.md",
+      "verified": true,
+      "relevance": "Period-reset spending limit reference; guard every period divisor."
+    },
+    {
+      "claim": "MetaMask Delegation Framework's ERC20PeriodTransferEnforcer enforces periodAmount/periodDuration/startDate with forfeiture of unused allowance; ERC20TransferAmountEnforcer enforces a lifetime cap; docs state the framework follows ERC-7710.",
+      "source_url": "https://github.com/MetaMask/delegation-framework/blob/main/src/enforcers/ERC20PeriodTransferEnforcer.sol",
+      "verified": true,
+      "relevance": "Composable caveat model for spend limits."
+    },
+    {
+      "claim": "Rhinestone/Biconomy Smart Sessions (ERC-7579 validator) support spending-limit, timeframe, usage-limit and value-limit policies, scope ERC-1271 via ERC-7739 to exact EIP-712 types, and 'disallow that session can be authorized by other sessions'.",
+      "source_url": "https://github.com/erc7579/smartsessions/wiki/Smart-Sessions",
+      "verified": true,
+      "relevance": "Matches our no-escalation and scoped-signing rules."
+    },
+    {
+      "claim": "ERC-7715 (Draft, created 2024-05-24) defines wallet_requestExecutionPermissions with example permission types native-token-allowance, erc20-token-allowance, erc721-token-allowance and an expiry rule, and explicitly does not fix an exhaustive list.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7715",
+      "verified": true,
+      "relevance": "Vocabulary for the on-chain page to request a session."
+    },
+    {
+      "claim": "ERC-7579's header in the ethereum/ERCs master file read 'status: Draft' at fetch; module types are 1 validator, 2 executor, 3 fallback, 4 hook.",
+      "source_url": "https://github.com/ethereum/ERCs/blob/master/ERCS/erc-7579.md",
+      "verified": true,
+      "relevance": "Ecosystem context; our no-module stance stands."
+    },
+    {
+      "claim": "ERC-5646 (Final, 2022-09-11) getStateFingerprint(tokenId) id 0xf5112315; ERC-4907 (Final) clears the user on transfer; ERC-6982 and ERC-7066 (both Final) standardise lockable ERC-721 with 7066 requiring approve to revert while locked; ERC-5725 (Final) warns an ERC-721 approval lets an operator take the NFT and claim.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-5646",
+      "verified": true,
+      "relevance": "Vocabulary for state pinning, rental, locks and NFT-as-position."
+    },
+    {
+      "claim": "delegate.xyz v2 immutable registry exposes checkDelegateForAll/Contract/ERC721(to, from, contract_, tokenId, rights) with sub-delegation rights.",
+      "source_url": "https://docs.delegate.xyz/technical-documentation/delegate-registry/idelegateregistry.sol",
+      "verified": true,
+      "relevance": "Lets cold-wallet holders use the on-chain site from a hot wallet."
+    },
+    {
+      "claim": "ERC-5095 principal tokens (convertToPrincipal/convertToUnderlying/redeem after maturity) and Pendle/Spectra PT+YT splitting (PT + YT = underlying; YT yield claimable in real time) are the on-chain form of principal/yield separation; ERC-5095's current status was not confirmed from the EIP page.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-5095",
+      "verified": false,
+      "relevance": "Model for 'principal in the Grip, yield in the Reach'."
+    },
+    {
+      "claim": "A permissionless DeadManSwitch on Base (register/ping/trigger/cancel, bounty to trigger caller, no admin keys) and the ETHGlobal 2026 DeadSwitch (30-day minimum heartbeat, 30-day recovery delay, Chainlink trigger) illustrate current dead-man-switch designs; mainnet deployment details are unverified.",
+      "source_url": "https://github.com/lordbasilaiassistant-sudo/deadman-switch",
+      "verified": false,
+      "relevance": "Bounty-triggered execution keeps succession serverless."
+    },
+    {
+      "claim": "Existing repo baseline: IPSEITY GripVault (no outbound function, holdings are a floor), IpseityAccount seal (ratchet, 365-day cap, measured not enumerated, approval family refused), Succession (quiet 30d-10y, notice 7d-365d, plan void on transfer, heir-by-token), Locker/TimeVault (10-year caps, extend-only), Timelock (7d delay, 14d grace), ANIMA AgentAccount sessions (per-session/daily/per-tx caps, void on transfer), AnimaAgent._update (operator epoch bump, guardian/policy/lease cleared, Paused), BondVault (unbonding stays slashable), RevenueRouter (2-day policy delay, stale on sale).",
+      "source_url": "file:///home/user/Most-Advanced-NFT-Possible/src/GripVault.sol",
+      "verified": true,
+      "relevance": "The merge inherits a complete three-chamber vault model; recommendations build on it."
+    }
+  ],
+  "recommendations": [
+    {
+      "recommendation": "Keep the three-chamber model (Grip receive-only, Reach sealable-by-measurement, Market behind a bonded ratchet) and never add an outbound path to the Grip.",
+      "priority": "must",
+      "rationale": "Two repos converged on it independently; it is the only surveyed pattern whose security claim is proof-by-absence, and ERC-6551's own mitigation #4 is a lock on the account."
+    },
+    {
+      "recommendation": "Define one Ratchet invariant and apply it to every chamber: seal lengthens only (<=365 days, matching Tokenbound), locks extend only (<=10 years), bond grows only except via slashing, revenue policy changes only after delay and dies on sale.",
+      "priority": "must",
+      "rationale": "Every surveyed timelock/lock design (Tokenbound Lockable, Safe Allowance, MetaMask enforcers, IPSEITY Timelock/Locker, MASTER TimeVault) is a one-directional, finite-ceiling guarantee."
+    },
+    {
+      "recommendation": "Merge succession and social recovery into one steward with two triggers (silence -> heir; >=2-guardian quorum -> recovery address), a cancellable delay, void-on-transfer, strict-owner arrangement, and no default service guardian.",
+      "priority": "must",
+      "rationale": "For a token-bound vault, recovery and inheritance are both a transfer of the ERC-721; Loopring (2024) shows single centralised guardians fail; ERC-7878 recommends >=30-day moratoria."
+    },
+    {
+      "recommendation": "The transfer hook must clear all delegated authority (operator epoch, sessions, guardian, policy, user, bound wallet) and pause agent-like tokens, as AnimaAgent._update already does.",
+      "priority": "must",
+      "rationale": "Sessions and operators that survive sale are a funded key on the buyer's wallet invisible to integrity checks."
+    },
+    {
+      "recommendation": "Refuse delegatecall (operation 0 only) in every account execute and render the calldata digest on the on-chain page before signing.",
+      "priority": "must",
+      "rationale": "Bybit ($1.46B, Feb 2025) and Radiant (Oct 2024) were blind-signed delegatecalls through a spoofed UI; our on-chain UI removes the infra vector but not the signing one."
+    },
+    {
+      "recommendation": "Treat ERC-4626 shares held by a token as positions, not prices: value via convert* with a floor, allowlist per asset; any share-issuing vault ships with a decimals offset and a seeded locked first deposit.",
+      "priority": "must",
+      "rationale": "Resupply ($9.56M, June 2025) and Venus (Feb 2025) were donation attacks on thin vaults read as oracles; ERC-4626 itself says preview* is manipulable."
+    },
+    {
+      "recommendation": "Expose delayed vault exits as ERC-7540 async redeem (delay strategy, preview reverts on the async side) with a cancel/owner-claim path.",
+      "priority": "should",
+      "rationale": "Final standard, tooling-readable pending/claimable state; OZ warns an unclaimable controller strands assets forever."
+    },
+    {
+      "recommendation": "Add an open-approval ledger to the Reach (per-owner set of (asset, spender) recorded on approval-family executes), include it in the ERC-5646 fingerprint, and let the page revoke in one batch.",
+      "priority": "should",
+      "rationale": "ERC-6551's text admits approval-based transfers bypass state pinning; this is the only cheap on-chain closure found."
+    },
+    {
+      "recommendation": "Honour delegate.xyz v2 checkDelegateForERC721 in the page's authorisation check; keep write authority on our bounded sessions.",
+      "priority": "should",
+      "rationale": "Standard answer for cold-wallet holders; one staticcall, no new trust."
+    },
+    {
+      "recommendation": "Describe session requests in ERC-7715 vocabulary while keeping stricter on-chain bounds (no self-call, no unlisted spender, scoped or no ERC-1271, dead on sale).",
+      "priority": "should",
+      "rationale": "Interop with wallets without loosening the invariants IPSEITY and ANIMA already enforce."
+    },
+    {
+      "recommendation": "Implement ERC-7878 getWill/getObit as a read adapter over the steward and use ERC-7656 as the factory for non-account token services.",
+      "priority": "should",
+      "rationale": "Both are Final; 7656 proxies are byte-compatible with 6551 in LINKED_ID mode."
+    },
+    {
+      "recommendation": "Offer PT/YT yield routing (principal in the Grip, yield in the Reach) via an ERC-5095-shaped splitter, or a rate-limited FLOOR_ASSETS manifest mode.",
+      "priority": "could",
+      "rationale": "The measured seal already blocks yield skimming; principal/yield separation is the structured alternative."
+    },
+    {
+      "recommendation": "Pay a capped bounty from the Reach to whoever executes a matured succession; commit-reveal the heir.",
+      "priority": "could",
+      "rationale": "Keeps triggering serverless (DeadManSwitch pattern) and adds privacy no surveyed design offers."
+    },
+    {
+      "recommendation": "Do not add upgradeable accounts, AccountGuardian-style trusted-implementation registries, module slots, keeper/Chainlink dependencies, or a guardian that can both pause and redirect.",
+      "priority": "avoid",
+      "rationale": "Candide audit M1 (other modules take ownership), Loopring, and the project's own no-admin invariants."
+    }
+  ],
+  "special_ideas": [
+    "Register the ERC-721 itself as the ERC-7575 share() of per-asset entry points (supply 1 per token), so standard 7575 tooling enumerates a token's chambers and convertToAssets(1) is the token's NAV.",
+    "Open-approval ledger folded into the ERC-5646 fingerprint: a marketplace order pinned to the fingerprint is void if the seller leaves a live allowance, closing ERC-6551's acknowledged approval gap without marketplace changes.",
+    "Heir-by-instrument by default: the heir is whoever holds token N, so an estate is a second token in a drawer with its own succession, no addresses anywhere.",
+    "Duress heartbeat: a second proof-of-life selector that silently extends the notice window to its maximum and sets a flag only the heir's page renders.",
+    "Seal-as-listing: listing on the in-protocol market automatically seals the Reach to the listing expiry, making ERC-6551 mitigation #4 automatic.",
+    "CLAIM_ONLY sessions that may call any claim/harvest selector on manifest assets but can never reduce a manifest balance, verifiable by the existing measured seal.",
+    "Bond-from-waterfall shown as an upward-only 'coverage' number on the token page, so reputation is capital the next buyer inherits."
+  ],
+  "open_questions": [
+    "Should the seal measure shares (strict, no yield skim) or principal-in-assets (skimmable, oracle-exposed) by default, and for which allowlisted assets?",
+    "What is the right succession notice floor: 7 days (current), 14 (Safe default), or 30 (ERC-7878 recommendation)? Should MIN_QUIET scale with token value?",
+    "Can a 1-of-1 pause-only guardian coexist with a >=2 redirect quorum without the pause being abused to block a legitimate recovery (ZK Email front-running observation)?",
+    "Does ERC-7540's operator model (control over both assets and shares) conflict with the rule that sessions never hold ERC-1271 or approval power? Exits should probably accept only the owner or the Reach as controller.",
+    "ERC-5095's status and whether any Final principal-token standard exists is unverified; confirm before claiming conformance for a yield splitter.",
+    "ERC-7579 reads as Draft in the ERCs repo; do we want any 7579 read-only compatibility given the no-module stance?",
+    "Cancun/transient-storage dependency and identical Grip/Reach behaviour across every chain in the multi-chain band design.",
+    "Should the open-approval ledger cover setApprovalForAll on foreign ERC-721/1155 collections, and how does it behave when a foreign approve reverts?"
+  ]
+}

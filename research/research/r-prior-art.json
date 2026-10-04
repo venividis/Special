@@ -1,0 +1,295 @@
+{
+ "topic": "Prior art and market context for NFTs that ARE apps (fully on-chain app NFTs, NFT-as-website, token-gated communities, NFT+social+DEX combos, on-chain OS, 2026 NFT market and trends)",
+ "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/r-prior-art.md",
+ "searches_made": 33,
+ "pages_fetched": 22,
+ "findings": [
+  {
+   "claim": "ERC-5219 (Final, created 2022-07-10) defines `request(string[] resource, KeyValue[] params) external view returns (uint16 statusCode, string body, KeyValue[] headers)`; it is read-only by design and suggests 307 redirects for state changes.",
+   "source_url": "https://ercs.ethereum.org/ERCS/erc-5219",
+   "verified": true,
+   "relevance": "Our site surface; IPSEITY's Premises.sol already implements it."
+  },
+  {
+   "claim": "ERC-6944 (Draft, 2023-04-27) requires `resolveMode()` to return bytes32 \"5219\" (0x35323139...) and deliberately does not use ERC-165.",
+   "source_url": "https://ercs.ethereum.org/ERCS/erc-6944",
+   "verified": true,
+   "relevance": "Gateway discovery of our 5219 mode."
+  },
+  {
+   "claim": "ERC-4804 is Final (2022-02-14); ERC-6860 (Draft) supersedes it with RFC 3986 grammar; mode is discovered by calling resolveMode() (selector 0xDD473FAE); modes are auto, manual, 5219.",
+   "source_url": "https://eips.ethereum.org/EIPS/eip-6860",
+   "verified": true,
+   "relevance": "web3:// addressing of the token's site and per-token routes."
+  },
+  {
+   "claim": "No mainstream browser speaks web3:// natively in 2026; access is via gateways (w3eth.io, w3link.io, web3gateway.dev), a Chrome extension that must rewrite HTML to run in a chrome-extension origin, or the Electron evm-browser.",
+   "source_url": "https://github.com/ethstorage/web3url-gateway",
+   "verified": false,
+   "relevance": "Every real visitor arrives through a gateway; the app must survive wrapping and be verifiable."
+  },
+  {
+   "claim": "EthStorage's web3-url-verifier prototype (Colibri light client, ~0.45x download time) caught a public gateway injecting a <script> tag into HTML pages to rewrite web3:// links; its thesis is the Feb 2025 Bybit >$1.5B frontend-swap loss.",
+   "source_url": "https://raw.githubusercontent.com/ethstorage/web3-url-verifier/main/verifiable-frontends.md",
+   "verified": true,
+   "relevance": "Measured need for per-route content hashes so wallets can verify gateway bytes."
+  },
+  {
+   "claim": "EIP-7907 (code size 24KB->48KB with 4 gas/32B metering) was removed from Fusaka (activated 2025-12-03) and has no champion; Base lists it among Glamsterdam EIPs it wants. EIP-170's 24,576-byte limit remains.",
+   "source_url": "https://blog.base.dev/glamsterdam-proposals",
+   "verified": false,
+   "relevance": "Design to 24KB per contract indefinitely."
+  },
+  {
+   "claim": "EthFS FileStore is deployed at 0xFe1411d6864592549AdE050215482e4385dFa0FB on Ethereum, Base, Optimism, Shape and Zora; files are split into 24KB SSTORE2 chunks at deterministic addresses via the Safe Singleton Factory.",
+   "source_url": "https://github.com/frolic/ethfs",
+   "verified": true,
+   "relevance": "Prior art for our own SSTORE2 sharding; not to be imported (no external deps)."
+  },
+  {
+   "claim": "scripty.sol exposes IScriptyBuilderV2.getHTMLString(HTMLRequest{head[],body[]}) over HTMLTag{tagOpen,tagContent,tagClose,tagType}, supports EthFS/SSTORE2 and gzip+base64; ScriptyBuilderV2 at 0xD7587F110E08F4D120A231bA97d3B577A81Df022 on Ethereum/Base/Optimism; used by Art Blocks and others.",
+   "source_url": "https://github.com/intartnft/scripty.sol",
+   "verified": true,
+   "relevance": "On-chain HTML assembly pattern; validates gzip-loader approach."
+  },
+  {
+   "claim": "ERC-6551 canonical registry 0x000000006551c19487814612e58FE06813775758 is live on Ethereum mainnet (verified contract ERC6551Registry, created 2023-10-26 by Nick's deployer 0x4e59b44847b379578588920cA78FbF26c0B4956C); the EIP's security section covers owner-empties-account-before-sale and ownership cycles.",
+   "source_url": "https://eips.ethereum.org/EIPS/eip-6551",
+   "verified": true,
+   "relevance": "Per-token vault/wallet; custody-epoch and state() commitments are the application-level answers."
+  },
+  {
+   "claim": "ERC-7857 (Final, 2025-01-02) defines iTransfer/iClone with TransferValidityProof[], IERC7857DataVerifier.verifyTransferValidity, OracleType{TEE,ZKP}; private data lives off-chain, only hashes and sealed keys on chain; the sealed executor is out of scope.",
+   "source_url": "https://ercs.ethereum.org/ERCS/erc-7857",
+   "verified": true,
+   "relevance": "IPSEITY's refusal to claim ERC-7857 remains correct; keep the sealed kernel under its own name."
+  },
+  {
+   "claim": "ERC-8004 (proposed 2025-08-13) Identity Registry is ERC-721 with URIStorage and permits data: URIs for fully on-chain registration; registries deployed on Ethereum mainnet 2026-01-29 with >24,000 agents reported at launch; Base named as next L2.",
+   "source_url": "https://eips.ethereum.org/EIPS/eip-8004",
+   "verified": true,
+   "relevance": "Our token can be its own ERC-8004 registration file; agent-client discoverability for free."
+  },
+  {
+   "claim": "ERC-7683 (Draft) 'hasn't gained much adoption'; a Feb-2026 Redux by Across/Uniswap/LI.FI/OpenZeppelin narrows the standard to a solver-facing resolver interface.",
+   "source_url": "https://ethereum-magicians.org/t/erc-7683-redux-programmable-fillers/27674",
+   "verified": true,
+   "relevance": "Intents are not a 2026 NFT primitive; at most a later resolver for our pool."
+  },
+  {
+   "claim": "Autoglyphs (2019-04-05) computes the artwork on chain via draw(uint256) returning 64x64 ASCII; contract 0xd4e4078ca3495DE5B1d4dB434BEbc5a986197782 is live with 512 supply and 182 holders; deployed program is 6,638 bytes and the archived source recompiles byte-exact.",
+   "source_url": "https://www.larvalabs.com/archive",
+   "verified": true,
+   "relevance": "'The art is the algorithm'; archival reproducibility bar for our verify tooling."
+  },
+  {
+   "claim": "Terraforms (2021-12-17) exposes tokenHTML/tokenSVG/tokenCharacters, owner-writable canvas commitDreamToCanvas(uint,uint[16]), delegate authority revoked on transfer, and holder-selected renderers via setTokenURIAddress(uint[],uint) over an append-only list; web3://terraformnavigator.eth serves dynamic pages from the token contract.",
+   "source_url": "https://raw.githubusercontent.com/d347h-eth/terraforms-fanpack/main/docs/reference.md",
+   "verified": true,
+   "relevance": "Closest prior art to 'the NFT mints a website'; holder-chosen renderer pattern."
+  },
+  {
+   "claim": "Nouns Fork #0 (2023-09-15): 472 of 846 Nouns (~56%) exited with 16,757 ETH (~$27.3M, 35.5 ETH each) while the floor had been under 30 ETH; the fork DAO lost >half its ETH to rage-quits within three days; three forks returned ~600 Nouns to the treasury by March 2024.",
+   "source_url": "https://decrypt.co/197400/nouns-fork-disgruntled-nft-holders-exit-27-million-from-treasury",
+   "verified": false,
+   "relevance": "Redeemable book value invites arbitrage; no pro-rata redemption of shared pools."
+  },
+  {
+   "claim": "friend.tech shut down 2024-09-09 by sending admin/ownership to the null address; ~$90M fees total, $44M to the team; deposits fell from $52M (Oct 2023) to $4M; daily fees from $2M to <$100; FRIEND -98%.",
+   "source_url": "https://www.dlnews.com/articles/defi/friend-tech-shuts-down-after-revenue-and-users-plummet/",
+   "verified": true,
+   "relevance": "Bonding-curve social keys do not retain; immutability-by-renounce as an exit is a rug optic."
+  },
+  {
+   "claim": "Stars Arena lost ~$2.9M (266,103 AVAX) on 2023-10-07 to a reentrancy bug in its share-sell path that let one share be priced at ~$274k; 90% recovered for a 27,610 AVAX bounty.",
+   "source_url": "https://www.halborn.com/blog/post/explained-the-stars-arena-hack-october-2023",
+   "verified": true,
+   "relevance": "Pull-payments and CEI on every curve path."
+  },
+  {
+   "claim": "Fantasy.top shut down in May 2026 after 2.5 years, refunding investors; the founders' post-mortem: 'if a product prioritizes economics above all else, it attracts speculators, not users'; ~70% of lifetime revenue came in the first month; it never issued a token.",
+   "source_url": "https://www.theblock.co/post/402144/fantasy-top-to-shut-down-says-trading-card-game-model-was-never-built-for-crypto",
+   "verified": false,
+   "relevance": "Do not make the first-month speculative loop the product; no project token."
+  },
+  {
+   "claim": "Virtuals Protocol (Base, launched 2024-10-16) uses a 100 VIRTUAL creation fee, graduation at 42,000 VIRTUAL to Uniswap V2 with 10-year LP lock and a 1% fee; agent-token revenue fell ~96% from Jan to late Feb 2025; anti-snipe (99% decaying tax) shipped after retail damage.",
+   "source_url": "https://www.onchainatlas.org/virtuals-protocol/history/",
+   "verified": false,
+   "relevance": "Launchpad mechanics to copy (locked LP, graduation) and to avoid (reserve-pairing to own token, late anti-snipe)."
+  },
+  {
+   "claim": "Zora Coins run on Uniswap V4 hooks with a sniper tax decaying from 99% over 10 seconds, 1% trading fee, 20% of fees locked as permanent liquidity; creator coins 1B supply with 50% vested 5 years; content coins give creators 10M of 1B.",
+   "source_url": "https://docs.zora.co/coins",
+   "verified": true,
+   "relevance": "Anti-snipe-at-launch and fee-funded permanent liquidity for our launchpad."
+  },
+  {
+   "claim": "Base Onchain Summer 2024 produced $5M+ mint revenue, 2M+ unique wallets and 24M+ assets minted; Base App (July 2025) folded Zora coining into the Farcaster feed; after 2026-04-09 the Base App treats all apps as standard web apps with wallet-native identity.",
+   "source_url": "https://blog.base.org/summer-never-ends",
+   "verified": false,
+   "relevance": "Distribution channel: an on-chain site at a gateway URL qualifies as a Base app."
+  },
+  {
+   "claim": "Lattice (MUD, 'an open-source operating system for developing onchain applications') is winding down; Redstone shuts 2026-05-15; MUD is feature complete and OpenZeppelin-audited; DUST migrated to its own chain.",
+   "source_url": "https://lattice.xyz/about",
+   "verified": true,
+   "relevance": "App-specific L2s can die; chain choice is a security input."
+  },
+  {
+   "claim": "CryptoSlam: 2025 NFT sales ~$5.63B (-37% from $8.9B in 2024); supply 1.34B (+25%); average sale $96 (from $124); sector market cap ~$2.4B at end-2025 vs $17B peak Apr 2022 (CoinGecko).",
+   "source_url": "https://cointelegraph.com/news/nft-supply-growth-sales-decline-2025",
+   "verified": true,
+   "relevance": "High-volume, low-price market; buyers pay ~$96 on average and want verifiable utility."
+  },
+  {
+   "claim": "Base recorded $122M NFT volume and 6.7M sales in 2025 and ranked fourth weekly in Sept 2026 (~$3.3M/week, ~2,900 buyers); an Oct-2025 snapshot had Ethereum $263M and Base $88M monthly.",
+   "source_url": "https://www.cryptoslam.io/base-introduced",
+   "verified": false,
+   "relevance": "Base as primary chain; Ethereum as canonical band."
+  },
+  {
+   "claim": "Blur's 0.5% minimum royalty cut Yuga Labs' quarterly royalties from $8.7M (Q1 2023) to $2.5M (Q3 2023); Yuga laid off staff Oct 2023 and sold CryptoPunks IP to the Infinite Node Foundation in May 2025.",
+   "source_url": "https://www.theblock.co/post/255274/how-blurs-low-royalty-fee-helped-decimate-yuga-labs-revenue",
+   "verified": true,
+   "relevance": "Royalties are not a revenue base; protocol-owned fees on in-token actions are."
+  },
+  {
+   "claim": "Pudgy Penguins: >$13M retail sales and >1M units (2024), PENGU airdropped to 6M+ wallets, ~$1.1B FDV at ~22x assumed revenue; strategy inverted to 'a global IP that has an NFT'.",
+   "source_url": "https://www.coindesk.com/research/pudgy-penguins-a-new-blueprint-for-tokenized-culture",
+   "verified": true,
+   "relevance": "Survivors earn outside the speculative loop; note the report is commissioned by Pudgy."
+  },
+  {
+   "claim": "OpenSea OS2 (May 2025) supports 22+ chains with 0.5% fees; >$4B of ~$6B 2025 volume was token trading; the SEA TGE slated for 2026-03-30 was postponed indefinitely.",
+   "source_url": "https://unchainedcrypto.com/opensea-delays-sea-token-launch-amid-50-nft-market-drop/",
+   "verified": false,
+   "relevance": "Marketplaces are pivoting away from NFTs; the token's own site must be its primary venue."
+  },
+  {
+   "claim": "Check Point (2021-09-26) showed a malicious SVG NFT executing JavaScript under storage.opensea.io could drive wallet-draining prompts; fixed within an hour.",
+   "source_url": "https://research.checkpoint.com/2021/check-point-research-prevents-theft-of-crypto-wallets-on-opensea-the-worlds-largest-nft-marketplace/",
+   "verified": false,
+   "relevance": "Executable tokenURI HTML must be safe in sandboxed and trusted origins; escape every chain string."
+  },
+  {
+   "claim": "A 2026-03-17 SEC/CFTC interpretation reportedly places 'digital collectibles' outside the securities definition.",
+   "source_url": "https://www.douglasinsights.com/non-fungible-token-nft-market/",
+   "verified": false,
+   "relevance": "Positioning; must be checked against the primary release before use."
+  }
+ ],
+ "recommendations": [
+  {
+   "recommendation": "Keep ERC-5219/6944 as the site surface and add a verifiable manifest route (route -> keccak256(body), engine shard hashes) so wallets/extensions can verify gateway bytes without a light client.",
+   "priority": "must",
+   "rationale": "EthStorage's verifier measured gateway script injection; Bybit showed the frontend is the exploit; ERC-5219 permits arbitrary routes."
+  },
+  {
+   "recommendation": "Design every contract to 24,576 bytes for the life of the project (companion contracts, SSTORE2 shards, diamond ABI partition).",
+   "priority": "must",
+   "rationale": "EIP-7907 was removed from Fusaka (2025-12-03) and has no champion; L2s adopt L1 EIPs on their own schedules."
+  },
+  {
+   "recommendation": "Make the holder's app a Base-app 'standard web app': https gateway URL, wallet-native identity, Base.dev metadata; no Farcaster manifest needed after 2026-04-09.",
+   "priority": "must",
+   "rationale": "The only large consumer distribution channel that is itself on Base; friend.tech's missing piece was retention via distribution."
+  },
+  {
+   "recommendation": "Gate actions, not pages: request() is public; token-gating is client-side (ownerOf / ERC-1271 isValidSigner via the ERC-6551 account) and enforced on chain only on state-changing calls. Say so in the UI.",
+   "priority": "must",
+   "rationale": "ERC-5219 request is view-only and cannot know the caller; honesty about the gate prevents a false-privacy claim."
+  },
+  {
+   "recommendation": "One custody epoch rolled on transfer that every delegated right keys off (operators, session keys, room moderation, launch roles, lease, guardian); commit ERC-6551 state() in marketplace orders.",
+   "priority": "must",
+   "rationale": "ERC-6551 fraud section; Terraforms revokes authorizedDreamer on transfer; ANIMA invariant 1."
+  },
+  {
+   "recommendation": "Immutable from day one; if any renderer/app-shell flexibility exists, it is holder-selected from an append-only list (Terraforms setTokenURIAddress pattern), never an admin switch.",
+   "priority": "must",
+   "rationale": "friend.tech's renounce-as-shutdown and Terraforms' lockable proxies show both failure modes; holder choice preserves guarantees."
+  },
+  {
+   "recommendation": "No pro-rata redemption of any shared pool and no project token.",
+   "priority": "must",
+   "rationale": "Nouns fork arbitrage drained >half a treasury; Fantasy.top explicitly refused a token and still identified premature financialization as the killer."
+  },
+  {
+   "recommendation": "Primary chain Base, canonical band Ethereum mainnet, further bands OP/Arbitrum; avoid app-specific L2s.",
+   "priority": "should",
+   "rationale": "Base NFT buyer growth, mini-app distribution, EthFS/scripty deployments, ERC-8004 next; Redstone shutdown shows app-chains die."
+  },
+  {
+   "recommendation": "Adopt Zora/Virtuals launch mechanics for the launchpad: decaying sniper tax from block one, fee-funded permanent liquidity, vested creator allocation, graduation with locked LP; never pair every launch to our own reserve token.",
+   "priority": "should",
+   "rationale": "Zora docs; Virtuals shipped anti-snipe late and its reserve pairing amplified the crash."
+  },
+  {
+   "recommendation": "Emit each agent-token's ERC-8004 registration file as an on-chain data: URI listing its web3:// routes and ERC-6551 account in services[].",
+   "priority": "should",
+   "rationale": "ERC-8004 Identity Registry is ERC-721 + URIStorage and permits data: URIs; mainnet since 2026-01-29 with agent clients indexing it."
+  },
+  {
+   "recommendation": "Expose every intermediate of artwork and app state as public views (Autoglyphs draw(), Terraforms tokenCharacters/heightmaps) so third-party sites and tokens compose on it.",
+   "priority": "should",
+   "rationale": "Terraforms' and Dark Forest's ecosystems grew because every read was public."
+  },
+  {
+   "recommendation": "Keep the ERC-7857 refusal; do not claim ERC-7683 or 'restaking'.",
+   "priority": "should",
+   "rationale": "ERC-7857's normative selectors and off-chain premise differ; ERC-7683 is being redesigned; restaking has no NFT primary source."
+  },
+  {
+   "recommendation": "Ship a gateway verifier script that fetches via w3eth.io/web3gateway.dev and compares byte-for-byte to local eth_call, extending the existing tokenURI round-trip to the live path.",
+   "priority": "should",
+   "rationale": "Known gateway rewriting; cheap to automate inside npm run check."
+  },
+  {
+   "recommendation": "Register ENS contentcontract (ERC-6821) / per-band names so web3://name.eth resolves without an address.",
+   "priority": "could",
+   "rationale": "Human-readable addressing is the stated purpose of ERC-4804/6860."
+  },
+  {
+   "recommendation": "Offer an ERC-7683-Redux-style resolver for the per-token pool only if intents adoption recovers.",
+   "priority": "could",
+   "rationale": "Low current adoption; resolver interface is cheap to add later."
+  },
+  {
+   "recommendation": "Depend on EthFS/scripty addresses at runtime.",
+   "priority": "avoid",
+   "rationale": "External dependency contrary to both repos' rules; copy the technique."
+  },
+  {
+   "recommendation": "Claim native web3:// browser support or rely on IPFS/message/external-body escape hatches.",
+   "priority": "avoid",
+   "rationale": "No browser speaks web3:// natively in 2026; the product claim is that nothing is fetched."
+  },
+  {
+   "recommendation": "Bonding-curve 'keys' to chats, treasury-backed redemption, or any loop whose first-month revenue is the design.",
+   "priority": "avoid",
+   "rationale": "friend.tech, Nouns fork, Fantasy.top."
+  }
+ ],
+ "special_ideas": [
+  "Self-verifying site: request([\"verify\"],[{route}]) returns the expected body hash; the page shows 'verified against chain at block N' when a wallet confirms \u2014 the first NFT whose website proves its own integrity.",
+  "Holder pins their token's site to a specific immutable page-set/renderer version from an append-only list (Terraforms pattern), so no future upgrade can change what they bought.",
+  "The token is its own ERC-8004 registration file: agentURI built on chain from live state (web3:// routes, ERC-6551 account, reputation), discoverable by every 2026 agent client with no infrastructure from us.",
+  "Social activity feeds an auditable, anchored curve parameter (never a swap-path recompute), tying the messaging layer to the per-token market without creating an extraction path.",
+  "On-chain plugin registry: holders publish immutable client extensions as further pages, reproducing the third-party-client emergence that made Dark Forest/OPCraft work.",
+  "Autoglyph-grade archival: publish the exact solc input that reproduces every deployed byte including the metadata hash, produced by npm run verify.",
+  "QR/NFC plate resolving to web3:// + the token's hash (Pudgy's QR toys drive retail) with the chain as the only source of truth.",
+  "Panic epoch: one call rolls every epoch, seals the account and emits an event the on-chain site renders as 'sealed since block N', making the ERC-6551 empty-before-sale problem buyer-visible."
+ ],
+ "open_questions": [
+  "Which public gateways honour ERC-6944 '5219' mode and stream large bodies via x-web3-next-chunk; are ~104-129KB documents within RPC response limits on common providers?",
+  "Will any browser or wallet ship native web3:// or a built-in hash verifier in 2026-27; is maintaining our own extension worth it?",
+  "Does Base.dev's standard-web-app registry accept a gateway URL for a site with no origin server, and does gateway link rewriting break the app?",
+  "Canonical ERC-6551 registry vs our own bound account implementation: marketplace state() compatibility vs control over seal/epoch semantics.",
+  "ERC-8004 agent counts are inconsistent across sources; which registry addresses are canonical on Base and when did they deploy?",
+  "Confirm the reported 2026-03-17 SEC/CFTC digital-collectibles interpretation against the primary text before relying on it.",
+  "If EIP-7907 lands in Glamsterdam, stay at 24KB for chain portability or take 48KB with metering?",
+  "Zora/Base-app 2026 volume figures conflict across secondary sources; obtain a primary dashboard read before quoting.",
+  "Does the per-chain id-band design need an explicit 'band orphaned' rule given Redstone's 90-day shutdown precedent?"
+ ]
+}

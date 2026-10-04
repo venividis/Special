@@ -1,0 +1,315 @@
+{
+  "topic": "Security lessons for NFTs, token-bound accounts, launchpads and on-chain apps (2024-2026)",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/r-security.md",
+  "searches_made": 21,
+  "pages_fetched": 17,
+  "findings": [
+    {
+      "claim": "ERC-6551 (still under review) leaves fraud prevention (owner empties account before sale) and ownership cycles (depth>1) out of scope; it suggests state snapshots on orders and account-level locks.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-6551",
+      "verified": true,
+      "relevance": "Our _update epoch-roll plus Reach seal/Grip no-outbound are the application-level answers the EIP asks for."
+    },
+    {
+      "claim": "tokenbound AccountV3 only guards depth-1 cycles (msg.sender == tokenContract && tokenId == _tokenId) and walks nested owners with no explicit depth limit.",
+      "source_url": "https://raw.githubusercontent.com/tokenbound/contracts/main/src/AccountV3.sol",
+      "verified": true,
+      "relevance": "Add depth-2 check and a bounded (8-hop) owner walk; accountOf sits on eight settlement paths."
+    },
+    {
+      "claim": "ERC-1271 signatures were replayable across smart accounts owned by one EOA (Permit2 omits owner); fixed industry-wide by defensive rehashing, standardised as ERC-7739 (magic 0x77390001, contentsName sanitisation).",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7739",
+      "verified": true,
+      "relevance": "Bound-account isValidSignature must implement ERC-7739; session keys never satisfy 1271."
+    },
+    {
+      "claim": "Alchemy disclosed (2024-03-29) the ERC-1271 replay affecting LightAccount, Kernel, Biconomy, Soul, Ambire, OKX and Permit2/CoW flows.",
+      "source_url": "https://www.alchemy.com/blog/erc-1271-signature-replay-vulnerability",
+      "verified": true,
+      "relevance": "Concrete list of what breaks without domain-bound rehashing."
+    },
+    {
+      "claim": "Trail of Bits (2026-03-11) lists six ERC-4337 account mistakes: unprotected execute, signature not binding gas fields, stateful validation, 1271 without domain, reverts in postOp don't refund, 7702 init races.",
+      "source_url": "https://blog.trailofbits.com/2026/03/11/six-mistakes-in-erc-4337-smart-accounts/",
+      "verified": true,
+      "relevance": "Checklist for AgentAccount's 4337 path; question whether 4337 is needed at all."
+    },
+    {
+      "claim": "Cork Protocol lost 3,761 wstETH (~$11-12M) on 2025-05-28: hook beforeSwap accepted unvalidated hookData; attacker spoofed a PoolManager.unlock context; Cork ran a periphery one security commit behind.",
+      "source_url": "https://www.cork.tech/blog/post-mortem",
+      "verified": true,
+      "relevance": "All hook callbacks onlyPoolManager; hookData untrusted; pin and track periphery versions."
+    },
+    {
+      "claim": "Bunni v2 lost $8.4M on 2025-09-02 (Ethereum + Unichain) from a withdraw rounding direction error exploited via flash loan and 44 small withdrawals, despite prior audits.",
+      "source_url": "https://www.halborn.com/blog/post/explained-the-bunni-hack-september-2025",
+      "verified": true,
+      "relevance": "Rounding direction must be named per call site and fuzzed at extreme balances."
+    },
+    {
+      "claim": "Trail of Bits (2026-07-30) names seven v4 hook vulnerability classes and eight defences (BaseHook/SafeCallback gating, PoolKey allowlists, delta segregation, permission-bit verification, PoolId-keyed temp state).",
+      "source_url": "https://blog.trailofbits.com/2026/07/30/building-secure-uniswap-v4-hooks/",
+      "verified": true,
+      "relevance": "Direct checklist for MASTER/GARDEN custom-hook launches."
+    },
+    {
+      "claim": "Balancer v2 lost $125-128M on 2025-11-03 because _upscale only rounded down while _swapGivenOut needed round-up; attacker positioned balances at 9 and swapped 8 in 65+ micro-swaps inside one batchSwap; bug dated from 2021.",
+      "source_url": "https://blocksec.com/blog/balancer-v2-incident-a-rounding-inconsistency-breaks-the-invariant-and-propagates-across-chains",
+      "verified": true,
+      "relevance": "Rounding inconsistency between two functions, not one wrong direction, is the failure mode."
+    },
+    {
+      "claim": "SIR Trading lost its entire $355k TVL on 2025-03-30: transient slot 1 reused for pool-address check and mint amount; attacker mined a vanity address equal to the amount.",
+      "source_url": "https://rekt.news/sirtrading-rekt",
+      "verified": true,
+      "relevance": "ANIMA uses transient storage in 16 contracts; one hashed slot per purpose, cleared on exit."
+    },
+    {
+      "claim": "EIP-1153 security considerations: transient storage is not discarded on return or revert; only leave non-zero slots when a later call in the same tx should read them.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-1153",
+      "verified": true,
+      "relevance": "Reentrancy guards in tstore must clear on every exit path."
+    },
+    {
+      "claim": "KelpDAO rsETH lost $292M on 2026-04-18 because its OFTAdapter was 1-of-1 DVN; compromise of that single DVN's signing infrastructure authenticated arbitrary messages.",
+      "source_url": "https://blockaid.io/blog/how-a-single-layerzero-dvn-compromise-drained-292m-from-kelpdao",
+      "verified": true,
+      "relevance": "ParleyPort/OmniAgent config must be >=2-of-N required DVNs, pinned libraries, recorded in deployments."
+    },
+    {
+      "claim": "LayerZero docs: UlnConfig(confirmations, requiredDVNCount, optionalDVNCount, optionalDVNThreshold, requiredDVNs, optionalDVNs); defaults are mutable and may rotate without the OApp's involvement; send config on A must match receive config on B; production should use multiple independent required DVNs.",
+      "source_url": "https://docs.layerzero.network/v2/developers/evm/configuration/dvn-executor-config",
+      "verified": true,
+      "relevance": "Pin send/receive libraries and set explicit UlnConfig on both sides at deploy; test getAppUlnConfig."
+    },
+    {
+      "claim": "Press reports say 47% of LayerZero OApps ran 1-of-1 DVN configs after the Kelp hack and that Kelp had downgraded from 2-of-2; LayerZero is moving defaults to 5/5 (min 3/3).",
+      "source_url": "https://thedefiant.io/news/hacks/layerzero-s-incident-report-says-kelp-downgraded-from-2-of-2-to-1-of-1-before-usd292m-exploit",
+      "verified": false,
+      "relevance": "Policy context only; figures not confirmed against a primary source."
+    },
+    {
+      "claim": "Four.meme (Feb 2025): migration used createAndInitializePoolIfNecessary with amount0Min=amount1Min=0; attacker pre-initialised the v3 pool at ~3.7e14x price and drained 23.4 WBNB.",
+      "source_url": "https://www.coinspect.com/learn-evm-attacks/cases/four-meme/",
+      "verified": true,
+      "relevance": "Graduation must verify or refuse a pre-existing pool and pass real amountMins."
+    },
+    {
+      "claim": "Four.meme (2025-03-17/18): buyTokenAMAP delivered pre-launch tokens to the predicted, not-yet-created PancakeSwap pair, bypassing MODE_TRANSFER_RESTRICTED; attacker sandwiched migration with pre-added LP (~$120-130k).",
+      "source_url": "https://www.panews.io/articles/h49073qf7w2s",
+      "verified": true,
+      "relevance": "Pre-launch tokens must be non-transferable by every path; refuse predicted pool recipients."
+    },
+    {
+      "claim": "pump.fun (2024-05-16): a former employee with the withdraw authority used flash loans to push curves to 100% and extract ~12,300 SOL (~$1.9M) of $45M curve liquidity.",
+      "source_url": "https://www.theblock.co/post/295029/pump-fun-post-mortem",
+      "verified": true,
+      "relevance": "No privileged withdraw authority on curve funds; graduation permissionless."
+    },
+    {
+      "claim": "HAWK (2024-12-04): ~96% of supply acquired by sniper/insider wallets in the first seconds of a bonding-curve launch; ~$3.3M extracted; market cap ~$491M to ~$25M in ~20 minutes (Bubblemaps attribution).",
+      "source_url": "https://onchainattack.org/document/examples/2024-12-hawk-tuah-celebrity-memecoin/",
+      "verified": true,
+      "relevance": "Snipe tax with no exemptions and early per-address caps."
+    },
+    {
+      "claim": "Robinhood Chain / Pons (Sept 2026): >=$18.43M extracted across 53 launches by whitelisting 15-25 wallets exempt from the 99% snipe tax and buying the whole curve in one tx.",
+      "source_url": "https://coindesk.cc/story/2026/09/inside-the-18-million-rug-pull-rocking-robinhood-chain",
+      "verified": false,
+      "relevance": "Creator-controlled tax exemptions are a rug primitive; domain is not coindesk.com so treat figures as unverified."
+    },
+    {
+      "claim": "Code4rena Revert Lend (March 2024): a reverting onERC721Received made liquidation impossible (High); fix is transferFrom or pull-based claims.",
+      "source_url": "https://github.com/code-423n4/2024-03-revert-lend-findings/issues/443",
+      "verified": true,
+      "relevance": "Protocol-driven NFT pushes in escrow/market/router must not use safeTransferFrom."
+    },
+    {
+      "claim": "ERC-7201 slot formula keccak256(abi.encode(uint256(keccak256(id)) - 1)) & ~0xff with @custom:storage-location; developer responsible for enforcement.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7201",
+      "verified": true,
+      "relevance": "Diamond facets must never declare plain state; keep the slots-0-2-empty test."
+    },
+    {
+      "claim": "ERC-5219 (Final) security considerations cover only ordinary URL-access risks (e.g. 3XX redirects); content safety is the implementer's job.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-5219",
+      "verified": true,
+      "relevance": "Premises.request output needs CSP and escaping; the standard gives none."
+    },
+    {
+      "claim": "NFT marketplace XSS vectors: SVG with embedded <script>, javascript: URLs in prefixed social-link fields, unsanitised description/profile fields.",
+      "source_url": "https://immunefi.com/blog/expert-insights/find-xss-vulnerabilities-in-nft-marketplaces/",
+      "verified": true,
+      "relevance": "All chain/user strings through Web.esc/jsonEsc and textContent; validate links as https with host allowlist."
+    },
+    {
+      "claim": "OpenSea renders animation_url HTML in a sandboxed iframe; CSP script-src 'self' does not permit data: or srcdoc scripts.",
+      "source_url": "https://ethereum-magicians.org/t/standardizing-metadata-for-interactive-nfts/6168",
+      "verified": false,
+      "relevance": "A data: tokenURI page has an opaque origin and no wallet; wallet-connected site must come from the web3:// surface or a gateway origin."
+    },
+    {
+      "claim": "OpenZeppelin's 2025 rewind: Bybit $1.4B via compromised Safe UI; EIP-7702 broke tx.origin/EOA-only checks (POT $85k, Gana $3.1M); CPIMP proxy-initialisation campaign; ERC-6492 bypass via precompile 0x04; BaseCustomAccounting hook reinit flaw.",
+      "source_url": "https://www.openzeppelin.com/news/web3-security-auditors-2025-rewind",
+      "verified": true,
+      "relevance": "No tx.origin/extcodesize gates; no initializers; immutable on-chain UI is a strength only with CSP and escaping."
+    },
+    {
+      "claim": "Sherlock Symbiotic Relay (June 2025): a deliberately chain-agnostic EIP-712 domain allowed validator-set commits to be replayed across chains.",
+      "source_url": "https://github.com/sherlock-audit/2025-06-symbiotic-relay-judging/issues/155",
+      "verified": true,
+      "relevance": "Never omit chainId/verifyingContract from a domain, even for 'cross-chain' objects."
+    },
+    {
+      "claim": "Permit2 exposes invalidateNonces (<= 2^16 per call) and lockdown batch revocation; PR #171 extends to ERC-721 operators.",
+      "source_url": "https://github.com/Uniswap/permit2/pull/171",
+      "verified": false,
+      "relevance": "ANIMA's epoch-keyed approval store is the O(1) equivalent; keep and extend to all delegated authority."
+    },
+    {
+      "claim": "EIP-7702 batch-signature phishing drained $150k (2025-05-24), ~$350k (Aug 2025) and $1.54M (late Aug 2025) in single-signature atomic batches; Wintermute reported >97% of early delegations were sweepers.",
+      "source_url": "https://www.cryptopolitan.com/eip-7702-user-loses-1-54m-phishing-attack/",
+      "verified": false,
+      "relevance": "Provide a one-call panic() that bumps all epochs and seals the Reach."
+    },
+    {
+      "claim": "ERC-4626 first-depositor inflation still drains protocols (Venus on ZKsync, 86.72 WETH, Feb 2025); OZ virtual shares make it ~1000x harder.",
+      "source_url": "https://dev.to/juan23z/erc-4626-first-depositor-inflation-explained-for-founders-3ih1",
+      "verified": false,
+      "relevance": "Any share-based vault/bond accounting needs virtual or dead shares."
+    },
+    {
+      "claim": "_safeMint reentrancy via onERC721Received let attackers exceed per-wallet mint limits (HypeBears; Code4rena NextGen #1154).",
+      "source_url": "https://github.com/code-423n4/2023-10-nextgen-findings/issues/1154",
+      "verified": false,
+      "relevance": "Update counters before _safeMint and use nonReentrant on mint."
+    },
+    {
+      "claim": "Base's protocol minimum gas price (from Dec 2025) cut spam's share of gas from ~26% to <9%; Monad charges by gas limit; Farcaster rents storage units (~$7/unit/year) to bound spam.",
+      "source_url": "https://arxiv.org/abs/2604.00234",
+      "verified": false,
+      "relevance": "Messaging price must be set by the protocol (body cap, cooldown, priced DMs, spam bond), not left to chain fees."
+    }
+  ],
+  "recommendations": [
+    {
+      "recommendation": "Make a custody epoch the root of all delegated authority: _update bumps custodyEpoch[id] and approvalEpoch[seller], clearing operators, session grants, lease, guardian, launch roles and room moderator rights in one transfer.",
+      "priority": "must",
+      "rationale": "ERC-6551 fraud section; ANIMA invariant 1; MASTER custody epochs. Authority that outlives the sale is the #1 TBA failure."
+    },
+    {
+      "recommendation": "Keep the Grip as a receive-only account with no outbound function, and a test that no selector can move an asset.",
+      "priority": "must",
+      "rationale": "IPSEITY's strongest guarantee; absence of a spend path is the only vault guarantee that cannot be bypassed by a bug."
+    },
+    {
+      "recommendation": "Implement ERC-7739 in the bound account's isValidSignature; session keys never satisfy ERC-1271; all signed objects are EIP-712 with chainId, verifyingContract, nonce, tokenId and epoch.",
+      "priority": "must",
+      "rationale": "ERC-1271 cross-account replay (Alchemy 2024), Symbiotic cross-chain replay (2025), ToB mistake #4."
+    },
+    {
+      "recommendation": "Launchpad graduation: permissionless, no withdraw authority, verify-or-refuse any pre-existing pool, real amountMins, LP minted atomically; pre-launch tokens non-transferable by every path including permit and buy-for helpers; refuse predicted pool recipients.",
+      "priority": "must",
+      "rationale": "pump.fun insider (2024), Four.meme twice (Feb/Mar 2025)."
+    },
+    {
+      "recommendation": "Snipe tax with a public immutable decay schedule and no exemption list; first-N-blocks per-address caps; creator allocation only through vesting locks.",
+      "priority": "must",
+      "rationale": "HAWK (96% sniped), Pons exemption abuse (2026)."
+    },
+    {
+      "recommendation": "Every v4 hook callback onlyPoolManager; beforeInitialize allow-lists our PoolKeys; hookData untrusted; no non-essential code on withdraw paths; permission bits asserted in tests; fuzz nested callbacks and malicious tokens.",
+      "priority": "must",
+      "rationale": "Cork ($11-12M), Bunni ($8.4M), Trail of Bits 2026-07-30 classes."
+    },
+    {
+      "recommendation": "Rounding: expose only mulDivUp/mulDivDown, name the direction at each call site, fuzz round-trip-never-profits at 0/1/2/9/2^64/2^128 wei across curve, pool and vault share math; virtual shares on any share accounting.",
+      "priority": "must",
+      "rationale": "Balancer v2 ($128M) was an inconsistency between two functions; ERC-4626 inflation persists."
+    },
+    {
+      "recommendation": "Transient storage: one hashed slot per purpose, never small integers, cleared on every exit path; a test enumerates all T_* constants, asserts uniqueness and zero after each external call.",
+      "priority": "must",
+      "rationale": "SIR Trading slot collision; ANIMA uses tstore in 16 contracts."
+    },
+    {
+      "recommendation": "LayerZero: >=2-of-N required DVNs from independent operators, send/receive libraries pinned, config symmetric on both sides, set at construction or by a timelocked owner that is then renounced; full UlnConfig in deployment records and diffed in CI.",
+      "priority": "must",
+      "rationale": "KelpDAO $292M via 1-of-1; LayerZero docs warn defaults rotate silently."
+    },
+    {
+      "recommendation": "Never gate on tx.origin or extcodesize==0; no initializers, proxies or diamondCut; constructor-wired, immutable deployments.",
+      "priority": "must",
+      "rationale": "EIP-7702 broke EOA checks (POT, Gana); CPIMP proxy-init campaign; three repos already immutable."
+    },
+    {
+      "recommendation": "Website: every chain/user string through Web.esc/jsonEsc, textContent only in the browser, CSP meta in every page, artwork routes served by the router not pages; wallet verification is a view and every privileged action is re-authorised on chain via mayActAs; SIWE with nonce/domain/chainId/expiry and ERC-1271/7739 for bound accounts.",
+      "priority": "must",
+      "rationale": "Marketplace XSS class; ERC-5219 gives no content-safety guidance; Bybit shows the UI as boundary."
+    },
+    {
+      "recommendation": "Protocol-driven NFT transfers use transferFrom or pull-based claims; external calls gas-capped; no try/catch on estimate-gas paths; lzReceive never calls token-controlled code.",
+      "priority": "must",
+      "rationale": "Revert Lend non-liquidatable position; 63/64 griefing; ANIMA gotcha."
+    },
+    {
+      "recommendation": "Mint: counters updated before _safeMint, nonReentrant; commit-reveal with post-window blockhash or VRF only if ids carry rarity.",
+      "priority": "should",
+      "rationale": "HypeBears/NextGen reentrancy; Meebits re-roll; IPSEITY bands may make it moot."
+    },
+    {
+      "recommendation": "Messaging: one token one voice, MAX_BODY cap, per-room cooldowns, priced DMs with a refundable spam bond, roles keyed to custody epoch, bodies rendered as text only, prev-pointer logs.",
+      "priority": "should",
+      "rationale": "No on-chain messaging exploit found 2024-2026; spam economics (Base, Farcaster) are the live risk."
+    },
+    {
+      "recommendation": "Depth-2 ownership-cycle check in onERC721Received and an 8-hop bound on the nested-owner walk.",
+      "priority": "should",
+      "rationale": "ERC-6551 leaves depth>1 out of scope; AccountV3's walk is unbounded and accountOf sits on settlement paths."
+    },
+    {
+      "recommendation": "Expose panic(id): bumps every epoch, seals the Reach, emits an event marketplaces can read; add state-snapshot sale orders.",
+      "priority": "should",
+      "rationale": "EIP-7702 batch drainers; ERC-6551 fraud section suggests exactly this."
+    },
+    {
+      "recommendation": "Pin Uniswap v4 periphery/hook base versions and track upstream security commits; two independent audits of the deployed commit plus fuzz campaigns; cross-chain monitoring with a pause that cannot touch custody.",
+      "priority": "should",
+      "rationale": "Cork was one commit behind; Bunni was audited; Balancer propagated across chains in 30 minutes."
+    },
+    {
+      "recommendation": "Show live DVN config, frozen engine hash and the page CSP in the token's own console.",
+      "priority": "could",
+      "rationale": "Turns KelpDAO and Bybit lessons into user-visible guarantees at no protocol risk."
+    },
+    {
+      "recommendation": "Adopt ERC-4337 for bound accounts.",
+      "priority": "avoid",
+      "rationale": "Trail of Bits' six-mistake surface is large; holders already have wallets; session keys plus relayer cover the UX without EntryPoint trust (open question)."
+    },
+    {
+      "recommendation": "Any creator-controlled exemption from snipe tax, any admin over curve funds, any outbound path on the Grip, any upgrade or diamondCut, any chain-agnostic signature domain.",
+      "priority": "avoid",
+      "rationale": "Each is a documented 2024-2026 loss primitive."
+    }
+  ],
+  "special_ideas": [
+    "panic(id): one call bumps every epoch, seals the Reach and emits Panicked(id, epoch) that marketplaces and the on-chain site display as 'sealed since block N'.",
+    "State-snapshot sale orders: an order commits to Reach state() and a Grip holdings hash; settlement reverts if either changed (the EIP-6551 suggestion, implemented on our own market).",
+    "Graduation proof event: emit terminal curve price and the pool's sqrtPriceX96 together so the site can show 'migrated at curve price' (Four.meme's failure as a feature).",
+    "Snipe tax with a public immutable schedule in the launch NFT's metadata and no allowlist, plus first-N-blocks per-address caps.",
+    "A transient-slot registry test enumerating every T_* constant across all contracts, asserting uniqueness and zero after each external call.",
+    "Live DVN-config attestation in the token's web3:// console (reads getAppUlnConfig and shows N independent verifiers).",
+    "Priced attention merged with storage rent: first message to a non-follower posts a refundable micro-bond released by reply or expiry, no indexer.",
+    "Market 'the UI cannot be patched' honestly: show the frozen engine hash and the page CSP in the console footer."
+  ],
+  "open_questions": [
+    "Use the canonical ERC-6551 registry (0x000000006551c19487814612e58FE06813775758) for compatibility, or our own account with a bounded owner walk and depth-2 cycle check?",
+    "Which gateway origin model for wallet connection (per-contract subdomain vs local gateway), and does a shared origin make one token's XSS every token's XSS?",
+    "Allow any creator allocation at all, and if so only through vesting locks rather than tax exemptions?",
+    "Fix the DVN set at construction (no admin, no recovery if a DVN dies) or allow a timelocked owner to rotate DVNs (admin risk)? Which independent DVN operators exist on every target chain?",
+    "Is ERC-4337 needed for bound accounts, or are session keys plus a relayer enough?",
+    "Do ids carry rarity in the merged design (then commit-reveal/VRF) or keep IPSEITY's deterministic per-chain bands?",
+    "The 47% 1-of-1 OApp figure and the Robinhood Chain/Pons extraction figures were not verifiable against primary sources."
+  ]
+}

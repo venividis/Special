@@ -1,0 +1,424 @@
+{
+  "repo": "Cutting-edge-technologically-advanced-NFT (ANIMA) — /home/user/Cutting-edge-technologically-advanced-NFT @ main e345828",
+  "area": "market, launchpad, swap, economy, work (contracts/market/*, contracts/economy/RevenueRouter.sol, contracts/work/*, plus shared libraries ExactERC20 and ERC6492)",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/anima-market-economy.md",
+  "summary": "ANIMA's market/economy/work layer is a set of ten peripheral Solidity 0.8.28 contracts (2,671 lines; viaIR, Cancun, OZ 5.6 ReentrancyGuardTransient) that sit beside the ERC-721 agent token and talk to it through tiny locally-declared interfaces, which is why the whole 279-test suite runs unchanged against both the monolith and the EIP-2535 diamond build. The area contains: AgentMarket (EIP-712 + ERC-6492 signed sale/rental orders whose fills pin the agent's ERC-6551 state, brain root/epoch and free bond coverage, deliver the asset before paying, and lock a paid rental); AgentLaunchpad + AgentToken (constant-product bonding curve over virtual reserves with pool-favouring rounding, a time-decaying 99%-to-0 anti-snipe tax whose proceeds and a fee leg flow into an ERC-7641-style burn-to-redeem treasury, whole supply held by the launchpad, LP recipient and liquidity deployer pinned at creation, permissionless graduation into an abstract ILiquidityDeployer); AgentSwapRouter (a budgeted router — not an AMM — that an agent's 6551 account must call, with per-token per-swap and daily caps, governance-allowlisted venues, balance-delta-verified output and same-tx approval zeroing); AgentDerivativesDesk (per-market notional/margin/leverage caps verified against a venue adapter after the trade); FiatMintGateway (processor-trusted atomic mint+fund); RevenueRouter (ownerless, timelocked, transfer-staled revenue waterfall whose XOR commitment binds policy, chain, router, agent and referrer); WorkEscrow (hire→accept→deliver→settle/dispute with timers that always have a default winner, owner-only collateral pledging, squat-proof validation keys, and the documented no-try/catch rule); and InferenceMeter (unidirectional payment channels with cumulative EIP-712 vouchers that commit to the exact batch of receipts, plus a per-agent work-log hash chain).\n\nMeasured: deployed bytecode AgentMarket 9,083 B, AgentLaunchpad 16,396 B, AgentToken 5,369 B, AgentSwapRouter 5,519 B, AgentDerivativesDesk 6,706 B, FiatMintGateway 3,842 B, RevenueRouter 5,811 B, WorkEscrow 11,346 B, InferenceMeter 6,037 B. Tests in the area: Market 11, Launchpad 15, SwapRouter 11, Derivatives 12, FiatMintGateway 3, RevenueRouter 4, Meter 9, Accountability 23, ExactERC20 2, plus 8 regressions. Every contract was exercised on Base Sepolia (market, escrow, meter on five testnets; launchpad/swap/derivatives only against mocks) except RevenueRouter and FiatMintGateway, which have no recorded deployment. The commit history and SECURITY.md record five critical/high findings fixed in this area (pay-before-transfer, inert cancel-all epoch, tenant/operator pledging the owner's bond, flash-loan-scalable reputation weight, mutable liquidity deployer) plus the eth_estimateGas try/catch bug and the floorPerToken truncation bug, each with a regression test.\n\nAgainst the goal (one fully on-chain NFT with swap, messaging, launchpad and vault, website served from chain and gated on holding): there is no AMM here — the launchpad hands liquidity to an external deployer and the swap router needs an external DEX — so the swap must come from elsewhere (IPSEITY's per-token Pool). What is worth lifting is the launch curve maths and anti-snipe tax, the redemption-floor token, the market's settlement discipline, the revenue waterfall, the payment-channel meter, and the ExactERC20/ERC6492 libraries. Web UI: a GitHub-Pages Vite 'Sanctuary' that scans ownerOf client-side, and a separate ERC-4804 web3:// renderer contract that serves an HTML console from chain but imports viem from esm.sh, uses public RPCs, and does not gate on ownership at all; neither exposes any market/launchpad/swap/escrow function.",
+  "components": [
+    {
+      "name": "ExactERC20",
+      "path": "contracts/libraries/ExactERC20.sol",
+      "purpose": "Value-conserving ERC-20 transfers: measure receiver balance delta and revert InexactERC20Transfer unless it equals the amount (defeats fee-on-transfer/rebasing bad debt).",
+      "key_functions": [
+        "transferFromExact(IERC20,address from,address to,uint256)",
+        "transferExact(IERC20,address to,uint256)"
+      ],
+      "design_decisions": [
+        "Two extra balanceOf calls per transfer buy atomic failure instead of unbacked escrow/treasury balances (SECURITY invariant 28, commit ef22afa)."
+      ],
+      "security_invariants": [
+        "Receiver delta == amount or revert"
+      ],
+      "standards": [
+        "ERC-20"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "33 lines, internal library, used by every settlement path."
+    },
+    {
+      "name": "ERC6492",
+      "path": "contracts/libraries/ERC6492.sol",
+      "purpose": "Signature validation for counterfactual (undeployed) ERC-6551 signers; may deploy the signer via the wrapped factory call.",
+      "key_functions": [
+        "isValidSignatureNow(address signer, bytes32 hash, bytes memory signature) internal returns (bool) — not view"
+      ],
+      "design_decisions": [
+        "Only prepares a signer with no code; requires the factory call to actually deploy the signer before trusting the inner signature so an EOA cannot smuggle an arbitrary privileged call (lines 78-85)."
+      ],
+      "security_invariants": [
+        "Wrapper honoured only for codeless signer",
+        "Inner signature checked only after signer has code"
+      ],
+      "standards": [
+        "ERC-6492",
+        "ERC-1271"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Required whenever a 6551 account signs orders/vouchers before first use."
+    },
+    {
+      "name": "AgentMarket",
+      "path": "contracts/market/AgentMarket.sol",
+      "purpose": "Off-chain-signed, on-chain-settled sale and rental marketplace whose orders pin the agent's substance (ERC-6551 state, brain root/epoch, free bond coverage).",
+      "key_functions": [
+        "fillOrder(Order calldata, bytes calldata signature) payable nonReentrant",
+        "cancelOrder(Order)",
+        "bumpMakerEpoch()",
+        "endRental(uint256 agentId)",
+        "hashOrder(Order) view",
+        "currentIntegrity(uint256) view returns (accountState, root, epoch, coverage)",
+        "setFee(uint16,address) onlyOwner (MAX_FEE_BPS 500)"
+      ],
+      "design_decisions": [
+        "Deliver the asset BEFORE paying: a paid-first maker is still ownerOf and can drain/unbond/wipe inside the callback (CRITICAL fix f724b82, MaliciousSeller regression).",
+        "makerEpoch is inside the signed payload so cancel-all is real (fix ea9ee59).",
+        "ERC-6492 rather than ERC-1271 because 6551 accounts are counterfactual by design.",
+        "Paid rentals lock the token: ERC-4907 clearing user on transfer is 'a rug for a paid one'.",
+        "Royalty honoured via ERC-2981 but not enforced; fee+royalty clamped to price."
+      ],
+      "security_invariants": [
+        "Each order hash settles once",
+        "Epoch bump voids all signed orders",
+        "Asset moves before payment",
+        "fee + royalty <= price",
+        "Rental locks agent for the term"
+      ],
+      "standards": [
+        "EIP-712",
+        "ERC-1271",
+        "ERC-6492",
+        "ERC-2981",
+        "ERC-721",
+        "ERC-6551 state()",
+        "ERC-4907 (via token hook)"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep settlement discipline; replace three ANIMA-specific pins with one state-fingerprint pin; add on-chain order publication so no server is needed; harden native payouts against reverting receivers."
+    },
+    {
+      "name": "AgentLaunchpad",
+      "path": "contracts/market/AgentLaunchpad.sol",
+      "purpose": "Bonding-curve launchpad for a per-agent AgentToken: constant product over augmented reserves, fair window with per-address cap, linearly decaying anti-snipe tax, three-way fee split into protocol/redemption treasury/agent account, permissionless graduation into an ILiquidityDeployer with LP recipient and deployer pinned at creation.",
+      "key_functions": [
+        "createLaunch(LaunchParams) nonReentrant returns (launchId, token)",
+        "buy(launchId, quoteIn, minBaseOut)",
+        "sell(launchId, baseIn, minQuoteOut)",
+        "graduate(launchId)",
+        "quoteBuy/quoteSell/raisedOf/snipeTaxBps/launchOf views",
+        "setFeeSplit(FeeSplit,address) onlyOwner (MAX_TOTAL_FEE_BPS 300)",
+        "setLiquidityDeployer(ILiquidityDeployer) onlyOwner (future launches only)"
+      ],
+      "design_decisions": [
+        "Launchpad holds the whole supply so there is no insider bag.",
+        "Rounding always against the trader (ceilDiv on the reserve).",
+        "Snipe tax priced by time, not identity (Zora/Virtuals mechanism, commit 5d21694); clamped so base fee + tax < 100% because launches share one contract balance.",
+        "startsAt may not be backdated or the fair window is skipped.",
+        "Deployer pinned per launch because it receives approvals for the whole raise; approvals zeroed after graduation; GraduationFailed if pool==0 or lp==0."
+      ],
+      "security_invariants": [
+        "Curve rounding favours the pool",
+        "LP recipient and deployer fixed at creation",
+        "fees+tax never reach 100%",
+        "graduation does not depend on the creator",
+        "curveSupply < totalSupply so base reserve never reaches zero"
+      ],
+      "standards": [
+        "ERC-20 (via AgentToken)",
+        "ERC-721 ownership check"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Reuse curve maths, tax, custody and treasury routing; replace ILiquidityDeployer with the unified NFT's own pool; isolate per-launch balances; pin fees instead of Ownable2Step."
+    },
+    {
+      "name": "AgentToken",
+      "path": "contracts/market/AgentToken.sol",
+      "purpose": "Ownerless fixed-supply ERC-20 + Permit with an ERC-7641-style burn-to-redeem treasury so price cannot durably trade below treasury/totalSupply.",
+      "key_functions": [
+        "contribute(uint256) nonReentrant (permissionless, pulls QUOTE)",
+        "sync() returns recognised",
+        "redeem(uint256 amount) returns payout (pro-rata over supply before burn)",
+        "floorPerToken() view (per whole token, x1e18, mulDiv)",
+        "previewRedeem(uint256) view"
+      ],
+      "design_decisions": [
+        "No mint function so the floor cannot be diluted.",
+        "Treasury tracked explicitly, not from balanceOf, so donations cannot move the floor until sync().",
+        "Quote is an ERC-20 by design — no payable surface on a token.",
+        "floorPerToken quotes per whole token via mulDiv after a real truncation-to-zero bug with 6-decimal quote vs 1e27 supply."
+      ],
+      "security_invariants": [
+        "Floor per token never decreases on redemption",
+        "No mint"
+      ],
+      "standards": [
+        "ERC-20",
+        "ERC-2612 Permit",
+        "ERC-7641 (redemption semantics)"
+      ],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Self-contained; only rename ANIMA/AGENT_ID immutables."
+    },
+    {
+      "name": "ILiquidityDeployer",
+      "path": "contracts/market/ILiquidityDeployer.sol",
+      "purpose": "Abstract seam between the launch curve and whatever AMM a deployment uses; only MockLiquidityDeployer implements it.",
+      "key_functions": [
+        "deployLiquidity(address token, address quote, uint256 tokenAmount, uint256 quoteAmount, address lpRecipient) returns (address pool, uint256 lpAmount)"
+      ],
+      "design_decisions": [
+        "Kept abstract because Uniswap v2/v3/v4, Balancer and L2 forks want different call shapes."
+      ],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_verdict": "rewrite",
+      "reuse_notes": "Point the seam at the protocol's own in-NFT pool; keep caller discipline (verify outcome, zero approvals)."
+    },
+    {
+      "name": "AgentSwapRouter",
+      "path": "contracts/market/AgentSwapRouter.sol",
+      "purpose": "Budgeted swap router (not an AMM) callable only by an agent's ERC-6551 account: per-token per-swap and daily caps set by the NFT owner, governance-allowlisted venues, output verified by balance delta, approvals zeroed in-tx, guardian emergency revoke.",
+      "key_functions": [
+        "swap(SwapRequest) nonReentrant returns amountOut",
+        "setLimit(agentId, token, perSwap, daily) (NFT owner)",
+        "revokeToken(agentId, token) (owner or guardian)",
+        "setVenue(address,bool) onlyOwner",
+        "limitOf/remainingToday views"
+      ],
+      "design_decisions": [
+        "Native-denominated spending limits miss token swaps (value==0), so budgets are per token.",
+        "Trust the ledger not the venue's return value; snapshot pre-existing balances so residue is not gifted to the next caller (testnet audit 2026-09-02).",
+        "Paused/disputed agents cannot swap or the guardian kill switch is decorative."
+      ],
+      "security_invariants": [
+        "Output verified by balance delta",
+        "Approvals zeroed in the same transaction",
+        "Only the agent's own account may call"
+      ],
+      "standards": [
+        "ERC-20",
+        "ERC-721 owner check"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Not a swap; fold budget/delta/approval-zeroing/guardian ideas into the unified NFT's spending policy; drop the governance venue list. Note the 'rolling' daily cap is really a UTC calendar-day bucket."
+    },
+    {
+      "name": "AgentDerivativesDesk",
+      "path": "contracts/market/AgentDerivativesDesk.sol",
+      "purpose": "Leverage leash: per-market notional/margin/leverage caps and a portfolio collateral cap, enforced after the trade against an allowlisted venue adapter's reported notional and the desk's own measured margin movement.",
+      "key_functions": [
+        "trade(TradeRequest) nonReentrant returns notionalAfter",
+        "setLimit(agentId, market, maxNotional, maxMarginAtRisk, maxLeverageX100)",
+        "setPortfolioLimit(agentId, maxTotal)",
+        "haltMarket(agentId, market) (owner or guardian)",
+        "setVenue(venue, IPerpVenueAdapter) onlyOwner",
+        "leverageX100/positionOf/limitOf views"
+      ],
+      "design_decisions": [
+        "Only the adapter's notional is trusted; margin at risk is arithmetic on funds the desk moved.",
+        "A position with notional and no measured collateral is refused rather than divided by zero.",
+        "Execution routed through the adapter so checked account/market cannot diverge from the venue call."
+      ],
+      "security_invariants": [
+        "Leverage derived from measured collateral and adapter notional",
+        "Unconsumed collateral returned in the same tx"
+      ],
+      "standards": [
+        "ERC-20"
+      ],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Needs trusted perp adapters and governance; out of the unified goal's scope."
+    },
+    {
+      "name": "FiatMintGateway",
+      "path": "contracts/market/FiatMintGateway.sol",
+      "purpose": "Allowlisted payment processor settles a final fiat payment by minting the NFT, deploying its 6551 account and funding it with stablecoin from a reserve, atomically and idempotently.",
+      "key_functions": [
+        "settleAndMint(Purchase) onlyProcessor nonReentrant returns (agentId, agentAccount, netAmount)",
+        "setProcessor(address,bool) onlyOwner",
+        "setFeeRecipient(address) onlyOwner"
+      ],
+      "design_decisions": [
+        "Explicit processor role is the trust boundary; the EVM cannot verify card/bank payments.",
+        "settlementId makes webhook retries harmless; minimumNetAmount protects the customer's quote; MAX_FEE_BPS 1000 permanent."
+      ],
+      "security_invariants": [
+        "Settlement ids never replay",
+        "Effects before external calls"
+      ],
+      "standards": [
+        "ERC-20",
+        "ERC-6551 (deployAccount)"
+      ],
+      "reuse_verdict": "drop",
+      "reuse_notes": "Server-trusting by definition; contradicts 'no server'. Keep only the idempotent-settlement idea."
+    },
+    {
+      "name": "RevenueRouter",
+      "path": "contracts/economy/RevenueRouter.sol",
+      "purpose": "Ownerless per-agent revenue waterfall (operating >=50% / redemption treasury / bond / referrer <=5% / commons) with a 2-day activation delay, staleness on NFT transfer, and an XOR commitment that binds policy hash, chain, router, agent and referrer so an accepted obligation cannot be rerouted.",
+      "key_functions": [
+        "proposePolicy(agentId, treasury, commons, treasuryBps, bondBps, referralBps, commonsBps) (NFT owner)",
+        "activatePolicy(agentId) (anyone after POLICY_DELAY)",
+        "routeExpected(agentId, amount, referrer, expectedCommitment) nonReentrant",
+        "revenueCommitment(agentId, referrer) view",
+        "policyOf/policyHash/pendingPolicyOf views"
+      ],
+      "design_decisions": [
+        "Operating share receives every rounding remainder so peripheral shares can never exceed gross.",
+        "Historic activated policies of the same owner stay usable so earlier obligations settle; all policies die on transfer.",
+        "XOR keeps the policy hash recoverable at settlement while binding domain, agent and referrer."
+      ],
+      "security_invariants": [
+        "operating >= 50%",
+        "referral <= 5%",
+        "policy stale on transfer",
+        "2-day timelock"
+      ],
+      "standards": [
+        "ERC-20",
+        "ERC-721 owner check"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Right pattern for routing a unified NFT's revenue into its vault/treasury; replace bond leg with the vault; note any historic same-owner policy is accepted for new payments unless the integrator snapshots the commitment."
+    },
+    {
+      "name": "WorkEscrow",
+      "path": "contracts/work/WorkEscrow.sol",
+      "purpose": "Hire-an-agent escrow: funded offer, owner-pledged collateral reserved in BondVault with the token locked, delivery commitment, client review window, validator named at open, customer-attested feedback weighted by capital at risk; every wait has a timer with a default winner.",
+      "key_functions": [
+        "offerJob(agentId, amount, coverage, deadline, reviewWindow, validator, specHash, specURI) returns jobId",
+        "cancelOffer(jobId)",
+        "acceptJob(jobId) (owner only if coverage != 0)",
+        "deliver(jobId, deliveryHash, deliveryURI)",
+        "acceptDelivery(jobId, rating, ratingDecimals, tag, feedbackURI, feedbackHash)",
+        "claimUnreviewed(jobId)",
+        "claimMissedDeadline(jobId)",
+        "dispute(jobId, contentHash, reasonURI)",
+        "resolveDispute(jobId)",
+        "resolveStaleDispute(jobId)",
+        "setFee(uint16,address) onlyOwner (MAX_FEE_BPS 1000)"
+      ],
+      "design_decisions": [
+        "Offers reserve nothing or unwanted offers could pin an agent's whole bond.",
+        "Only the ERC-721 owner may pledge collateral; tenants/operators may operate, not commit capital (CRITICAL fixes 7949094, f7f86cc).",
+        "Feedback filing is deliberately NOT in try/catch: eth_estimateGas finds the cheapest success, which is the one where the side effect is skipped.",
+        "Validation request key namespaced by opener so it cannot be squatted (f724b82).",
+        "Slash after release so free collateral is consumed before other clients' reservations; release and slash clamped to vault state.",
+        "Feedback weight = min(amount, coverage) to defeat flash-loan-scaled scores."
+      ],
+      "security_invariants": [
+        "Every wait has a timeout with a default winner",
+        "Only owner pledges",
+        "Payee snapshotted at accept",
+        "No try/catch on gas-estimated paths"
+      ],
+      "standards": [
+        "ERC-8004 (validation/reputation semantics)",
+        "ERC-20",
+        "ERC-721",
+        "ERC-5192-style lock via token hooks"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Optional module; excellent state machine but depends on BondVault, ReputationRegistry, ValidationRegistry and token lock hooks. A branch (claude/nft-standard-ai-agents-2y8ngz) adds a client==agent-account self-hire check main lacks."
+    },
+    {
+      "name": "InferenceMeter",
+      "path": "contracts/work/InferenceMeter.sol",
+      "purpose": "Ownerless prepaid unidirectional payment channels: client escrows once, signs cumulative EIP-712 vouchers committing to the exact receipt batch (request/response/model hashes, units, attestation), agent controller settles the delta into the agent's account; closing opens an immutable challenge window; per-agent work-log hash chain.",
+      "key_functions": [
+        "openChannel(agentId, token, amount) returns channelId",
+        "topUp(channelId, amount)",
+        "settle(channelId, cumulativeAmount, deadline, signature, Receipt[] receipts) returns paid",
+        "requestClose(channelId) (client)",
+        "close(channelId) (anyone after CHALLENGE_WINDOW)",
+        "voucherDigest/workRootOf/remaining/channelOf views"
+      ],
+      "design_decisions": [
+        "Cumulative totals make superseded vouchers worthless without nonce bookkeeping.",
+        "Voucher commits to keccak256(abi.encode(receipts)) so the record is bilateral.",
+        "Delayed close so a client cannot claw back money for delivered work.",
+        "Earnings go to the agent's own account so it can fund itself."
+      ],
+      "security_invariants": [
+        "cumulative monotonic and <= deposited",
+        "voucher bound to exact batch",
+        "close only after challenge window"
+      ],
+      "standards": [
+        "EIP-712",
+        "ERC-1271 (client signature)",
+        "ERC-20",
+        "x402-compatible settlement layer"
+      ],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Cleanest generic block in the area; meter paid messaging/services for the unified NFT, paying into the vault; only coupling is isController/accountOf."
+    }
+  ],
+  "standards_implemented": [
+    "EIP-712 (AgentMarket 'AnimaMarket/1', InferenceMeter 'AnimaInferenceMeter/1')",
+    "ERC-1271 and ERC-6492 signature validation (market makers; meter clients ERC-1271 only)",
+    "ERC-2981 royalty read (AgentMarket)",
+    "ERC-721 safeTransferFrom / ownerOf gating (all)",
+    "ERC-6551 state() integrity pin and accountOf payouts",
+    "ERC-4907 lease via token moduleSetUser (rental)",
+    "ERC-20 + ERC-2612 Permit (AgentToken)",
+    "ERC-7641 redemption semantics (AgentToken, claimed as 'lifted from')",
+    "ERC-8004 validation/reputation semantics (WorkEscrow via registries)",
+    "ERC-4804 web3:// manual mode (AnimaWeb3Renderer, outside area but the on-chain UI)",
+    "EIP-1153 transient storage via ReentrancyGuardTransient (Cancun required)"
+  ],
+  "unique_ideas": [
+    "Orders that bind to the asset's substance (6551 state nonce, brain root+epoch, free bond coverage), each opt-out via sentinel, with a currentIntegrity() quote helper",
+    "Deliver-before-pay as the defence against ERC-1271 makers draining inside the payment callback",
+    "Maker epoch inside the signed payload for O(1) cancel-all",
+    "ERC-6492 at the settlement site so counterfactual 6551 accounts can list",
+    "Time-priced anti-snipe tax (99%→0 over the fair window) routed entirely into the redemption treasury, clamped so base fee + tax < 100%",
+    "Launchpad holds the whole supply; LP recipient and liquidity deployer pinned per launch; graduation verifies outcome and zeroes approvals",
+    "Burn-to-redeem floor that is an arbitrage not a buyback; floorPerToken per whole token via mulDiv",
+    "Per-token (not native) agent spending budgets with balance-delta verification and pre-call balance segregation",
+    "Leverage cap verified against what the position became via a venue adapter",
+    "XOR revenue commitment that stays one bytes32 yet binds policy, chain, router, agent and referrer; policies timelocked and stale on transfer; rounding to the operator",
+    "Escrow where every wait has a timer with a default winner; only the owner may pledge collateral; validator named at open; squat-proof request keys",
+    "No try/catch on gas-estimated paths (eth_estimateGas finds the branch where the side effect is skipped)",
+    "Payment channel whose cumulative voucher commits to the exact receipt batch (bilateral work record) plus a per-agent work-log hash chain",
+    "Value-conserving ERC-20 transfers everywhere (ExactERC20)",
+    "Narrow per-module interfaces to the token so peripherals are build-agnostic (monolith vs diamond)"
+  ],
+  "weaknesses": [
+    "No AMM anywhere: launchpad graduates into an external ILiquidityDeployer (only a mock exists) and the swap router needs an external DEX",
+    "AgentMarket orders are off-chain; no on-chain order book or listing event, so order discovery needs a server or p2p channel",
+    "Native fills push ETH to three addresses with Address.sendValue; a reverting fee/royalty receiver bricks every native fill (untested)",
+    "Launches share one contract balance; ceilDiv dust accumulates with no sweep; owner can change feeSplit mid-launch (<=3%)",
+    "Governance-owned venue allowlists (swap router, derivatives desk) and Ownable2Step fee setters are central chokepoints",
+    "Swap router 'rolling daily' cap is a UTC calendar-day bucket; minOut is caller-chosen so a session key with minOut=0 can route output elsewhere within the budget",
+    "RevenueRouter accepts any historic same-owner policy for new payments unless the integrator snapshots the commitment; not deployed; 4 tests",
+    "WorkEscrow: agent's own account cannot accept bonded jobs autonomously (owner must pledge); offerJob checks neither agent existence nor status; main lacks the client==agent-account self-hire check present on a branch; URIs are off-chain (ipfs://)",
+    "InferenceMeter: openChannel validates neither agent nor token; requestClose cannot be cancelled; receipts emitted as O(n) events; client cannot be a counterfactual signer (no ERC-6492); WorkRootMismatch error is dead code",
+    "FiatMintGateway trusts an off-chain processor and an approved reserve wallet; tests run only against the monolith build",
+    "AgentDerivativesDesk is blind to liquidations between trades and entirely adapter-trusting",
+    "No per-function gas numbers recorded for the area; Gas.test.ts bounds only the token",
+    "Docs disagree on test count (CLAUDE.md 268 vs README/SPEC 279 — 279 = 268 Hardhat it() + 11 node:test .mjs tests)",
+    "The on-chain ERC-4804 renderer imports viem from esm.sh and hard-codes public RPCs; the Sanctuary is GitHub-Pages hosted with Google Fonts — neither is dependency-free"
+  ],
+  "website_delivery": "Two surfaces, neither covering this area's contracts. (1) 'Sanctuary': a Vite static site (index.html, src/main.js, src/style.css; vite base './') hosted on GitHub Pages at https://venividis.github.io/Cutting-edge-technologically-advanced-NFT/, hard-coding the Base Sepolia collection 0xb3d92c766e3cb356db381feb21958a9ebb974365 and RPC https://sepolia.base.org, loading Google Fonts; token metadata it mints is a self-contained data:application/json + inline SVG URI. (2) AnimaWeb3Renderer (contracts/web/AnimaWeb3Renderer.sol, 138 lines, Base Sepolia 0x9160bE4d943516a2463Ac5f3ABAc5F5cce7975Cd): an immutable ERC-4804 manual-mode contract whose fallback(bytes path) serves '/', '/token/{id}/live' and a not-found page as HTML built with string.concat from ownerOf/accountOf; reachable via https://<renderer>.sep.w3link.io/token/<id>/live. The page's JS imports viem@2.55.19 from https://esm.sh and uses hard-coded public RPC URLs, offers deploy-account/status/guardian/operator buttons plus an 'advanced' console that simulates and sends any function on the ANIMA address only. The token's own tokenURI is an off-chain URI supplied at mint (or a data: URI), not the website. No UI exists for AgentMarket, AgentLaunchpad, AgentSwapRouter, WorkEscrow, InferenceMeter, RevenueRouter, FiatMintGateway or AgentDerivativesDesk; only the machine-readable public/anima-functions.json (233,748 bytes, 29 contracts) lists their ABIs for agents.",
+  "wallet_gating": "There is no page-level gating in either UI. The Sanctuary connects via EIP-1193 (viem walletClient.requestAddresses, switch/add Base Sepolia) and then 'verifies' ownership purely client-side by reading totalMinted and calling ownerOf(id) for every id, keeping those equal to the connected address (src/main.js:178); anyone can also inspect any token by id without connecting. The ERC-4804 renderer shows any token to anyone; 'CONNECT WALLET' only enables writes, each write is simulateContract'ed first, and the token contract's own onlyOwner/controller checks are the sole access control. No signature challenge, no session, no server, no ERC-6551 account check for access.",
+  "measured_numbers": [
+    "Deployed bytecode: AgentMarket 9,083 B (init 10,663); AgentLaunchpad 16,396 B (17,260); AgentToken 5,369 B (7,512); AgentSwapRouter 5,519 B (5,839); AgentDerivativesDesk 6,706 B (7,073); FiatMintGateway 3,842 B (4,355); RevenueRouter 5,811 B (6,174); WorkEscrow 11,346 B (12,138); InferenceMeter 6,037 B (7,251)",
+    "Source lines: 383/459/149/227/289/150/23/203/517/271 = 2,671",
+    "Tests: 279 suite (268 it() + 11 mjs); area: Market 11, Launchpad 15, SwapRouter 11, Derivatives 12, FiatMintGateway 3, RevenueRouter 4, Meter 9, Accountability 23, ExactERC20 2, +8 regressions",
+    "Fee caps: market 500 bps; launchpad 300 bps total, fair window <= 1 day, snipe tax <= 9,900 bps; escrow 1,000 bps, review window 1h-30d, validator expiry 14d; revenue router operating >= 5,000 bps, referral <= 500 bps, delay 2d; fiat 1,000 bps",
+    "Fixtures: market 250 bps fee + 500 bps royalty (maker nets 0.925 ETH of 1 ETH); escrow 100 bps; meter challenge window 3d; bond unbonding 7d; launch fees 100/100/100 bps; launch 1e9 supply, 800M on curve, 1,000 USDC virtual quote, 3,000 USDC target, max raise 4,000 USDC",
+    "Base Sepolia (record 84532-0xc591…): market 0x20291F8ea4554eFcC1C115a4834C3f6D2594d3cC, escrow 0xB768d0ad7F8b7f0Fa79Af38da682F389538cb673, meter 0x6b15AD51344C178FDfc58e231171D18e18050879, launchpad 0x5ed9230C9eF2e53B0D26128902e59b02ca701624, liquidityDeployer(mock) 0x8f2D580F72bdf54b3B595C545Ced39Aa79583aa0, swapRouter 0x6DF966056DB85F39A97F0EC8a6928c0E281edeb8, derivatives 0x1177cFBe651AcC4920B64a2c002739b3fbCf85f6, perpVenue(mock) 0x686B2a229C568b1292C7EFB4A6621E06C71feB1D, web3Renderer 0x9160bE4d943516a2463Ac5f3ABAc5F5cce7975Cd",
+    "Historical Base Sepolia (84532.json, burner destroyed): market 0x280296FEaA460354e1d86dAF0f3afCA631927cD0, escrow 0xFBA84694C5F0Ee5A33fad6D732f327db7644af4A, meter 0x3657704749d06d38B222024393cB35d3D83c7A58, token 0x0aeb6f783ebade8fd5ffca74317266d4ea3e71b3",
+    "Live tx evidence: signed market fill 0xc74a7390a3f4d07111859dc5db97b9d115ec360c8fc354686f9aff6e254be714; rental fill 0x3388a56125796025efafbaccdea67fa4cf3eea29eb01fb4b2329cc015d8ce985; launch create 0x0d8757a1533b3689ad11a072a02bb7158b33efaef4fd0ff5cc76294c16a70903; graduate 0x315e08c569bdb6719978f68439581321410fab3fd35b4bf9809f280e970f12cc; bounded swap 0x24aea6ccd82a81a60dc7d2cddbc1f0254147d7304581c567beb4be8f8ce7cb42; open perp 0x805be0dc03e6e50b83815617d339fad6f7e3c71487917c3410b820990e26ba11; meter settle 0xc74c62816e6adb6f5703cfa0e9c78e312625dd09ee1fcee30fe39b0359b19cc3",
+    "public/anima-functions.json: 233,748 bytes, 29 contracts",
+    "RevenueRouter and FiatMintGateway: no recorded deployment; no gasUsed recorded anywhere in deployments/*.json"
+  ],
+  "pitfalls": [
+    "Never pay a maker before moving the asset; nonReentrant cannot protect state in other contracts",
+    "Never wrap optional side effects in try/catch on wallet-estimated paths",
+    "Scaled ratios truncate to zero at realistic decimals; quote per whole token with mulDiv",
+    "Punitive tax + base fee can exceed 100% and drain other launches sharing a balance; clamp it",
+    "Backdated startsAt disables a fair window",
+    "Pin any pluggable that receives approvals for the whole raise; zero approvals after",
+    "Cancel-all epochs must be in the signed payload",
+    "Verify venue output by balance delta, snapshot pre-existing balances, zero approvals in-tx",
+    "Namespace registry request keys by opener or they get squatted",
+    "Only the owner may pledge collateral; tenants/operators operate but do not commit capital",
+    "Weight reputation by capital at risk, not headline price",
+    "Use value-conserving ERC-20 transfers or fee-on-transfer tokens create bad debt",
+    "Require an ERC-6492 wrapper to actually deploy the signer before trusting the inner signature",
+    "'Rolling daily' implemented as timestamp/1 days is a calendar bucket",
+    "An on-chain HTML page importing JS from a CDN is not dependency-free"
+  ],
+  "tests_and_tooling": "Hardhat 3 + viem toolbox, node:test, TypeScript ESM; solc 0.8.28 pinned via npm soljson, optimizer runs 200, viaIR, evmVersion cancun (hardhat.config.ts:16-27). test/helpers.ts deployProtocol() deploys the whole protocol (monolith or diamond via ANIMA_IMPL) and wires modules: anima.setModule(escrow|market), bonds.setModule(escrow), bonds.setArbiter(escrow), reputation.setSettlementModule(escrow), validation.setValidator(validator). expectRevert matches error name or 4-byte selector (needed for the diamond). Area tests: Market.test.ts (11, incl. MaliciousSeller ERC-1271 adversary), Launchpad.test.ts (15, MockLiquidityDeployer), SwapRouter.test.ts (11, MockVenue with shortChange/partialSwap), Derivatives.test.ts (12, MockPerpVenue with dialable leverage/margin consumption), FiatMintGateway.test.ts (3, monolith only), RevenueRouter.test.ts (4), Meter.test.ts (9, real EIP-712 vouchers), Accountability.test.ts (23), ExactERC20.test.ts (2, MockTaxERC20), Regressions.test.ts (8 relevant: tenant/operator pledge, validator owns agent, deployer pinning, backdated start, ERC-6492 x3, state bump). Testnet scripts: testnet-scenario.ts (escrow walk), testnet-modules.ts (meter), testnet-everything.ts (launchpad/swap/derivatives against mocks), evidence in docs/LIVE_FUNCTION_MATRIX_2026-08-31.md and deployments/*.json. scripts/economy-sim.mjs + test/EconomySim.test.mjs is a deterministic policy stress model (4 policies x 4 worlds, 250 runs x 180 days) feeding docs/ECONOMY_SIMULATION.json."
+}

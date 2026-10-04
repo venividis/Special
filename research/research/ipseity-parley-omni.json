@@ -1,0 +1,314 @@
+{
+  "repo": "Most-Advanced-NFT-Possible (IPSEITY)",
+  "area": "messaging, federation, naming",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/ipseity-parley-omni.md",
+  "summary": "IPSEITY's social layer is one adminless contract, Parley (src/Parley.sol, 6,379 B runtime), that stores almost nothing: every message is a Said log and the contract keeps per room only the block of the newest message and a counter. Each log carries the block of the previous message in the room (prev) and by the same token (prevFrom), so any client with a public RPC reads a conversation backwards with single-block eth_getLogs calls and never a range scan or an indexer (measured: 405 blocks of history in 3 queries). Three room kinds: the commons (key 0, every token), steward-founded groups (key keccak(1,index)), and pair rooms derived from two ids (keccak(2,min,max)) that exist on first use and are refused through the generic speak path. Who may speak as token N is ownerOf(N) or N's ERC-6551 Reach account, never the ERC-4907 renter. Invitations record permission; joining is the token's own transaction, so the only unbounded array can be grown only by its owner. Tokens publish P-256 points (announce) bound to the publishing owner so a transfer silently retires the key; DeskSeal derives the private scalar from a personal_sign signature and seals pair messages with static-static ECDH + AES-256-GCM in WebCrypto. Roster (3,267 B) is a stateless read companion that enumerates group membership 256 tokens per word without touching the archive.\n\nParleyPort (4,246 B) is a hand-declared LayerZero V2 OApp receiver with no admin: setDelegate(0) in the constructor, DVN/library pin passed as constructor arguments and never writable again, only the commons crosses, it cannot write into Parley (arrivals are emitted under its own Echoed event with the back-link rewritten into the receiving chain's block numbers), it checks the body's claimed origin eid against the DVN-attested envelope, and delivery is permissionless. It was found speaking its mock's dialect (wrong lzReceive selector, missing allowInitializePath/nextNonce) by probing real selectors at deployed bytecode, fixed, and then proven live: deployed from a nonce-0 key at the same address 0x65d1e9d0…c7ae on Base Sepolia and Ethereum Sepolia, one echo quoted at 104,037,152,596,558 wei, 323,518 gas, delivered by real DVNs in ~80 s into block 45,828,666 and walked back in one query. OMNICHAIN.md is the research record refusing ONFT for a 6551-based token (metadata cannot travel, account addresses commit to chain id, id bands are the supply guarantee, a delegate is an admin key). The edition was later made Ethereum-only (fe990f7), so the port survives only as an optional speech satellite, and on the default branch no client renders Echoed (an unmerged branch adds that to the console).\n\nNameplate (9,957 B) is an adminless ENS resolver: a name means a token either by explicit bind (ENS owner who also holds the token or is its Reach) or, outranking that, by custody of the wrapped name NFT inside the token's 6551 account, verified three ways (registry owner is the canonical NameWrapper, wrapper ownerOf is a contract whose token() names this hub, and that address equals hub.account(id) or hub.grip(id)). addr is the Reach, text(\"contentcontract\") is the Premises in ERC-3770 form per ERC-6821 so web3://name.eth/chat opens the chain-served site, avatar is a CAIP erc721 reference, numeric subdomains of a write-once parent resolve by ENSIP-10 wildcard, expiry is read from the registrar the registry names, and renewal is write-once-configured and offered to anyone. The multi-chain station table inside it is vestigial after Ethereum-only.\n\nThe website is delivered entirely from chain: Premises.request (ERC-5219) returns HTML assembled by page contracts, with the JavaScript client, CSS and a JSON config block (addresses, the Said topic from Parley.topics(), and every selector hashed on chain) held as Solidity string constants; the browser ships no keccak and no ABI coder. Reading is never gated; writing is gated by the client reading balanceOf/tokenOfOwnerByIndex off the hub to pick a 'speaking as' token, and decisively by Parley.mayActAs reverting NotYours for any sender that is not the owner or the token's Reach. Everything is tested three ways: 26 Foundry tests, independent in-process walkers (verify-parley 37, verify-port 42, verify-plate ~73), and the shipped client driven in a DOM shim (verify-site 586).",
+  "components": [
+    {
+      "name": "Parley",
+      "path": "src/Parley.sol",
+      "purpose": "Token-to-token messaging as event logs: commons (room 0), steward-founded groups, derived pair rooms; per-room head + back-links so the archive is walkable with single-block eth_getLogs and no indexer; per-token P-256 sealing points.",
+      "key_functions": [
+        "mayActAs(uint256 token, address who) view returns (bool)",
+        "speak(uint256 room, uint256 from, uint8 kind, bytes body)",
+        "whisper(uint256 from, uint256 to, uint8 kind, bytes body)",
+        "found(uint256 by, string name, bool openDoor) returns (uint256 key)",
+        "invite(uint256 room, uint256 by, uint256 token) / join(room, token) / leave(room, token) / evict(room, by, token)",
+        "announce(uint256 token, bytes32 x, bytes32 y) / keyOf / sealX / sealY / keysOf",
+        "stateOf(uint256 room) returns (last,count,opened,members,kind,open,steward,index,name)",
+        "heads(uint256[] rooms) returns (last[], count[])",
+        "roomsOf(uint256 token) returns (keys[], member[]) / roomCount",
+        "groupKey(uint256 index) pure / pairKey(uint256 a, uint256 b) pure",
+        "topics() pure returns the five event topic0s"
+      ],
+      "design_decisions": [
+        "Message = log; room stores only (last block, count); Said carries prev and prevFrom so clients walk backwards one block at a time — 'the chain is the index' (Parley.sol:28–43)",
+        "Speaker = ownerOf or the token's ERC-6551 Reach, never the ERC-4907 renter: 'a reputation is not a thing you can hand back at the end of the day' (45–52)",
+        "Pair rooms are derived from ids and refused through speak (UseWhisper) so membership is never stored (212–215)",
+        "invite records permission, join is the token's own call: 'an array a stranger can grow is an array a stranger can fill' (106–111)",
+        "Sealing points are bound to the publishing owner; a transfer makes them read as absent (4fa41d0)",
+        "topics() hashes the event signatures on chain so the browser ships no keccak (441–444)",
+        "No delete, no edit, no moderation beyond steward invite/evict; eviction cannot unsay anything"
+      ],
+      "security_invariants": [
+        "Every write passes mayActAs(token, msg.sender) (INVARIANTS 79)",
+        "Walk always goes backwards; follow the oldest log in a block (INV 80–81)",
+        "Group and pair keys never collide; pair key refused via speak (INV 82–83)",
+        "Only the token can lengthen its own room list (INV 85)",
+        "Body 1..1024 bytes, kind in {0,1} (INV 88)",
+        "Sealing key reads as zero once the publisher no longer owns the token (INV 112)"
+      ],
+      "standards": ["ERC-721 ownerOf (hub)", "ERC-6551 account (hub)", "ERC-4907 user explicitly excluded"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Near-verbatim: rebind ISpeaker to the new hub (ownerOf, account). Consider a reply pointer, group sealing, and spam limits on the commons. Keep the back-link mechanism and topics() exactly."
+    },
+    {
+      "name": "Roster",
+      "path": "src/Roster.sol",
+      "purpose": "Stateless read-only companion enumerating group membership, pending invitations and stewarded rooms as 256-bit windows over public Parley state, so no event replay or indexer is needed.",
+      "key_functions": [
+        "kindOf(uint256 room) returns 0 commons / 1 group / 2 pair / 3 NO_ROOM",
+        "inWindow(uint256 room, uint256 from) returns (uint256 bits)",
+        "invitedInWindow(uint256 room, uint256 from) returns (uint256 bits)",
+        "membersOf(uint256 room, uint256 from) returns (uint256[] ids)",
+        "stewardedBy(uint256 token, uint256 fromIndex, uint256 count) returns (keys[], indexes[])",
+        "heldBy(uint256 token) returns (address)"
+      ],
+      "design_decisions": [
+        "Separate contract so the archive (Parley) is never redeployed to answer a read question (Roster.sol:38–45)",
+        "Commons membership is answered true for every minted token because Parley never writes inRoom for room 0 (INV 114)",
+        "NO_ROOM = 3 disambiguates Parley's kind-0-for-unfounded from the commons",
+        "~550k gas of eth_call per 256-token window, free to the reader"
+      ],
+      "security_invariants": ["No storage, no writes", "Windows skip id 0 and id > totalSupply"],
+      "standards": [],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Assumes contiguous ids from 1 and a hub with totalSupply/ownerOf; parametrise if the unified id scheme differs."
+    },
+    {
+      "name": "ParleyPort",
+      "path": "src/ParleyPort.sol",
+      "purpose": "LayerZero V2 OApp that echoes commons (room 0) messages to peer chains and emits arrivals under its own Echoed event with a locally rewritten back-link; no admin, no delegate, peers and DVN pin fixed at construction.",
+      "key_functions": [
+        "constructor(IParleyRead parley, ILayerZeroEndpointV2 endpoint, uint32[] peerEids, bytes32[] peers, LanePin[] lanePins, ConfigPin[] configPins)",
+        "quoteEcho(uint256 from, uint8 kind, bytes body, bytes options) view returns (uint256 total)",
+        "echo(uint256 from, uint8 kind, bytes body, bytes options) payable",
+        "lzReceive(Origin origin, bytes32 guid, bytes message, address executor, bytes extraData) payable — selector 0x13137d65",
+        "allowInitializePath(Origin) view returns (bool) — 0xff7bd03d",
+        "nextNonce(uint32, bytes32) pure returns (0) — 0x7d25a05e",
+        "peers() / peerOf(uint32) / lastEcho() / echoCount()"
+      ],
+      "design_decisions": [
+        "Local first: Parley.speak is untouched and federation is a separate payable call (ParleyPort.sol:43–53)",
+        "Only the commons crosses: groups carry a steward (authority), pairs are derived from ids that may live on different chains (59–65)",
+        "Cannot write into Parley; arrivals are a second archive tagged with origin eid (67–74)",
+        "Back-link rewritten into the receiving chain's block numbering (80–84)",
+        "setDelegate(0) at construction; pin passed as constructor args; floating on defaults is a stated choice admissible for speech, not custody (96–113)",
+        "Empty options become a 22-byte type-3 default naming 200,000 gas because ULN302 refuses empty options (146–160)",
+        "Body's claimed origin eid must equal the DVN-attested envelope (374–378)",
+        "Overpayment refunded; no hidden revenue (295–301)",
+        "Deployed from a nonce-0 key so CREATE lands at the same address on every chain and each port names its own address as its peer"
+      ],
+      "security_invariants": [
+        "No function can set delegate, config, send/receive library or peers after construction (INV 138)",
+        "Only ENDPOINT may call lzReceive; origin must be a built peer; body eid must match envelope (INV 143)",
+        "Only room 0 crosses; no group/pair/whisper function exists (INV 136)",
+        "Parley has no knowledge of the port (INV 137)",
+        "Canonical protocol selectors asserted byte-for-byte (INV 141)"
+      ],
+      "standards": ["LayerZero V2 ILayerZeroReceiver (lzReceive/allowInitializePath/nextNonce)", "ERC-165"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep only if the unified protocol federates speech across chains; otherwise drop and keep OMNICHAIN.md as the ONFT-refusal record. On HEAD no client renders Echoed; the Sepolia port's immutable PARLEY is stale relative to the redeployed site."
+    },
+    {
+      "name": "Nameplate",
+      "path": "src/Nameplate.sol",
+      "purpose": "Adminless ENS resolver: a name means a token by custody of the wrapped name NFT in the token's 6551 account (outranks bind) or by explicit bind; addr = the Reach; text(contentcontract) = the Premises per ERC-6821; avatar = CAIP NFT ref; ENSIP-10 numeric wildcard under a write-once parent; expiry/renewal reads.",
+      "key_functions": [
+        "bind(bytes32 node, uint256 token) / unbind(node) / bindByName(bytes name, uint256) / unbindByName / nodeOf(bytes)",
+        "claimParent(bytes32) / claimParentByName(bytes) — write-once by the ENS owner",
+        "setStation(uint256 chainId, address premises, address hub) — vestigial after Ethereum-only",
+        "setRenewer(address) — write-once by the parent's owner; renewPrice(string,uint256); expiry(string); nameStatus(string,uint256); registrar()",
+        "heldBy(bytes32 node) returns (uint256 token, bool sealed)",
+        "addr(bytes32) / contenthash(bytes32) (empty) / text(bytes32,string) / resolve(bytes,bytes) / tokenForName(bytes) / whereIs(uint256) / supportsInterface"
+      ],
+      "design_decisions": [
+        "Custody is the binding and outranks bind because a recorded intention can go stale (60–67)",
+        "An account's own token() is disbelieved unless the registry owner is the canonical NameWrapper and the hub derives that same address (79–83, b43645e)",
+        "contentcontract is ERC-3770 shortName:address, not CAIP eip155 (465–479, 6055f32)",
+        "Unservable numeric wildcard answers empty, never the parent's record (567–575)",
+        "Registrar derived from ENS.owner(namehash('eth')); grace asked, not assumed; unknown is zeros not lapsed (276–320)",
+        "Renewer address is told, write-once, because nothing on chain names the current controller (322–345)",
+        "*ByName variants take DNS wire format so the browser hashes nothing (214–217)",
+        "Deploys on chains with no ENS so the address matches everywhere; every bind refuses NoRegistryHere"
+      ],
+      "security_invariants": [
+        "bind requires ENS/NameWrapper ownership of the node AND holder-or-Reach of the token",
+        "parentNode, stationOf[chain], renewer are write-once",
+        "heldBy returns (0,false) for impostor accounts, other collections, wallets, unwrapped controllers, non-canonical wrappers"
+      ],
+      "standards": ["ERC-137 addr", "ERC-634 text", "ERC-1577 contenthash (empty by design)", "ENSIP-10 wildcard resolve(bytes,bytes)", "ERC-6821 contentcontract", "ERC-3770 chain-specific addresses", "ENSIP-12/CAIP-19 avatar", "ERC-6551 token()", "ERC-165"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Keep custody-as-binding, ERC-6821 record, numeric wildcard, registrar-derived expiry, write-once renewer, DNS-wire variants. Strip station/gateway/short-name tables; take the unmerged Sepolia NameWrapper fix (adedb26)."
+    },
+    {
+      "name": "DeskTalk (+ PageTalk, PageRooms, DeskRooms)",
+      "path": "src/DeskTalk.sol",
+      "purpose": "The chat client as Solidity string constants plus an on-chain-built JSON config (addresses, Said topic, 23 selectors); PageTalk renders /chat and /dm/<id>, PageRooms renders /rooms and /room/<n>, DeskRooms adds invite/evict/roster words to the terminal.",
+      "key_functions": [
+        "DeskTalk.config(uint256 room, uint256 other, uint256 group) view returns (string)",
+        "DeskTalk.core() / rooms() / door() pure returns <script> blocks",
+        "PageTalk.chat() / dm(uint256 other)",
+        "PageRooms.rooms() / room(uint256 index)",
+        "client: held(addr) via balanceOf+tokenOfOwnerByIndex (≤64), back(room,want) single-block walk, send() builds speak/whisper calldata, watch() polls heads() every 9 s"
+      ],
+      "design_decisions": [
+        "No keccak in the page; topics and selectors arrive computed on chain (DeskTalk.sol:18–21)",
+        "No innerHTML for anything off the chain; textContent only, on the same origin as the wallet-injected instrument (23–28)",
+        "No range scans; one block per eth_getLogs (30–33)",
+        "Reading is never gated; the gate hides a composer, not a fact (PageTalk.sol:97–113)",
+        "Holding nothing renders as information, not failure"
+      ],
+      "security_invariants": ["Zero state-changing functions in page/desk ABIs (INV 92)", "Hostile body round-trips as text (INV 90)", "Every eth_getLogs has fromBlock == toBlock (INV 81)"],
+      "standards": ["ERC-5219 (via Premises)", "EIP-6963 wallet discovery (Chrome)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Reuse the three refusals and the config-block pattern; redesign the chrome; merge with the console surface. Sizes: DeskTalk 20,422 B, PageTalk 10,193 B, PageRooms 9,008 B, DeskRooms 2,106 B."
+    },
+    {
+      "name": "DeskSeal",
+      "path": "src/DeskSeal.sol",
+      "purpose": "Client half of sealed DMs: derive a P-256 scalar from personal_sign over 'IPSEITY seal v1 · chain · token', import as PKCS#8 so WebCrypto computes the point, publish via announce, static-static ECDH → SHA-256 → AES-256-GCM; arms only when both tokens' current holders have published.",
+      "key_functions": ["derive(tok)", "onChain(tok) via keyOf", "pairKey(mine, theirs)", "seal(h) → {k:1, iv||ct}", "window.UNSEAL(m, p)", "arm(me)"],
+      "design_decisions": ["Key derived, not stored — same key in every browser, nothing to back up, but no forward secrecy and rotation orphans old ciphertext (DeskSeal.sol:15–34)", "Own key checked before the peer's so a stale key is reported even with nobody to talk to (INV 113)", "Banner claims only what the chain proves: both points belong to current holders (INV 112)"],
+      "security_invariants": ["Sealed rows render as sealed, never mojibake", "Decrypted text reaches the DOM via textContent"],
+      "standards": ["WebCrypto ECDH P-256", "AES-256-GCM", "PKCS#8", "RFC 6979 deterministic signatures (assumed of the wallet)"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Take the unmerged per-send peer-key revalidation (7f58e37). Flag: a signature over a fixed sentence is phishable by any dapp that requests the same personal_sign; consider a domain-bound EIP-712 derivation or ephemeral per-message keys (HPKE)."
+    },
+    {
+      "name": "PageName",
+      "path": "src/PageName.sol",
+      "purpose": "The /name page: builds DNS wire format by string arithmetic, previews what a name means (tokenForName/tokenOf/addr/text/ENS.owner), binds/unbinds, claims the wildcard parent once, shows the expiry clock and a permissionless renewal.",
+      "key_functions": ["namePage() view returns (string)", "client: wire(name), nodeFor(h), look(), tokl(), renew via renewer.renew(string,uint256) at price*105/100"],
+      "design_decisions": ["Unicode names refused rather than ENSIP-15 approximated", "Parent claim kept in its own card because it is irreversible", "No-registry chains get prose and no controls", "Expiry card independent of the parent-claim card (afc5d55)"],
+      "security_invariants": ["Resolver-controlled strings escaped before innerHTML (ESC)"],
+      "standards": ["ENSIP-10 DNS wire names"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "21,567 B (87.8%); near the ceiling. Convert the innerHTML boundary to textContent for consistency."
+    },
+    {
+      "name": "PageManifest parley block + Premises routes",
+      "path": "src/PageManifest.sol",
+      "purpose": "/services.json publishes Parley address, commons key, groups, maxBody, the Said topic, the speak selector and the walk rule — 'the instruction manual for replacing the browser'; Premises routes /chat, /rooms, /room/<n>, /dm/<id>, /name.",
+      "key_functions": ["PageManifest._parley() view", "Premises.request(string[] resource, KeyValue[] params) view returns (uint16, string, KeyValue[])"],
+      "design_decisions": ["A program holding contract+topic+walk can read the archive without the site (PageManifest.sol:417–424)", "Pages are immutable constructor args of Premises; adding a page means a new Premises"],
+      "security_invariants": ["Manifest topic equals keccak of the Said signature (verify-site)"],
+      "standards": ["ERC-5219", "ERC-4804/6860 web3://"],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "The manifest shape is directly reusable for agent/program access to the messaging layer."
+    },
+    {
+      "name": "tools/port.mjs",
+      "path": "tools/port.mjs",
+      "purpose": "Deploy and drive ParleyPort on real chains: status (measure endpoint, eid, nonce), deploy (nonce-0 same-address mesh, hand-encoded six-arg constructor, read-back with patient retries), quote/echo, walk (single-block Echoed walk).",
+      "key_functions": ["status", "deploy --peers a,b [--lane-lib eid:send:recv] [--config-pin lib:eid:type:0x..] [--dry] [--nonce N]", "quote/echo --port --from --text", "walk --port"],
+      "design_decisions": ["Fresh nonce-0 key so CREATE address is identical everywhere and peers are self-referential (port.mjs:12–22)", "Reads after deploy retried because load-balanced RPCs answer 0x from a lagging replica (186–199)", "PRIVATE_KEY required for writes; never signs with dev keys (f56c66b)"],
+      "security_invariants": ["Landed address must equal prediction or abort"],
+      "standards": [],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Generalises to any multi-chain satellite that must know its peers at construction."
+    },
+    {
+      "name": "tools/ens-name.mjs",
+      "path": "tools/ens-name.mjs",
+      "purpose": "ENS commit-reveal registration pointing a name's resolver and addr at the Premises; Sepolia tables; random persisted secret; refuses the already-public label.",
+      "key_functions": ["makeCommitment/register((string,address,uint256,bytes32,address,bytes[],uint8,bytes32))", "setAddr(bytes32,address)"],
+      "design_decisions": ["Controller address and ABI taken from ensdomains deployments, not docs, after two silent failures (46–54)", "Secret persisted at mode 0600 so a retry reveals the same commitment (e9e1224)"],
+      "security_invariants": ["Chain must be 11155111; every address must have code"],
+      "standards": ["ENS ETHRegistrarController v2 struct ABI"],
+      "reuse_verdict": "adapt",
+      "reuse_notes": "Needs a mainnet table; Sepolia cannot register a 2LD at all (BaseRegistrar.controllers(NameWrapper)==0)."
+    },
+    {
+      "name": "Verification suite for the area",
+      "path": "tools/verify-parley.mjs",
+      "purpose": "verify-parley (37): independent walker counting queries and watching the naive walker loop; verify-port (42): protocol selectors, pin, lane truth table, refusal on both sides of the border; verify-plate (~73): custody, counterfeit, expiry, renewal, rehearsal chain; verify-site (586): the shipped client driven in a DOM shim incl. sealed DMs and the roster; test/Parley.t.sol (26); MockEndpoint performs the real handshake; probe-port-abi.mjs drives raw selectors at deployed bytecode.",
+      "key_functions": ["walk(room) in verify-parley", "inject/deliver/deliverUnchecked in MockEndpoint", "fixture(chainId) in verify-plate"],
+      "design_decisions": ["Two independent readers of one archive must agree", "A mock must use the compiler's selectors (abi.encodeCall), never a private dialect", "Dispatch proven by reaching a named refusal, never by success"],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Port the assertions as the acceptance tests for the unified messaging layer."
+    },
+    {
+      "name": "OMNICHAIN.md",
+      "path": "OMNICHAIN.md",
+      "purpose": "Research record: LayerZero V2 read from source, measured endpoint table, why ONFT/OFT are refused for a 6551-based token, what was found broken in the port and fixed, the live federation run, and what remains.",
+      "key_functions": [],
+      "design_decisions": ["Tokens never bridge: metadata cannot travel, 6551 addresses commit to chain id, id bands are the supply guarantee, ONFT's delegate is an admin key (§3)", "lzRead measured 17x cheaper than messaging and not adopted until needed"],
+      "security_invariants": [],
+      "standards": [],
+      "reuse_verdict": "reuse-verbatim",
+      "reuse_notes": "Use as the decision record for the unified protocol's cross-chain stance."
+    }
+  ],
+  "standards_implemented": [
+    "ERC-5219 (Premises request) serving the chat/name pages",
+    "ERC-4804 / ERC-6860 web3:// addressing",
+    "ERC-6821 contentcontract text record (ERC-3770 chain-specific address form)",
+    "ERC-137 addr(bytes32), ERC-634 text(bytes32,string), ERC-1577 contenthash (deliberately empty)",
+    "ENSIP-10 wildcard resolve(bytes,bytes) with numeric-label parsing; ENSIP-12 avatar as eip155/erc721 CAIP reference",
+    "ERC-6551 account()/grip() derivation and token() custody check",
+    "ERC-4907 userOf — renter explicitly excluded from speaking",
+    "LayerZero V2 ILayerZeroReceiver: lzReceive((uint32,bytes32,uint64),bytes32,bytes,address,bytes) 0x13137d65, allowInitializePath 0xff7bd03d, nextNonce 0x7d25a05e; type-3 executor options",
+    "ERC-165 on ParleyPort and Nameplate",
+    "EIP-6963 wallet discovery in the chrome",
+    "WebCrypto P-256 ECDH + AES-256-GCM + PKCS#8 for sealed DMs; personal_sign-derived keys (RFC 6979 assumed)"
+  ],
+  "unique_ideas": [
+    "Indexer-free chat: every Said log carries prev (room) and prevFrom (token) block pointers; the room stores only the head block and a count; clients walk with single-block eth_getLogs (405 blocks in 3 queries) and must follow the oldest log in a block to terminate",
+    "The contract serves its own event topics (Parley.topics()) and every selector is hashed on chain into the page's config JSON so the browser carries no keccak and no ABI coder",
+    "Pair rooms derived as keccak(2,min,max): exist on first whisper, unreachable via speak (UseWhisper), no membership storage",
+    "Invitations record permission; joining is the token's own transaction, so the only unbounded array is grown only by its owner",
+    "Sealing keys bound to the publishing owner: a transfer silently retires the old key so nobody seals to a departed holder; key derived from a wallet signature so there is nothing to store",
+    "Roster: 256 memberships per word via eth_call windows; NO_ROOM=3 disambiguates kind 0; stewarded rooms derived from counters, no event replay",
+    "Speech-only LayerZero federation: no delegate ever, DVN/library pin as constructor args, only room 0 crosses, arrivals emitted under the port's own Echoed with the back-link rewritten into local block numbers, body-vs-envelope origin check, permissionless delivery, default 22-byte options blob",
+    "Nonce-0 CREATE from a fresh key puts the port at the same address on every chain, so each port names its own address as its peer and the mesh closes with no second pass",
+    "Custody is the binding: an ENS name NFT inside the token's 6551 account IS the record, cross-checked registry→canonical wrapper→account.token()→hub-derived address; sell the token and the name goes with it; in the Grip it is permanent",
+    "ERC-6821 contentcontract so web3://name.eth/chat opens the chain-served site; ENSIP-10 numeric wildcard gives every token a name at mint; expiry derived from ENS.owner(namehash('eth')); renewal offered to anyone with a write-once renewer",
+    "services.json as 'the instruction manual for replacing the browser': address, topic, selector, walk rule",
+    "Test the wire not the mirror: probe real protocol selectors at deployed bytecode; mocks built with abi.encodeCall; a second independent reader of every archive"
+  ],
+  "weaknesses": [
+    "Commons has no spam control beyond gas and no pagination beyond walking; MAX_BODY 1,024 with no multi-part convention; no reply/thread pointer, no reactions",
+    "Groups are public to read; only pair rooms can be sealed; DeskSeal has no forward secrecy (static-static ECDH, one key per pair)",
+    "Seal private key is SHA-256 of a personal_sign over a fixed sentence — any dapp that obtains that signature derives the DM key (phishing surface)",
+    "On HEAD, DeskSeal arms once per page; a transfer mid-session is only handled by the unmerged fix 7f58e37 (re-read peer key before every send)",
+    "announce accepts any 64 bytes (no on-curve check)",
+    "ParleyPort floats on default DVNs unless pinned; mainnet lanes undeployed; quoteEcho/echo are all-or-nothing across peers; failed refund reverts with the misleading Underpaid(spent)",
+    "Live Ethereum Sepolia port is wired to a stale Parley (port-11155111.json parley 0x5973a4d1… vs eth-sepolia.json parley 0x99f5d809…) after the site was redeployed under it",
+    "No client on the default branch renders Echoed; the console SPEAK lane is 'unbuilt' on HEAD (federated lane exists only on branch claude/claude-md-docs-8vvyc8)",
+    "Nameplate's station/whereIs/short-name/gateway tables are vestigial after Ethereum-only and bake w3link hostnames into immutable bytecode",
+    "tools/site.mjs gives Ethereum Sepolia the mainnet NameWrapper address; the one-line fix (adedb26, PR #26) is not on HEAD, so wrapped-name custody is never recognised on Sepolia deployments",
+    "heldBy needs an embodied (code-bearing) 6551 account; counterfactual accounts resolve to nothing",
+    "No ENSIP-9 multi-coin addr, no reverse name(), no ENSIP-15 normalisation (page refuses non-ASCII), text answers only four keys; bind cannot verify the name's resolver points here",
+    "PageName renders resolver-controlled text through innerHTML with an escape helper — the one departure from the textContent rule",
+    "Roster assumes ids 1..totalSupply contiguous; DeskTalk's held() caps at 64 tokens per wallet",
+    "Docs drift: DEPLOYMENTS.md 'Live now' lags deployments/*.json; README size table omits ParleyPort/Roster/Nameplate; verify-plate count not re-measured after fe990f7",
+    "ENS 2LD registration impossible on Sepolia; tools/ens-name.mjs has Sepolia-only tables; no mainnet name exists yet"
+  ],
+  "website_delivery": "Entirely from chain. Premises.request (ERC-5219, src/Premises.sol:250) dispatches /chat, /rooms, /room/<n>, /dm/<id>, /name to PageTalk/PageRooms/PageName, whose bodies are string.concat of Chrome (CSS/nav), an on-chain-built JSON config (DeskTalk.config: Parley/Roster/hub addresses, room key, steward, MAX_BODY, the Said topic from Parley.topics(), 23 selectors hashed on chain), and the JavaScript client held as Solidity string constants (DeskTalk.TALK_JS/DOOR_JS/ROOMS_JS, DeskSeal.SEAL_JS, Chrome.WALLET_JS, Desk.core). Reachable natively over web3://<premises>:<chain>/chat (ERC-4804/6860), via public ERC-5219 gateways (https://<premises>.sep.w3link.io/…), or via tools/gateway.mjs where every GET is an eth_call. /services.json publishes the Parley address, commons key, Said topic, speak selector and the walk rule for programs. No static site, no bundler, no IPFS, no server; the browser ships no keccak and no ABI coder. Live records: deployments/base-sepolia.json (premises 0xc59f75d2…3161) and deployments/eth-sepolia.json (premises 0x7e1bdcd8…7a31).",
+  "wallet_gating": "Reading is never gated ('the gate hides a composer, not a fact'). Writing: the client discovers a provider via EIP-6963, calls eth_requestAccounts, reads balanceOf(addr) and walks tokenOfOwnerByIndex(addr,i) (≤64) on the hub to list held tokens into a 'speaking as' select (DeskTalk.sol:159–163, 269–276), remembers the choice in localStorage, and for a DM derives the pair room from pairKey(me, other). That is UX only. The authoritative check is on chain: every Parley write calls mayActAs(token, msg.sender) = msg.sender == HUB.ownerOf(token) || msg.sender == HUB.account(token) (the ERC-6551 Reach, so session keys acting through it count) and reverts NotYours otherwise; the ERC-4907 renter is explicitly refused. ParleyPort.echo delegates to the same mayActAs. Nameplate.bind additionally requires ENS registry/NameWrapper ownership of the node. Sealed DMs require both tokens' current holders to have published P-256 points (keys read as zero after a transfer). No signature challenge, no session cookie, no server: the signed transaction is the proof and the EVM is the verifier.",
+  "measured_numbers": [
+    "Runtime bytecode (out/solc.json, HEAD 297e936): Parley 6,379 B (26.0%); ParleyPort 4,246 B (17.3%, creation 6,420 B); Roster 3,267 B (13.3%); Nameplate 9,957 B (40.5%); DeskTalk 20,422 B (83.1%); PageTalk 10,193 B; PageRooms 9,008 B; PageName 21,567 B (87.8%); DeskRooms 2,106 B; DeskSeal 4,783 B; DeskTerm 23,908 B (97.3%); PageManifest 23,105 B (94.0%); Premises 15,372 B; PageDoor 15,388 B",
+    "Historical sizes in commit messages: Parley 6,069 B (README), Nameplate 8,324 B → 9,478 B, PageName 21,377 B → 21,567 B",
+    "Tests: test/Parley.t.sol 26 tests; 135 Solidity tests overall; verify-parley 37; verify-port 42 (from 24/25); verify-plate 42→66→71→73 (before fe990f7); verify-site 580→586; verify-console 96 on the unmerged branch",
+    "Walk: 405 blocks of history read in 3 single-block queries; client guard 64 hops; console lane 12 hops local / 8 hops foreign; poll interval 9 s",
+    "ParleyPort live: address 0x65d1e9d08488a68ef6bf48e057ab69496333c7ae on 84532 (eid 40245) and 11155111 (eid 40161); deployer 0x9a916d0bebf561643dc638c65f7afa8442d3fd13 nonce 0; echo of 35 bytes quoted and paid 104,037,152,596,558 wei; echo tx 0xff7b05c8…80e5 at 323,518 gas; delivered in ~80 s into Base Sepolia block 45,828,666 (tx 0xe44941a1…05b38); costs ~0.00267 ETH (Sepolia deploy+mint+echo) and ~0.0000096 ETH (Base Sepolia deploy)",
+    "LayerZero: EndpointV2 code 24,005 B on every measured chain; eids Ethereum 30101, Base 30184, Unichain 30320, BNB 30102, Robinhood 30416 (no lzRead), Ethereum Sepolia 40161 (legacy 30161 dead), Base Sepolia 40245, Robinhood testnet 40451 at 0x3aCAAf60…Fe32; ReadLib1002 23,471 B; lzRead 1.957e-5 ETH vs 3.404e-4 ETH to message (17x); DEFAULT_OPTIONS 22 bytes naming 200,000 gas",
+    "Roster: ~550k gas of eth_call per 256-token window (source comment)",
+    "Nameplate constants: EDITION 4096; BANDS {1: 1..4096}; rehearsal chains 31337, 11155111; grace fallback 90 days; numeric label ≤18 digits",
+    "Site deploys: Base Sepolia 68.41M gas / ~40 tx; Ethereum Sepolia 137.86M gas / 0.2148 ETH; site redeploys ~0.0012 ETH keeping Parley",
+    "Current records: Base Sepolia parley 0xaa8b3ff644638a29333953328fb877e8dd23e0f2, roster 0x94bda49e…d5cc, nameplate 0xb1abfa50…4db6, premises 0xc59f75d2…3161; Ethereum Sepolia parley 0x99f5d809b069c4ad45ca531b949dd3c89fdc8705, roster 0x9286f2f1…e1f2, nameplate 0xd0e4c1cd…eb30, premises 0x7e1bdcd8…7a31; port records still name Sepolia parley 0x5973a4d1…e7eb",
+    "Sepolia ENS: registry 0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e; controller 0xfb3cE5D0…f968; BaseRegistrar.controllers(NameWrapper) = 0 on Sepolia vs authorised on mainnet; a subname registration cost 0.000096 ETH; branch adedb26 corrects Sepolia NameWrapper to 0x0635513f179D50A207757E05759CbD106d7dFcE8"
+  ],
+  "pitfalls": [
+    "A mock written to match the contract certifies a dialect: lzReceive(Origin,…) is 0x13137d65 with Origin a static tuple; allowInitializePath/nextNonce must exist or no lane initialises — probe real selectors at deployed bytecode",
+    "ULN302 refuses empty options at quote time (Executor_NoOptions); 'no options' must mean a type-3 default naming lzReceive gas",
+    "LayerZero eids are not chain ids; the registry lists a dead legacy Sepolia eid 30161 — wire 40161; four distinct canonical endpoint addresses exist",
+    "nameExpires takes keccak(label), not namehash(name); mixing them returns a confident zero",
+    "ERC-6821 contentcontract must be a bare address or ERC-3770 shortName:0x…, never CAIP eip155:…; eip155 IS right for the avatar record",
+    "w3link hostnames need the chain short name (<addr>.eth.w3link.io); <addr>.w3link.io does not resolve",
+    "ENS Sepolia cannot register a .eth 2LD (controllers(NameWrapper)=0) and reverts bare after the commitment is paid; the controller register() ABI is now a struct with uint8 reverseRecord and bytes32 referrer",
+    "ERC-6551 accounts are counterfactual until embodied; custody checks calling token() see nothing at a codeless address",
+    "Two messages in one block: the second's prev is its own block — follow the oldest log's pointer or loop forever",
+    "block.number captured before vm.roll in a test is sunk by the optimiser to after it; read evidence from storage",
+    "Load-balanced public RPCs answer 0x from a lagging replica after a deploy — treat empty as 'not yet' and retry",
+    "Room kind 0 means both 'the commons' and 'never founded'; Parley never writes inRoom for the commons",
+    "The test harness's bytes encoder must be given hex; a Buffer once encoded as empty and framed a correct contract as buggy",
+    "Nonce-0 same-address mesh deploy needs a fresh key on every chain; the tool refuses otherwise",
+    "DeskTerm sits at 97% of EIP-170 — new terminal words go in satellite contracts registering through def",
+    "A site redeploy must keep the Parley address (every message is a log that contract emitted) — and any satellite (port, PageConsole) holding it as an immutable goes stale when it is not kept"
+  ],
+  "tests_and_tooling": "Foundry-shaped suite run without Foundry (tools/forge.mjs): test/Parley.t.sol has 26 statement-named tests (e.g. test_theBoundAccountMaySpeakAndTheRenterMayNot, test_aPairRoomCannotBePostedToThroughSpeak, test_nobodyCanLengthenSomebodyElsesRoomList, test_transferInvalidatesTheFormerHoldersSealingKey, test_theTopicsAreDerivedFromTheSignaturesThemselves). In-process EVM verifiers on @ethereumjs/vm: tools/verify-parley.mjs (37 assertions; a second independent walker that counts queries and runs the naive walker to watch it loop), tools/verify-port.mjs (42; canonical selectors byte-for-byte, lane truth table, constructor pin, refusal on both sides of the border, stranger delivery, back-link rewrite, Parley ignorant of the port), tools/verify-plate.mjs (~73 before the Ethereum-only cut; custody beats stale bind, impostor/other-collection/wallet/unwrapped/non-canonical-wrapper all disbelieved, registrar-derived expiry, label-vs-namehash, permissionless renewal, rehearsal chain via Chain.open({chainId})), tools/verify-site.mjs (586; drives the shipped DeskTalk/DeskSeal/PageName clients in a DOM shim: hostile body stays text, every eth_getLogs is single-block, pair room derived client-side, sealed DM round trip with an eavesdropper reading bytes, sale invalidates the key, roster bitmaps, nameplate page binds/unbinds/renews). Mocks: MockEndpoint (real allowInitializePath handshake, abi.encodeCall delivery, refuses options < 2 bytes, inject/deliver/deliverUnchecked), MockENS, MockRegistrar/DumbRegistrar/MockController, MockHub, MockAccount/MockWrapper, LzStub. Probes: probe-port-abi.mjs (raw selectors at deployed bytecode), probe-lz/uln/dvn/ccip2/bridges.mjs (live chain measurements behind OMNICHAIN.md). Live tooling: tools/port.mjs (status/deploy/quote/echo/walk), tools/ens-name.mjs, tools/testnet.mjs (seeds and walks a conversation over a real node), tools/gas.mjs (chat routes measured as the cheapest pages). All of verify-parley, verify-port, verify-plate, verify-site are inside npm run check (26 steps)."
+}

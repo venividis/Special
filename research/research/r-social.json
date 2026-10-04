@@ -1,0 +1,229 @@
+{
+  "topic": "On-chain and decentralised messaging and social layers — what a crypto-social layer inside an NFT should include and how to keep it indexer-free",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/r-social.md",
+  "searches_made": 25,
+  "pages_fetched": 31,
+  "findings": [
+    {
+      "claim": "XMTP v3 is an implementation of IETF MLS (RFC 9420); LibXMTP received an NCC Group security assessment in December 2024; inboxes (InboxID) can associate EOAs, smart-contract wallets and ERC-4337 accounts; consent preferences (allowed/unknown/denied) are kept on device.",
+      "source_url": "https://docs.xmtp.org/chat-apps/intro/what-is-xmtp",
+      "verified": true,
+      "relevance": "Sets the security bar for 'private' messaging and shows consent lists are a zero-gas spam defence we can copy."
+    },
+    {
+      "claim": "XMTP's decentralised network: every node stores all messages with a default 60-day retention; an L3 appchain settling to Base holds group/identity metadata; Phase 1 is a permissioned node set chosen by a Security Council with jurisdiction limits; mainnet expected March 2026; testnet processed over 150 million messages.",
+      "source_url": "https://xmtp.org/decentralization",
+      "verified": true,
+      "relevance": "The leading messaging protocol is explicitly not fully on chain; log retention on a chain is unbounded by comparison."
+    },
+    {
+      "claim": "XMTP fees are paid by apps/agents (payers) in USDC, not end users; base per-message fee plus per-byte-day storage fee plus congestion fee, roughly $5 per 100,000 messages at 1 KB and 90-day retention.",
+      "source_url": "https://docs.xmtp.org/fund-agents-apps/calculate-fees",
+      "verified": true,
+      "relevance": "Reference price point for payer-side metering as a spam economic."
+    },
+    {
+      "claim": "XMTP testnet launched 6 February 2025; 2.2 million identities and 1 billion messages as of January 2025; mainnet node count 7 vs 'at least 20' appears inconsistently across summaries.",
+      "source_url": "https://paragraph.com/@xmtp_community/xmtp-launches-testnet-building-the-worlds-most-secure-decentralized-messaging-network",
+      "verified": false,
+      "relevance": "Adoption figures; secondary sources only, do not quote in docs without confirming."
+    },
+    {
+      "claim": "Farcaster's onchain contracts on OP Mainnet: IdRegistry 0x00000000fc6c5f01fc30151999387bb99a9f489b, StorageRegistry 0x00000000fcce7f938e7ae6d3c335bd6a1a7c593d, KeyRegistry 0x00000000fc1237824fb747abde0ff18990e59b7e; accounts can set a recovery address; apps post with delegated EdDSA keys.",
+      "source_url": "https://docs.farcaster.xyz/learn/architecture/contracts",
+      "verified": true,
+      "relevance": "Identity-on-chain, data-off-chain split; delegated app keys are the analogue of our session keys."
+    },
+    {
+      "claim": "A Farcaster storage unit costs $7 per year and holds 5,000 casts, 2,500 reactions, 2,500 links, 50 profile-data entries and 50 verifications; the oldest message is pruned when over the limit; 30-day grace after expiry; deletions are tombstones that still count.",
+      "source_url": "https://docs.farcaster.xyz/learn/what-is-farcaster/messages",
+      "verified": true,
+      "relevance": "The rent model for spam economics and the numbers to compare per-token caps against."
+    },
+    {
+      "claim": "Snapchain is a Tendermint-style BFT network with account-level sharding, a >9000 TPS target for 2 million daily users, five message types, weekly pruning of non-epoch blocks, gRPC/HTTP APIs, and a validator set of 6 (5 Neynar, 1 Uno) in the fetched docs (v1.5.5).",
+      "source_url": "https://snapchain.farcaster.xyz/llms-full.txt",
+      "verified": true,
+      "relevance": "The social data layer of the biggest crypto social network is a six-validator chain, not Ethereum."
+    },
+    {
+      "claim": "Farcaster Mini Apps use a /.well-known/farcaster.json manifest with a JSON Farcaster Signature accountAssociation, an fc:miniapp meta embed (3:2 image), an SDK (ready, signIn, addMiniApp, openUrl, sendToken, swapToken, composeCast), an EIP-1193 provider, and host-rate-limited notifications (~1 per 30 s per token, 24 h validity).",
+      "source_url": "https://miniapps.farcaster.xyz/docs/specification",
+      "verified": true,
+      "relevance": "Shape to mirror so a chain-served token page can be framed inside Farcaster/Base App without hosting anything."
+    },
+    {
+      "claim": "After Farcaster opened to the public on 29 January 2024 behind a $5 fee it was swarmed by bots within weeks; Vitalik Buterin commented on the spam; proposed fixes were client filters, NFT-gated Frames and proof-of-personhood.",
+      "source_url": "https://www.dlnews.com/articles/web3/farcaster-users-could-use-frames-and-nfts-to-stop-bots/",
+      "verified": true,
+      "relevance": "Per-account rent is weaker than per-post cost; clients ended up doing the moderation."
+    },
+    {
+      "claim": "Lens Chain launched 4 April 2025 on ZKsync with Avail DA, Grove storage and GHO gas, migrating 125 GB of logs, 650K profiles, 28M connections and 12M+ posts; Lens raised $31M in December 2024.",
+      "source_url": "https://blog.availproject.org/lens-chain-goes-live-scaling-socialfi-with-avail-and-zksync/",
+      "verified": true,
+      "relevance": "Even the 'everything on chain' social protocol keeps content in a storage layer and runs on an app-specific L2."
+    },
+    {
+      "claim": "Lens v3 is organised as core primitives (Feed, Graph, Group, Namespace, Account, App) plus Rules (processFollow, processCreatePost hooks) and Actions (tipping, collect); createPost takes contentURI, repostedPostId, quotedPostId, repliedPostId; GPL-3.0.",
+      "source_url": "https://github.com/lens-protocol/lens-v3",
+      "verified": true,
+      "relevance": "Cleanest published model of token-gated/paid follow and collect/tip as hooks."
+    },
+    {
+      "claim": "Push's docs still list Push Chain, Notifications and Chat, with Push Chat supported; the docs reference testnet only; the Push blog reports 15M+ transactions, 400k+ addresses, 35+ validators and 25+ universal apps on the Donut testnet (page undated).",
+      "source_url": "https://push.org/docs/",
+      "verified": false,
+      "relevance": "Chat/notification protocol pivoted to an L1; usage numbers are the project's own and undated."
+    },
+    {
+      "claim": "RLN-relay: register an identity commitment with a locked deposit (~$30 in 2021), one message per epoch (~1 s), ZK membership proof plus a Shamir share per message, two shares in one epoch reconstruct the secret and allow slashing; proof generation ~0.5 s with a 3.9 MB prover key.",
+      "source_url": "https://research.logos.co/rlog/rln-relay/",
+      "verified": true,
+      "relevance": "Reference for anonymous stake-based rate limiting; unnecessary when the poster is an identified token."
+    },
+    {
+      "claim": "As of the September 2025 Waku update, the RLN membership contract is still being hardened on Sepolia testnet; js-waku 0.0.35 released.",
+      "source_url": "https://blog.waku.org/waku-monthly-update-september-2025/",
+      "verified": true,
+      "relevance": "RLN on a public mainnet is not yet production in the reference implementation."
+    },
+    {
+      "claim": "EAS is a SchemaRegistry plus EAS contract with attest, multiAttest, revoke, attestByDelegation (EIP-712) and resolver contracts that can gate or charge; deployed at 0xA1207F3BBa224E2c9c3c6D5aF63D0eb1582Ce587 (mainnet v0.26), 0x4200000000000000000000000000000000000021 (Base/OP predeploy v1.0.1), 0xbD75f629A22Dc1ceD33dDA0b68c546A1c035c458 (Arbitrum).",
+      "source_url": "https://github.com/ethereum-attestation-service/eas-contracts",
+      "verified": true,
+      "relevance": "Credentials/badges readable with one eth_call to a predeploy; resolver pattern for bonded vouches."
+    },
+    {
+      "claim": "EAS adoption: 9.5M+ attestations and 450k+ attesters overall; Base 3,465,775 attestations / 1,893 schemas; Optimism 1,317,667 / 822 schemas; Coinbase Verifications issued under verifications.coinbase.eth.",
+      "source_url": "https://base.easscan.org/",
+      "verified": false,
+      "relevance": "Adoption numbers from explorer summaries not directly fetched."
+    },
+    {
+      "claim": "ERC-5564 (Final, created 2022-08-13): IERC5564Announcer.announce(schemeId, stealthAddress, ephemeralPubKey, metadata) and Announcement event; singleton 0x55649E01B5Df198D18D95b5cc5051630cfD45564; scheme 1 secp256k1 with view tags rejecting ~255/256 announcements; privacy margin 124 bits; announcer spam mitigated by app-level staking/tolls.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-5564",
+      "verified": true,
+      "relevance": "Stealth deliveries to a token; interoperable with Umbra/Fluidkey."
+    },
+    {
+      "claim": "ERC-6538 (Final, created 2023-01-24): registerKeys, registerKeysOnBehalf (signature), stealthMetaAddressOf, nonceOf, incrementNonce; singleton 0x6538E6bf4B0eBd30A8Ea093027Ac2422ce5d6538; compromised registrants must deregister quickly.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-6538",
+      "verified": true,
+      "relevance": "Where a token's 6551 account should publish its stealth meta-address."
+    },
+    {
+      "claim": "ERC-7409 (Final, created 2023-07-26) supersedes ERC-6381 (bytes4 could not encode skin tones/variations; now string); functions emote, bulkEmote, emoteCountOf, bulkEmoteCountOf, hasEmoterUsedEmote, presignedEmote, prepareMessageToPresignEmote; singleton 0x3110735F0b8e71455bAe1356a33e428843bCb9A1; presigned emotes replay until deadline.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7409",
+      "verified": true,
+      "relevance": "Reactions at a fixed address every chain; nothing to build."
+    },
+    {
+      "claim": "ERC-5630 is still Draft (created 2022-09-07): eth_getEncryptionPublicKey and eth_performECDH on secp256k1 with X9.63-KDF/SHA-512, HMAC-SHA-256, AES-256-CBC ECIES; reuses the signing key; no forward secrecy.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-5630",
+      "verified": true,
+      "relevance": "Wallet-native encryption cannot be relied on; derive keys in the page from a signature."
+    },
+    {
+      "claim": "ERC-7627 Secure Messaging Protocol is Final (created 2024-02-19): PublicKey{bytes public_key; uint64 valid_before; PublicKeyAlgorithm}, updatePublicKey, sendMessage(to, keyIndex, sessionId, encryptedMessage), getUserPublicKey; events MessageSent and PublicKeyUpdated.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7627",
+      "verified": true,
+      "relevance": "Thin Final interface worth exposing as a view for generic client compatibility."
+    },
+    {
+      "claim": "ERC-7866 Decentralised User Profiles (created 2025-01-22) is in review, not Final; soulbound profile with per-dApp avatars and did:<chain>:<address> identifiers.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7866",
+      "verified": true,
+      "relevance": "Do not claim conformance; immature."
+    },
+    {
+      "claim": "ERC-7656 Generalized Contract-Linked Services is Final (created 2024-03-15): create/compute with salt, chainId, mode (LINKED_ID / NO_LINKED_ID), linkedContract, linkedId; factory 0x76565d90eeB1ce12D05d55D142510dBA634a128F on mainnet.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7656",
+      "verified": true,
+      "relevance": "Deterministic per-token social service addresses beyond ERC-6551 accounts."
+    },
+    {
+      "claim": "ERC-4361 SIWE is Final (created 2021-10-11): fields domain, address, statement, uri, version, chain-id, nonce (>=8 alphanumerics), issued-at, expiration-time, not-before, request-id, resources; ERC-1271 for contract wallets (state-dependent, so sessions bind to address and invalidate on state change); wallets must verify origin against scheme/domain.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-4361",
+      "verified": true,
+      "relevance": "The serverless 'connect wallet and prove you hold it' login shape."
+    },
+    {
+      "claim": "RFC 9420 (July 2023, Proposed Standard) specifies MLS with forward secrecy and post-compromise security for groups from two to thousands via TreeKEM, asynchronous.",
+      "source_url": "https://datatracker.ietf.org/doc/rfc9420/",
+      "verified": true,
+      "relevance": "The only standard that gives FS/PCS; already run over an on-chain ordered-delivery contract in the MASTER repo."
+    },
+    {
+      "claim": "Nostr NIP-17 (draft, updated 2026-06-13): kind-14 rumor sealed into kind-13 (NIP-44, signed by sender) then gift-wrapped into kind-1059 signed by a one-time key; timestamps randomised up to two days back; one wrap per recipient plus one for the sender; kind-10050 relay lists; groups over 10 should use another scheme.",
+      "source_url": "https://nips.nostr.com/17",
+      "verified": true,
+      "relevance": "Reference design for metadata hiding and the sender-copy trick."
+    },
+    {
+      "claim": "On 8 September 2024 friend.tech transferred contract ownership to the null address after protocol fees fell to about $60,000 since June 2024, having earned developers at least $20 million during the 2023 surge.",
+      "source_url": "https://www.theblock.co/post/315172/friend-tech-team-renounces-control-of-smart-contracts-following-stagnant-growth",
+      "verified": true,
+      "relevance": "SocialFi-as-market cautionary tale; immutability from day one rather than renounced later."
+    },
+    {
+      "claim": "Umbra v2 (ScopeLift, 6 May 2024) is modular on ERC-5564/6538 and positions itself as a stealth-address discovery hub for third-party apps beyond payments.",
+      "source_url": "https://scopelift.co/blog/introducing-umbra-v2-architecture",
+      "verified": true,
+      "relevance": "Existing stealth wallets will already see a token that registers a meta-address."
+    },
+    {
+      "claim": "No public security incident for XMTP (2024-2025), Lens or Push was found in searches; no specific Farcaster signer-phishing incident could be verified.",
+      "source_url": "https://docs.xmtp.org/chat-apps/intro/what-is-xmtp",
+      "verified": false,
+      "relevance": "Absence of evidence; structural risks (delegated keys, static ECIES keys, announcer spam) remain."
+    },
+    {
+      "claim": "The four repos already contain: Parley (back-linked logs, single-block eth_getLogs walk, P-256 announce, owner-or-6551-account predicate excluding renters), ParleyPort (commons-only LayerZero federation), AgentComms (refundable postage escrow, expectedRecipientKeyId pinning), EncryptionKeyRegistry (typed keys incl. ML-KEM-768 slot), SocialCartridge (epoch-bound versioned keys, whisper envelopes with AAD, UTF-8 validated names, identity attestations with retirement) and MASTER's MLSGroupChat (RFC 9420 over immutable ordered delivery, documented limits).",
+      "source_url": "/home/user/MASTER-NFT-PROJECT/docs/FORWARD-SECURE-COMMONS.md",
+      "verified": true,
+      "relevance": "The unified design is mostly a selection and merge problem, not greenfield."
+    }
+  ],
+  "recommendations": [
+    {"recommendation": "Unify on a single authorisation predicate: token owner or the token's ERC-6551 account; never a renter or bare ERC-721 operator; session keys only for actions their grant names; sale rolls the custody epoch and revokes everything.", "priority": "must", "rationale": "Three repos ship three predicates (Parley.mayActAs, SocialCartridge.Auth, ANIMA isController); one truth removes a bug class and matches ANIMA invariant 1."},
+    {"recommendation": "Public speech (commons, groups, follows) as back-linked event logs read by single-block eth_getLogs; sealed DMs and keys in bounded storage; everything keyed by token id so the archive moves with the token.", "priority": "must", "rationale": "Parley's walk is the only indexer-free read pattern proven against public RPC rate limits; Ethscriptions show calldata-only designs regress to indexers."},
+    {"recommendation": "One typed, custody-epoch-bound key registry per token (ANIMA key types incl. ML-KEM slot + Pixel-Garden epoch binding), pin expectedKeyId in every sealed send, expose ERC-7627 views.", "priority": "must", "rationale": "Prevents undecryptable mail after rotation and a seller reading a buyer's inbox; ERC-7627 is Final and cheap to be compatible with."},
+    {"recommendation": "Use RFC 9420 MLS over an immutable ordered-delivery contract for private groups (as built in MASTER's MLSGroupChat); ECIES/HPKE whispers only for first contact; document exactly which metadata stays public.", "priority": "must", "rationale": "Static-key ECIES has no forward secrecy (every repo says so); XMTP set the bar at audited MLS; no on-chain social layer has shipped FS/PCS."},
+    {"recommendation": "Call the singletons instead of building: ERC-7409 at 0x3110735F0b8e71455bAe1356a33e428843bCb9A1 for reactions, ERC-5564/6538 for stealth deliveries and private receipts, the EAS predeploy 0x4200000000000000000000000000000000000021 (OP-stack) for credentials, with extcodesize-guarded degrade on chains lacking them.", "priority": "must", "rationale": "Same address on every chain, interoperable with existing wallets and explorers today, zero EIP-170 bytes."},
+    {"recommendation": "Spam economics = holding the token is the stake + per-token cooldown per room + refundable postage escrow (AgentComms model) for unsolicited DMs + client-side consent lists (XMTP model).", "priority": "must", "rationale": "Gives RLN's rate bound without ZK proofs; Farcaster's per-account rent failed against bots; postage makes spam cost the spammer and ignoring paid mail cost the recipient."},
+    {"recommendation": "Serverless login: ERC-4361-shaped message with page-generated nonce, local verification (ECDSA, ERC-1271, ERC-6492), then chain reads (ownerOf, 6551 account, session grants) to decide what to unlock; re-verify on account/chain change.", "priority": "must", "rationale": "SIWE is a message format not a service; ERC-1271 results are state-dependent per the EIP text."},
+    {"recommendation": "Register each token's ERC-6551 account on the ERC-6538 registry (lazily on first key publish) so Umbra/Fluidkey-class wallets can already send privately to the token.", "priority": "should", "rationale": "Interoperability for free; the registry supports registerKeysOnBehalf with ERC-1271 signatures."},
+    {"recommendation": "Fixed enum follow/entry policies (open / holders-only / paid) instead of pluggable Lens-style rule contracts.", "priority": "should", "rationale": "Pluggable hooks are an upgrade path; this protocol must not have one."},
+    {"recommendation": "Store a sender copy of every sealed envelope; let the client fuzz displayed times (NIP-17 reasoning).", "priority": "should", "rationale": "Lets the holder rebuild their own history without relying on anyone, at the cost of one extra envelope."},
+    {"recommendation": "Serve a Farcaster Mini App-compatible fc:miniapp embed and manifest from the web3:// surface, with accountAssociation signed by the token's 6551 account.", "priority": "should", "rationale": "Lets Warpcast/Base App frame the token's page without any hosted code."},
+    {"recommendation": "Consider ERC-7656 deterministic per-token social service addresses instead of shared mappings.", "priority": "could", "rationale": "Each inbox becomes probe-able by extcodesize and readable generically; Final standard with a mainnet factory."},
+    {"recommendation": "Keep commons-only cross-chain federation (ParleyPort) with back-links rewritten on arrival; groups and pairs never cross chains.", "priority": "could", "rationale": "Existing, tested; federating authority-bearing rooms would mean trusting a message to say who may speak."},
+    {"recommendation": "Plan hybrid ML-KEM-768 envelopes once WebCrypto exposes it (ANIMA reserves key type 4).", "priority": "could", "rationale": "XMTP already markets quantum-resistant storage; the question will be asked."},
+    {"recommendation": "Do not make any off-chain transport (XMTP topic, Waku topic, HTTPS URI) the only home of a message.", "priority": "avoid", "rationale": "AgentComms' commitment-only design is right for agents and contradicts 'everything inside the NFT'."},
+    {"recommendation": "Do not implement RLN-style on-chain ZK rate limiting.", "priority": "avoid", "rationale": "Verification gas and 3.9 MB prover keys buy anonymity we do not need; posters are identified tokens."},
+    {"recommendation": "Do not claim ERC-7866/6239/7231 conformance or call ECIES-based whispers forward secret.", "priority": "avoid", "rationale": "7866 is in review; 6239/7231 have no visible adoption; Pixel-Garden's doc already states the FS limit correctly."},
+    {"recommendation": "No social token, key market, admin, delegate, upgrade or diamondCut in the social contracts.", "priority": "avoid", "rationale": "friend.tech's curve; every repo's immutability invariant."}
+  ],
+  "special_ideas": [
+    "The inbox ships with the token: transfer rolls the custody epoch, kills the seller's key, and the buyer gets a provably fresh sealed inbox plus the public archive — reputation moves, mail does not.",
+    "Reactions readable by every wallet on every chain via the ERC-7409 singleton; post reactions keyed by a synthetic token id under our collection.",
+    "Stealth drop box: register an ERC-6538 meta-address for the token's 6551 account so Umbra/Fluidkey can already pay it, then reuse the ephemeral-key mechanism for messages with no public sender-recipient link.",
+    "Forward-secret 'sealed rooms' on chain with a visible epoch counter, two-confirmation apply, reorg-freezes-the-group and forced rekey after cancelled drafts (MASTER's MLSGroupChat discipline as a product feature).",
+    "Vouch attestations with teeth: EAS attestations written through a resolver that requires a bond from the token's vault, slashable via the existing dispute path.",
+    "Priced attention as a feature: holder sets postage and reply window on their page; strangers pay to be read, are refunded if ignored, and postage lands in the token's vault where the swap can use it.",
+    "Mini App framing without a server: fc:miniapp embed and manifest served over web3:// so a cast can open the token page inside Warpcast/Base App.",
+    "Retention forever by construction (versus XMTP's 60 days, Farcaster's pruning, Nostr relays forgetting) — advertise it and let the client walk back as far as it likes."
+  ],
+  "open_questions": [
+    "What SIWE `domain` does a chain-served page use (data: URI has no origin; web3:// gateway hostnames vary)? Candidate: fixed collection name plus resources naming chain and token; needs wallet-compatibility testing.",
+    "Sealed envelopes in storage (direct reads, 4,096-byte cap) or in logs (cheaper, block-walk reads)? Measure on target L2s.",
+    "MLS first contact: is an ECIES whisper acceptable for the first message to a stranger, or should every token pre-publish a KeyPackage at mint?",
+    "ts-mls is unaudited; can an audited MLS implementation fit the engine's byte budget (MASTER bundle ~151 kB vs IPSEITY document ~104 kB)?",
+    "Does any marketplace reject ERC-7409 emotes on synthetic (non-existent) token ids, and is the singleton actually deployed on every target chain?",
+    "Which target chains in the id-band partition have the EAS predeploy, and what is the degrade path on those that do not?",
+    "Is 'stealth' defined as recipient-only privacy (achievable) or full unlinkability (needs a relayer/bundler, i.e. infrastructure)?",
+    "With five chains and commons-only federation, do follows and reactions stay local so a token's social score differs per chain by design?",
+    "Confirm before quoting: XMTP identity/message totals and mainnet node count, EAS totals, Push Chain figures, Snapchain's April 2025 cutover date."
+  ]
+}

@@ -1,0 +1,303 @@
+{
+  "topic": "Wallet-gated web experiences and ownership verification for a fully on-chain NFT",
+  "report_path": "/tmp/claude-0/-home-user/9872dd98-bd4a-5b4c-9579-cffc2e916f05/scratchpad/research/r-gating.md",
+  "searches_made": 21,
+  "pages_fetched": 37,
+  "findings": [
+    {
+      "claim": "ERC-4361 (SIWE, Final, created 2021-10-11) is a relying-party protocol: mandatory domain/address/uri/version/chain-id/nonce/issued-at, nonce 8+ alphanumeric, verify by EIP-191 or ERC-1271, and the spec notes ERC-1271 results vary with chain state so SCA sessions need invalidation.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-4361",
+      "verified": true,
+      "relevance": "A serverless page has no nonce issuer and no session store; SIWE is only useful for proving the NFT's identity to third parties."
+    },
+    {
+      "claim": "ERC-1271 (Final): isValidSignature(bytes32,bytes) view returns bytes4 magic 0x1626ba7e; spec warns callers not to hardcode gas and that implementers bear full responsibility for correctness.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-1271",
+      "verified": true,
+      "relevance": "The token's ERC-6551 account and any delegate/session signer must implement it; verifiers must not cap gas."
+    },
+    {
+      "claim": "ERC-6492 (Final): wrapper abi.encode(factory, factoryCalldata, sig) followed by 0x6492...6492 (last byte 0x92 is not a valid v); deployless eth_call validator returns result in revert data; order is 6492 -> 1271 -> ecrecover.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-6492",
+      "verified": true,
+      "relevance": "Counterfactual ERC-6551 accounts are the default here; ANIMA's libraries/ERC6492.sol already implements the on-chain side safely."
+    },
+    {
+      "claim": "EIP-6963 (Final, created 2023-05-01): eip6963:announceProvider / requestProvider events with {uuid,name,icon,rdns}; security section: freeze providers, render icons via <img>, rdns is spoofable so cross-check uuid.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-6963",
+      "verified": true,
+      "relevance": "The console's provider picker; IPSEITY's engine already implements this pattern."
+    },
+    {
+      "claim": "EIP-1193 (Final) defines request(), events accountsChanged/chainChanged/connect/disconnect and error codes 4001/4100/4200/4900/4901; it says to treat the Provider as adversary-controlled.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-1193",
+      "verified": true,
+      "relevance": "The page must recompute rights on account/chain change and map these codes to words."
+    },
+    {
+      "claim": "EIP-5792 (Final, created 2022-10-17): wallet_getCapabilities, wallet_sendCalls{version,chainId,from,calls,capabilities,atomicRequired}, wallet_getCallsStatus codes 100/200/400/500/600 (600 = partial revert), atomic capability supported/ready/unsupported; devs must not assume single-tx execution.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-5792",
+      "verified": true,
+      "relevance": "Mint+deploy-account+open-market in one approval, with sequential fallback and 600 handled explicitly."
+    },
+    {
+      "claim": "MetaMask implements EIP-5792 by prompting an EIP-7702 upgrade (atomic.status 'ready' -> 'supported') on Ethereum, Gnosis, BNB, OP, Base, Polygon, Arbitrum, Unichain, Berachain; fallback is eth_sendTransaction.",
+      "source_url": "https://docs.metamask.io/wallet/how-to/send-transactions/send-batch-transactions/",
+      "verified": true,
+      "relevance": "Batching is mainstream; feature-detect per chain."
+    },
+    {
+      "claim": "EIP-7702 (Final, created 2024-05-07): tx type 0x04, authorization tuple [chain_id,address,nonce,y_parity,r,s], delegation designator 0xef0100||address; security: chain_id 0 replays everywhere, use ERC-7201 storage, msg.sender==tx.origin invariant broken, initialisation must be signed.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7702",
+      "verified": true,
+      "relevance": "Upgraded EOAs keep their address (ownerOf unchanged) but now have code, changing signature routing and creating a duty to warn about unknown delegates."
+    },
+    {
+      "claim": "Wintermute found >97% of EIP-7702 delegations pointed to identical sweeper bytecode ('CrimeEnjoyor'), ~2.88 ETH spent authorising ~79,000 addresses, within four weeks of Pectra (2025-05-07).",
+      "source_url": "https://x.com/wintermute_t/status/1928501765865091400",
+      "verified": false,
+      "relevance": "Secondary reporting (CoinDesk 2025-06-02) confirms the figures; the tweet itself was not fetched. Motivates the eth_getCode 0xef0100 warning."
+    },
+    {
+      "claim": "Qi et al., 'EIP-7702 Phishing Attack' (arXiv 2512.12174, submitted 2025-12-13) analysed 150k authorisation/execution events across 26k addresses and identifies three trigger pathways: user-driven, attacker-driven, protocol-triggered.",
+      "source_url": "https://arxiv.org/abs/2512.12174",
+      "verified": true,
+      "relevance": "Primary academic post-mortem of the 7702 drainer class."
+    },
+    {
+      "claim": "Scam Sniffer 2025 report (2026-01-03): $83.85M lost, 106,106 victims (2024: $494M, 332,000); among >= $1M cases Permit/Permit2 38% ($8.72M), approve $5.62M, transfer $4.87M, EIP-7702 batch 2 cases $2.54M, setApprovalForAll $1.23M; largest single theft $6.5M via Permit in September.",
+      "source_url": "https://drops.scamsniffer.io/scam-sniffer-2025-crypto-phishing-losses-fall-83-to-84-million/",
+      "verified": true,
+      "relevance": "Signing prompts are the attack surface; the UX must minimise and explain every signature and avoid unbounded approvals."
+    },
+    {
+      "claim": "Alchemy disclosed on 2023-10-27 that LightAccount, ZeroDev Kernel, Biconomy, Soul Wallet, EIP4337Fallback, Ambire, OKX, Argent and Fuse accounts returned ERC-1271 magic for signatures made for a different account sharing the same owner, making Permit2 and CoW orders replayable.",
+      "source_url": "https://www.alchemy.com/blog/erc-1271-signature-replay-vulnerability",
+      "verified": true,
+      "relevance": "The token's account must bind itself into what is signed (ERC-7739)."
+    },
+    {
+      "claim": "ERC-7739 defines nested EIP-712 TypedDataSign{contents,name,version,chainId,verifyingContract,salt} and PersonalSign rehashing; accounts signal support by returning 0x77390001 for isValidSignature(0x7739...7739, '').",
+      "source_url": "https://ercs.ethereum.org/ERCS/erc-7739",
+      "verified": true,
+      "relevance": "Replay-safe and readable signatures from the token's ERC-6551 account."
+    },
+    {
+      "claim": "coinbase/smart-wallet issue #176 (2026-08-25): wrapping the hash with replaySafeHash inside isValidSignature breaks the wallet as a Safe v1.4.1+ owner, deadlocking a 2-of-2 Safe and locking funds.",
+      "source_url": "https://github.com/coinbase/smart-wallet/issues/176",
+      "verified": true,
+      "relevance": "Do replay protection in the signed payload, not by mutating the verifier's hash; test the account as a Safe owner."
+    },
+    {
+      "claim": "OpenZeppelin SignatureChecker.isValidSignatureNow branches on signer.code.length: ECDSA.tryRecover for codeless signers, otherwise staticcall isValidSignature with returndatasize>31 and magic check.",
+      "source_url": "https://raw.githubusercontent.com/OpenZeppelin/openzeppelin-contracts/master/contracts/utils/cryptography/SignatureChecker.sol",
+      "verified": true,
+      "relevance": "An EIP-7702 EOA has code and is routed to ERC-1271; a sweeper-delegated EOA fails there and must be surfaced as such."
+    },
+    {
+      "claim": "viem's public verifyMessage/verifyTypedData use a deployless ERC-6492 universal validator and also handle 'pre-delegated accounts via ERC-8010'; mode 'eoa' skips contract checks.",
+      "source_url": "https://viem.sh/docs/actions/public/verifyMessage",
+      "verified": true,
+      "relevance": "One browser call verifies EOA, deployed SCA, undeployed SCA and pre-7702 accounts."
+    },
+    {
+      "claim": "ERC-8010 'Pre-delegated Signature Verification' was proposed by jxom on 2025-08-21; wrapper is signature || abi.encode(authorization, data) || magic; verifiers simulate the 7702 delegation then run ERC-1271, falling back to ERC-6492; still draft with critics asking for nonce and chain-id checks. The ercs.ethereum.org page returned 404 on 2026-10-02.",
+      "source_url": "https://ethereum-magicians.org/t/erc-8010-pre-delegated-signature-verification/25201",
+      "verified": false,
+      "relevance": "Adopt via viem for off-chain checks; do not depend on it on chain yet."
+    },
+    {
+      "claim": "ERC-7432 (Final, created 2023-07-14): Role{roleId,tokenAddress,tokenId,recipient,expirationDate,revocable,data}; grantRole/revokeRole/unlockToken/recipientOf/roleData/roleExpirationDate/isRoleRevocable/setRoleApprovalForAll; TokenLocked/TokenUnlocked events; designed to be implemented externally or on the NFT.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7432",
+      "verified": true,
+      "relevance": "ANIMA's AnimaRoles is an external ERC-7432 registry; roles become bits in rightsOf."
+    },
+    {
+      "claim": "ERC-4907 (Final): setUser/userOf/userExpires, interface id 0xad092b5c, userOf returns zero when expired, reference implementation clears the user on transfer.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-4907",
+      "verified": true,
+      "relevance": "The lease/renter right; both ANIMA and IPSEITY already expose userOf."
+    },
+    {
+      "claim": "ERC-6551 registry is at 0x000000006551c19487814612e58FE06813775758; accounts are ERC-1167 proxies with appended (implementation,salt,chainId,tokenContract,tokenId); must implement isValidSigner -> 0x523e3260 and ERC-1271; security notes cover ownership cycles and fraudulent sales.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-6551",
+      "verified": true,
+      "relevance": "The token's own account is an authorised actor and the right SIWE signer."
+    },
+    {
+      "claim": "delegate.xyz v2 registry at 0x00000000000000447e69651d841bD8D104Bed493 on 30+ chains via CREATE2, immutable with no admin, exposes checkDelegateForAll/Contract/ERC721 with a bytes32 rights namespace and bool enable toggles.",
+      "source_url": "https://github.com/delegatexyz/delegate-registry",
+      "verified": true,
+      "relevance": "Optional, extcodesize-guarded hot-wallet delegation bit in rightsOf; rights namespaces per module."
+    },
+    {
+      "claim": "delegate.xyz integration pattern: requester = msg.sender; if cold != 0 && cold != msg.sender && checkDelegateForERC721(msg.sender, cold, collection, id, rights) then requester = cold.",
+      "source_url": "https://docs.delegate.xyz/integrate-in-your-project/smart-contract-examples",
+      "verified": true,
+      "relevance": "Five-line Solidity integration."
+    },
+    {
+      "claim": "ERC-5219 (Final): request(string[] resource, KeyValue[] params) returns (uint16 statusCode, string body, KeyValue[] headers); ERC-6944 (Draft): resolveMode must return bytes32('5219'); ERC-6860 (Draft): web3://[userinfo@]contract[:chainId]/path where userinfo is an optional sender address defaulting to 0x0.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-6860",
+      "verified": true,
+      "relevance": "The web page's transport; userinfo@ enables contract-rendered 'view as' pages."
+    },
+    {
+      "claim": "ComfyGummy/chrome-web3 README: window.ethereum is not injected on chrome-extension pages so wallet connection does not work; it suggests WalletConnect; the extension is unpublished and 'not yet safe for widespread use'.",
+      "source_url": "https://github.com/ComfyGummy/chrome-web3",
+      "verified": true,
+      "relevance": "Native web3:// surfaces cannot be assumed to have a wallet; design for gateway-served pages."
+    },
+    {
+      "claim": "Marketplaces run HTML animation_url content in a sandboxed iframe; injected wallet providers do not reach it; the Tokenbound iframe is read-only and relies on Alchemy's indexer.",
+      "source_url": "https://docs.tokenbound.org/iframe",
+      "verified": true,
+      "relevance": "The data: URI surface is a viewer; it must link out to the web3:// console rather than show a dead connect button. (Sandbox claim corroborated by Ethereum Magicians thread via search; iframe read-only nature verified from Tokenbound docs.)"
+    },
+    {
+      "claim": "Reown AppKit One-Click Auth uses wallet_authenticate (CAIP-222) with ReCaps (ERC-5573), supports EIP-1271 and EIP-6492, and SIWE is being migrated to SIWX; config shape is getNonce/createMessage/verifyMessage/getSession/signOut.",
+      "source_url": "https://docs.reown.com/appkit/react/core/siwe",
+      "verified": true,
+      "relevance": "If a relay is ever accepted, this is the one-prompt connect+auth path; the config still presumes a server."
+    },
+    {
+      "claim": "ERC-5573 (Draft) ReCaps: urn:recap:<base64url> as the final SIWE resource, att/prf structure, human-readable statement generation; services should not treat ReCaps as bearer tokens.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-5573",
+      "verified": true,
+      "relevance": "Scoping a 'sign in as the NFT' proof to specific abilities."
+    },
+    {
+      "claim": "ERC-7846 (Draft, created 2024-12-15): wallet_connect{version,capabilities} returns accounts[].{address,capabilities}; signInWithEthereum capability takes nonce+chainId (+optional SIWE fields) and returns {message,signature}; wallet_disconnect revokes.",
+      "source_url": "https://eips.ethereum.org/EIPS/eip-7846",
+      "verified": true,
+      "relevance": "Optional single-approval connect for wallets that offer it."
+    },
+    {
+      "claim": "ERC-7715 wallet_requestExecutionPermissions returns a permission context plus delegationManager (ERC-7710) and dependencies; ERC-7710 redeemDelegations(bytes[] permissionContexts, bytes32[] modes, bytes[] executionCallData) uses ERC-7579 execution encoding; both advise minimal, expiring permissions and simulation before redemption.",
+      "source_url": "https://ercs.ethereum.org/ERCS/erc-7715",
+      "verified": true,
+      "relevance": "Standardised session-key shape to interoperate with IPSEITY's grantSession/sessionAllows."
+    },
+    {
+      "claim": "RIP-7212 (Final): secp256r1 verify precompile at 0x100, 160-byte input (hash,r,s,x,y), returns 1 on success, 3,450 gas; adoption on Optimism, Base, zkSync Era, Polygon zkEVM, Linea, Arbitrum per secondary sources; not Ethereum mainnet.",
+      "source_url": "https://github.com/ethereum/RIPs/blob/master/RIPS/rip-7212.md",
+      "verified": true,
+      "relevance": "Passkeys as session keys are cheap on L2s; the chain list is secondary (unverified per chain)."
+    },
+    {
+      "claim": "Safe passkey module: SafeWebAuthnSignerFactory/Proxy/Singleton implement ERC-1271 for WebAuthn, signature = abi.encode(authenticatorData, clientDataFields, r, s), P256 library packs a 2-byte precompile address and 20-byte fallback verifier into uint176 to switch to RIP-7212 when a chain adopts it.",
+      "source_url": "https://github.com/safe-fndn/safe-modules/blob/main/modules/passkey/README.md",
+      "verified": true,
+      "relevance": "Reference design for a P-256 session signer that works before and after precompile availability."
+    },
+    {
+      "claim": "CertiK (2026-06-16): once script runs under the target origin WebAuthn rpId/origin binding no longer protects the flow; contracts checking only UP accept any OS assertion; challenge must bind account/chain/nonce/callData/EntryPoint; enforce low-S; synced passkeys widen the boundary to the cloud account and keep signCount at zero.",
+      "source_url": "https://www.certik.com/blog/security-considerations-for-passkey-based-web3-wallets",
+      "verified": true,
+      "relevance": "Checklist for the passkey session-key verifier; gateway origin means rpId is the gateway host."
+    },
+    {
+      "claim": "Trust Wallet browser extension v2.68 caused $6M+ in losses in December 2025 before v2.69 fixed it.",
+      "source_url": "https://www.ccn.com/education/crypto/trust-wallet-warning-6m-lost-btc-eth-sol-browser-extension/",
+      "verified": false,
+      "relevance": "Secondary source only; motivates never auto-selecting a provider and never storing one."
+    },
+    {
+      "claim": "The local repos already hold the pieces: IPSEITY (EIP-6963 picker, onlyOwner = holder or the Reach, userOf, grantSession/sessionAllows/executeAsSession, purpose-bound ERC-1271, 'holding is never login'); ANIMA (epoch-keyed operators, timed approvals, 4907 lease cleared on sale, external ERC-7432 AnimaRoles, ERC6492 library, session keys that cannot sign 1271, a window.ethereum-only web3 renderer); Pixel-Garden (ownerOf + custodyEpoch, reload on account change); MASTER (SessionSponsor EIP-712 vouchers, ownerOf at a pinned block).",
+      "source_url": "file:///home/user/Most-Advanced-NFT-Possible/INTERFACE.md",
+      "verified": true,
+      "relevance": "The unified rightsOf predicate and epoch session model are a merge, not an invention."
+    }
+  ],
+  "recommendations": [
+    {
+      "recommendation": "Serve one HTML document that detects its surface at load (data: viewer / gateway console / extension) and only renders a connect control where a provider can exist; the viewer links to the web3:// console.",
+      "priority": "must",
+      "rationale": "Marketplace iframes and chrome-extension pages do not receive injected providers (Tokenbound iframe docs; chrome-web3 README); a dead connect button is the worst UX."
+    },
+    {
+      "recommendation": "Gate by reading, not signing: EIP-6963 picker -> eth_requestAccounts -> rightsOf(id, account, right) via eth_call -> render; the contract re-enforces every bit on write. No SIWE on the page itself.",
+      "priority": "must",
+      "rationale": "A serverless page has no nonce issuer or session store; SIWE adds a signing prompt to the surface Scam Sniffer identifies as the attack vector while protecting nothing."
+    },
+    {
+      "recommendation": "Ship a single rightsOf(tokenId, actor, right) view returning bits for holder / token-account (ERC-6551) / renter (ERC-4907) / role (ERC-7432) / custody (ERC-721 approval) / delegate (delegate.xyz, extcodesize-guarded) plus the custody epoch.",
+      "priority": "must",
+      "rationale": "Four repos already recognise these actors separately; custody and use must stay distinct bits; the epoch is the serverless session invalidator."
+    },
+    {
+      "recommendation": "Verify any product signature ERC-6492 -> ERC-1271 -> ecrecover: viem's deployless universal validator in the browser, ANIMA's ERC6492 library on chain at settlement only; the token's account implements ERC-7739 and is tested as a Safe owner.",
+      "priority": "must",
+      "rationale": "Counterfactual 6551 accounts are the default; the 2023 Alchemy replay and 2026 Coinbase/Safe deadlock show both failure directions."
+    },
+    {
+      "recommendation": "Use ERC-5792 wallet_sendCalls with capability detection and a sequential eth_sendTransaction fallback; handle status 100/200/400/500/600 explicitly; keep the confirm slab (To/Value/Function) before every broadcast and simulate with eth_call from the connected account first.",
+      "priority": "must",
+      "rationale": "Mint+deploy-account+open-market becomes one approval on MetaMask/Coinbase/Safe/Ambire; the spec forbids assuming atomicity."
+    },
+    {
+      "recommendation": "Wrong-chain refusal before any button; recompute rights on accountsChanged/chainChanged/receipt; keep authority in memory only, never localStorage.",
+      "priority": "must",
+      "rationale": "EIP-1193 events exist for this; IPSEITY's rulings already forbid stored sessions; a sale must be visible on the next read."
+    },
+    {
+      "recommendation": "Warn when the connected EOA's code starts with 0xef0100 and the delegate is not on a small on-chain allowlist of known-good delegators.",
+      "priority": "should",
+      "rationale": ">97% of early 7702 delegations were sweepers (Wintermute); users funding a token account from a swept EOA lose everything."
+    },
+    {
+      "recommendation": "Prefer exact-value calls (buy(agreed), minOut+deadline) over approve/Permit; never request unbounded allowances; show counterparty and amount in the page and in the EIP-712 payload.",
+      "priority": "should",
+      "rationale": "Permit/Permit2 were 38% of >= $1M phishing losses in 2025; exact-value patterns are already the repos' front-running defence."
+    },
+    {
+      "recommendation": "Accept passkeys as bounded session keys on the token's account (P-256 via RIP-7212 with contract fallback, Safe-style uint176 packing), never as the holder key; enforce UV, low-S, webauthn.get type and a challenge bound to account/chain/nonce/calldata.",
+      "priority": "should",
+      "rationale": "3,450-gas verification on L2s makes phone-as-session-key practical; CertiK's checklist covers the verifier pitfalls."
+    },
+    {
+      "recommendation": "Expose SIWE only through the token's own ERC-6551 account (ERC-1271 + ERC-7739) for third-party relying parties, with ERC-5573 ReCaps in resources; support ERC-7846 wallet_connect where a wallet offers it.",
+      "priority": "should",
+      "rationale": "'Sign in as the NFT' is the useful form of SIWE for this product and dies on sale via the epoch."
+    },
+    {
+      "recommendation": "Offer WalletConnect as the one clearly-labelled off-chain path for surfaces with no injected provider.",
+      "priority": "could",
+      "rationale": "chrome-web3 recommends it; whether 'no server' admits a relay is an open question for the owner."
+    },
+    {
+      "recommendation": "Use ERC-5219 headers for Cache-Control/ETag so gateways cache the shell and re-read only state.",
+      "priority": "could",
+      "rationale": "ERC-6944 mode allows RFC 9111 headers per ERC-7774 discussion; header semantics beyond Content-type are unverified in the spec text."
+    },
+    {
+      "recommendation": "Any 'sign to log in' prompt, server-issued nonce or session cookie on the page.",
+      "priority": "avoid",
+      "rationale": "Protects nothing in a serverless page and trains users to sign on request."
+    },
+    {
+      "recommendation": "tx.origin anywhere; hardcoded gas for isValidSignature; mutating the hash inside isValidSignature; treating ERC-721 approval as use authority; auto-selecting a provider; trusting the gateway origin for anything security-relevant.",
+      "priority": "avoid",
+      "rationale": "Each is a documented failure: EIP-7702 breaks tx.origin, ERC-1271 forbids gas caps, Coinbase #176 locked funds, approvals are custody not use, Trust Wallet 2.68, and any gateway can serve or rewrite the page."
+    }
+  ],
+  "special_ideas": [
+    "Contract-rendered 'view as' pages via ERC-6860 userinfo@: web3://0xYOU@token.eth/42 server-renders the visitor's rights with zero JS and no wallet (presentation only, spoofable by design).",
+    "Sign in as the NFT: the token's ERC-6551 account produces ERC-7739-safe SIWE proofs scoped by ReCaps, so third-party sites gate on the token and the proof dies on sale via the custody epoch.",
+    "Epoch-stamped everything: every voucher, message key and session carries (custodyEpoch, account.state()); one storage write on sale invalidates all of it with no revocation list.",
+    "A rights passport wallets can read: rightsOf as bits lets wallet simulations and Scam Sniffer-style extensions show 'allowed for you as renter' before the signing prompt.",
+    "Phone-as-session-key: a passkey registered on the token's account as a capped, expiring, selector-allowlisted session signer (RIP-7212 where available); the hardware wallet stays cold.",
+    "Delegate rights namespaces per module (keccak256('anima.talk'), 'anima.swap', 'anima.launch', 'anima.vault') so a hot wallet can post as the NFT without reaching the vault's withdraw paths.",
+    "An on-chain known-good delegator allowlist that tells holders 'your EOA is delegated to a sweeper' before they fund the token's account."
+  ],
+  "open_questions": [
+    "Which web3:// gateway(s) are canonical, given the origin (and any WebAuthn rpId) is the gateway's host? Should the token carry a gateway list in its own bytes?",
+    "Do any shipping native web3:// browsers inject a wallet provider today? (chrome-web3: no; EVM Browser status unverified.)",
+    "Is the immutable delegate.xyz registry acceptable under the unified dependency rule, or must delegation live entirely in the token's own ERC-7432 registry?",
+    "Is WalletConnect's relay an acceptable, labelled exception to 'no server' for surfaces with no injected provider?",
+    "Should the holder key itself ever be a passkey (RIP-7212 is L2-only), or only session keys?",
+    "ERC-8010 is draft and criticised for missing nonce/chain-id checks; adopt viem's implementation now or wait?",
+    "How should the page treat an EIP-7702 EOA delegated to an unknown but not blacklisted contract: warn, or refuse to fund the token's account?",
+    "Does ERC-5219's header channel let a contract set Content-Security-Policy through the major gateways? Nothing in the spec text confirms it."
+  ]
+}

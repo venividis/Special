@@ -1,0 +1,17 @@
+node_modules/
+out/
+cache/
+broadcast/
+dist/
+.env
+.env.*
+!.env.example
+
+# the test runner writes a forge-std shim at the repo root; anchored so it
+# never swallows src/lib/
+/lib/
+
+# throwaway testnet keys generated in-container, never committed
+.testnet-key
+.testnet-crew
+*.ens-secret
