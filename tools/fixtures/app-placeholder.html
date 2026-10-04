@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'self'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>INTACT</title>
+<style>
+/* INTACT placeholder shell (U7 fixture). The console is engine/app.html (U9). */
+html,body{margin:0;min-height:100%;background:#07080c;color:#8b95ad;font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace}
+main{max-width:720px;margin:0 auto;padding:32px 20px}
+h1{font-size:18px;letter-spacing:6px;color:#e6e9f2;margin:0 0 20px}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0 0 24px}
+dt{color:#5d6780}dd{margin:0;word-break:break-all}
+.chip{display:inline-block;padding:1px 8px;margin:0 4px 4px 0;border:1px solid #212838;border-radius:10px;font-size:12px}
+.chip.on{color:#7fd4ff;border-color:#7fd4ff}
+.chip.off{color:#5d6780}
+nav a{color:#7fd4ff;margin-right:14px;text-decoration:none}
+section{display:none;padding:16px 0;border-top:1px solid #212838}
+section.on{display:block}
+#viewer{border:1px dashed #212838;padding:12px;margin-bottom:24px}
+#verified{color:#5d6780;font-size:12px}
+</style>
+</head>
+<body>
+<main>
+<h1>INTACT</h1>
+<div id="viewer"></div>
+<dl id="facts"></dl>
+<p id="reported"></p>
+<nav id="lanes"></nav>
+<section id="lane-swap"></section>
+<section id="lane-social"></section>
+<section id="lane-launch"></section>
+<section id="lane-vault"></section>
+<section id="lane-identity"></section>
+<section id="lane-agent"></section>
+<p id="verified"></p>
+</main>
+<script>
+/* INTACT placeholder shell (U7 fixture) — a viewer that reads the state the
+   contract wrote into the gap and renders it through textContent only.
+   It never calls eth_requestAccounts; it loads a panel only after keccak-
+   ing the inflated bytes against INTACT.panels. The real shell (U9) adds
+   the wallet library, the chooser, the rights gate and the confirm slab. */
+(function () {
+  var S = window.INTACT;
+  var $ = function (id) { return document.getElementById(id); };
+  var text = function (el, t) { el.textContent = t; return el; };
+  if (!S) { text($("facts"), "no state block"); return; }
+
+  /* The data: viewer has an opaque origin: localStorage throws. */
+  var opaque = false;
+  try { window.localStorage.getItem("intact"); } catch (e) { opaque = true; }
+  var origin = "web3://" + S.premises + ":" + S.chainId;
+  var live = origin + "/token/" + S.id + "/live";
+  if (opaque) {
+    text($("viewer"), "Viewer mode: nothing here can sign. Open the console at " + live);
+  } else {
+    text($("viewer"), "Console origin. Connect a wallet to act; this placeholder shows the facts only.");
+  }
+
+  var facts = [
+    ["id", S.id], ["chain", S.chainId], ["holder", S.owner], ["custody epoch", S.epoch],
+    ["status", S.status === 0 ? "Active" : "Paused"], ["reach", S.reach], ["grip", S.grip],
+    ["sealed until", S.clocks ? S.clocks.sealedUntil : "-"],
+    ["market", S.market ? (S.market.open ? "open" : "closed") : "not reported"],
+    ["fingerprint", S.fingerprint], ["engine", S.engineHash], ["catalog", S.catalogHash], ["block", S.block]
+  ];
+  var dl = $("facts");
+  facts.forEach(function (f) {
+    dl.appendChild(text(document.createElement("dt"), f[0]));
+    dl.appendChild(text(document.createElement("dd"), String(f[1])));
+  });
+
+  /* "0" and "not reported" are different facts. */
+  var rep = $("reported");
+  Object.keys(S.bits || {}).forEach(function (name) {
+    var chip = document.createElement("span");
+    var on = (S.reported & S.bits[name]) !== 0;
+    chip.className = "chip " + (on ? "on" : "off");
+    text(chip, name + ": " + (on ? "reported" : "not reported"));
+    rep.appendChild(chip);
+  });
+
+  /* keccak-256, enough to check a panel against its pinned hash. */
+  var RC = ["1","8082","800000000000808a","8000000080008000","808b","80000001","8000000080008081","8000000000008009","8a","88","80008009","8000000a","8000808b","800000000000008b","8000000000008089","8000000000008003","8000000000008002","8000000000000080","800a","800000008000000a","8000000080008081","8000000000008080","80000001","8000000080008008"].map(function (h) { return BigInt("0x" + h); });
+  var ROT = [0,1,62,28,27,36,44,6,55,20,3,10,43,25,39,41,45,15,21,8,18,2,61,56,14];
+  var M64 = (1n << 64n) - 1n;
+  var rotl = function (x, n) { return n === 0 ? x : ((x << BigInt(n)) | (x >> BigInt(64 - n))) & M64; };
+  function keccakF(s) {
+    for (var r = 0; r < 24; r++) {
+      var c = [], d = [], x, y;
+      for (x = 0; x < 5; x++) c[x] = s[x] ^ s[x + 5] ^ s[x + 10] ^ s[x + 15] ^ s[x + 20];
+      for (x = 0; x < 5; x++) d[x] = c[(x + 4) % 5] ^ rotl(c[(x + 1) % 5], 1);
+      for (x = 0; x < 25; x++) s[x] ^= d[x % 5];
+      var b = [];
+      for (x = 0; x < 5; x++) for (y = 0; y < 5; y++) b[y + 5 * ((2 * x + 3 * y) % 5)] = rotl(s[x + 5 * y], ROT[x + 5 * y]);
+      for (x = 0; x < 5; x++) for (y = 0; y < 5; y++) s[x + 5 * y] = b[x + 5 * y] ^ ((~b[(x + 1) % 5 + 5 * y] & M64) & b[(x + 2) % 5 + 5 * y]);
+      s[0] ^= RC[r];
+    }
+  }
+  function keccak256(bytes) {
+    var st = []; for (var i = 0; i < 25; i++) st.push(0n);
+    var rate = 136, n = bytes.length, pad = new Uint8Array(n + (rate - (n % rate)));
+    pad.set(bytes); pad[n] |= 0x01; pad[pad.length - 1] |= 0x80;
+    for (var off = 0; off < pad.length; off += rate) {
+      for (var w = 0; w < 17; w++) {
+        var v = 0n; for (var k = 7; k >= 0; k--) v = (v << 8n) | BigInt(pad[off + w * 8 + k]);
+        st[w] ^= v;
+      }
+      keccakF(st);
+    }
+    var out = "0x";
+    for (var w2 = 0; w2 < 4; w2++) { var v2 = st[w2]; for (var k2 = 0; k2 < 8; k2++) { out += ((v2 >> BigInt(8 * k2)) & 255n).toString(16).padStart(2, "0"); } }
+    return out;
+  }
+  S.keccak256 = keccak256;
+
+  /* A panel is an ordinary resource; it runs only if its bytes hash to the
+     number baked in the state gap. On the live origin it is fetched; in the
+     viewer it would come from eth_call Engine.panel(i) through an injected
+     provider, which this placeholder does not attempt. */
+  var names = Object.keys(S.panels || {});
+  var nav = $("lanes");
+  names.forEach(function (name) {
+    var a = document.createElement("a");
+    a.href = "#" + name;
+    text(a, name);
+    nav.appendChild(a);
+  });
+  function show(name) {
+    names.forEach(function (n) { var el = $("lane-" + n); if (el) el.className = n === name ? "on" : ""; });
+    if (!name || opaque || !S.panels[name]) return;
+    var lane = $("lane-" + name);
+    if (!lane || lane.dataset.loaded) return;
+    fetch("/panel/" + name + ".js").then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+      var bytes = new Uint8Array(buf);
+      if (keccak256(bytes) !== S.panels[name]) { text(lane, "panel refused: its hash is not the one the chain pinned"); return; }
+      lane.dataset.loaded = "1";
+      var tag = document.createElement("script");
+      tag.src = URL.createObjectURL(new Blob([bytes], { type: "text/javascript" }));
+      document.body.appendChild(tag);
+    }).catch(function (e) { text(lane, "panel unavailable: " + e); });
+  }
+  window.addEventListener("hashchange", function () { show(location.hash.slice(1)); });
+  show(location.hash.slice(1));
+  text($("verified"), "state read at block " + S.block + "; engine " + String(S.engineHash).slice(0, 18) + "…");
+})();
+</script>
+</body>
+</html>

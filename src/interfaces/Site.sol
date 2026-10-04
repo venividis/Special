@@ -53,6 +53,8 @@ interface IEngine {
     function frozen() external view returns (bool);
     function sizes() external view returns (uint256 headSize, uint256 bodySize);
     function shardCount() external view returns (uint256 headShards, uint256 bodyShards);
+    /// @dev U7 addition: keccak of every stored shard (head, body, panels) for /manifest.
+    function shardHashes() external view returns (bytes32[] memory);
 }
 
 interface IRenderer {
@@ -68,6 +70,7 @@ interface IRenderer {
     function ENGINE() external view returns (address);
     function CREST() external view returns (address);
     function CATALOG() external view returns (address);
+    function AGENTCARD() external view returns (address);                    // U7 addition; codeless until U17
 }
 
 interface ICrest {
@@ -86,6 +89,7 @@ interface ICatalog {
     function verbWord(uint8 verb) external pure returns (string memory);
     function catalogHash() external view returns (bytes32);
     function bands() external pure returns (uint8[] memory band, uint256[] memory chainId, uint256[] memory lo, uint256[] memory hi);
+    function routes() external pure returns (bytes memory);                   // U7 addition: the route templates as a JSON array
     function HUB() external view returns (address);
 }
 
@@ -97,6 +101,7 @@ interface IPremises is IDecentralizedApp {
     function ENGINE() external view returns (address);
     function CATALOG() external view returns (address);
     function AGENTCARD() external view returns (address);                      // may be codeless until U17
+    function CREST() external view returns (address);                          // U7 addition: /token/<id>/crest.svg is drawn here
 }
 
 interface IAgentCard {
