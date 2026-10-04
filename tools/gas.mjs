@@ -41,6 +41,9 @@ export const CAPS = {
   live: 2_500_000n,
   panel: 1_000_000n,
   manifest: 3_000_000n,
+  face: 500_000n,        // DESIGN §5.3: /face/<n> for the cheap faces (face 0 is /raw)
+  crest: 500_000n,       //              /crest.svg
+  state: 1_000_000n,     //              /state.json and the JSON directories
   any: 16_777_216n,
   hard: 50_000_000n
 };
@@ -116,31 +119,33 @@ async function buildProbes(chain, out) {
     const view = (label, to, sig, args, cap, note) => probes.push({ label, note: note || "", cap, to, data: enc(sig, args) });
     const i = String(id);
     view(`hub.tokenURI(${i})`, site.hub, "tokenURI(uint256)", [id], "tokenURI", "face 0: the whole document, base64 twice");
-    view(`hub.tokenURIAt(${i},1)`, site.hub, "tokenURIAt(uint256,uint8)", [id, 1], "any", "face 1: the crest alone");
+    view(`hub.tokenURIAt(${i},1)`, site.hub, "tokenURIAt(uint256,uint8)", [id, 1], "face", "face 1: the crest alone");
     view(`hub.tokenURIs(${i})`, site.hub, "tokenURIs(uint256)", [id], "any", "every face at once");
     view("hub.contractURI()", site.hub, "contractURI()", [], "any");
     view(`hub.getStateFingerprint(${i})`, site.hub, "getStateFingerprint(uint256)", [id], "any");
     route([], "live", "the collection document");
     route(["token", i, "live"], "live", "the console, on a real origin");
     route(["token", i, "raw"], "tokenURI");
-    route(["token", i, "face", "1"], "any");
-    route(["token", i, "crest.svg"], "any");
-    route(["token", i, "state.json"], "any");
+    route(["token", i, "face", "1"], "face");
+    route(["token", i, "face", "2"], "face", "face 1 again until an AgentCard has code");
+    route(["token", i, "crest.svg"], "crest");
+    route(["token", i, "state.json"], "state");
     route(["token", i, "hash"], "live");
-    route(["token", i, "services.json"], "any");
+    route(["token", i, "services.json"], "state");
     for (const name of ["swap", "social", "launch", "vault", "identity", "agent"]) route(["panel", name + ".js"], "panel");
-    route(["services.json"], "any");
-    route(["open"], "any");
+    route(["services.json"], "state");
+    route(["open"], "state");
     route(["manifest"], "manifest");
     route(["k", i, "0x" + "ab".repeat(20)], "any", "a 301");
     route(["nonsense"], "any", "a 404");
-    view(`catalog.state(${i})`, site.catalog, "state(uint256)", [id], "any", "the state block");
-    view("catalog.state(0)", site.catalog, "state(uint256)", [0], "any", "the collection's block");
+    view(`catalog.state(${i})`, site.catalog, "state(uint256)", [id], "state", "the state block");
+    view("catalog.state(0)", site.catalog, "state(uint256)", [0], "state", "the collection's block");
     view(`catalog.stateOf(${i})`, site.catalog, "stateOf(uint256)", [id], "any", "the gather");
     view("catalog.services()", site.catalog, "services()", [], "any");
     view("catalog.agrees()", site.catalog, "agrees()", [], "any");
     view(`renderer.document(${i})`, site.renderer, "document(uint256)", [id], "live");
-    view(`crest.svg(${i},1,0,0)`, site.crest, "svg(uint256,uint64,uint8,uint64)", [id, 1, 0, 0], "any");
+    view(`crest.svg(${i},1,0,0)`, site.crest, "svg(uint256,uint64,uint8,uint64)", [id, 1, 0, 0], "crest");
+    view(`crest.svg(4096,9,1,now)`, site.crest, "svg(uint256,uint64,uint8,uint64)", [4096, 9, 1, 1_900_000_000], "crest", "the most rings a crest draws");
   } else if (!JSON_OUT) {
     console.log("      \x1b[2mno dist/shards.json — run `npm run build` to probe the routes; the argument-free sweep ran alone\x1b[0m");
   }

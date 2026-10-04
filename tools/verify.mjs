@@ -124,6 +124,17 @@ eq("the Status attribute is Active at mint", attr("Status"), "Active");
 eq("the Reach attribute is the account", String(attr("Reach")).toLowerCase(), reach.toLowerCase());
 
 const html = Buffer.from(meta.animation_url.split(",")[1], "base64").toString("utf8");
+/*  Canonical, not merely decodable. The donor's Base64 read its last chunk
+    past the input, so a partial chunk's padding carried whatever memory
+    followed the array; every decoder dropped those bits, so a round trip
+    never noticed. Re-encoding the decoded bytes here gives the one
+    canonical string, and the chain's must equal it at both layers.      */
+eq("the inner base64 is canonical: re-encoding the decoded document reproduces the chain's string byte for byte",
+   meta.animation_url.split(",")[1], Buffer.from(html, "utf8").toString("base64"));
+eq("and so is the outer: the tokenURI's base64 re-encodes to itself",
+   uri.split(",")[1], Buffer.from(Buffer.from(uri.split(",")[1], "base64")).toString("base64"));
+eq("and the crest's: three layers, three lengths, each re-encoding to the chain's string",
+   meta.image.split(",")[1], Buffer.from(Buffer.from(meta.image.split(",")[1], "base64")).toString("base64"));
 console.log(`      document: ${(html.length / 1024).toFixed(1)} KB`);
 ok("the document begins with the prologue and its CSP", html.startsWith("<!doctype html>") && html.includes("Content-Security-Policy"));
 const m = html.match(/self\.\$INTACT="([A-Za-z0-9+/=]+)";<\/script>/);
@@ -185,6 +196,12 @@ ok("the Market did NOT report (bit 256) — a prediction with no code yet", !rep
 ok("the Roles did NOT report (bit 512)", !rep("roles"));
 ok("the KeyRegistry reported (bit 1024) — a zero key id, reported", rep("keys") && S.holderKeyId === "0x" + "00".repeat(32));
 ok("the AgentCard did NOT report (bit 4096) — codeless until U17", !rep("agentcard"));
+/* and the absent word says which kind of silence each clear bit is */
+const abs = (name) => (S.absent & bits[name]) !== 0;
+ok("absent: the Router, the Market, the Roles and the AgentCard have no code on this band — 'not deployed', not 'could not be read'",
+   abs("router") && abs("market") && abs("roles") && abs("agentcard"));
+ok("absent: nothing that reported is marked absent", (S.absent & S.reported) === 0);
+ok("the state block carries both words", typeof S.reported === "number" && typeof S.absent === "number");
 
 /* every selector in the block is the keccak of the signature, computed on chain */
 const svc = await GET(["services.json"]);
@@ -231,6 +248,50 @@ ok("the hub rows carry the hub's address, the coin rows carry none",
    SV.services.find((r) => r.on === "hub").contract.toLowerCase() === site.hub.toLowerCase() &&
    SV.services.find((r) => r.on === "coin").contract === ZERO);
 
+/*  The tables are hand-written text in Catalog.sol and the ABIs are what
+    the compiler produced: this is where they are held equal. A row whose
+    signature no contract serves is calldata the panels build for a
+    function that does not exist; an error a contract declares and the
+    table lacks is a bare selector where a sentence should be. Both fail
+    the build. The first run of this gate found 58 missing errors.      */
+head("the catalog cannot drift from the ABIs");
+{
+  const { artifact: art } = await import("./compile.mjs");
+  const find = (name) => { for (const cs of Object.values(out.contracts)) if (cs[name]) return cs[name]; };
+  const canon = (t) => t.type.startsWith("tuple") ? "(" + t.components.map(canon).join(",") + ")" + t.type.slice(5) : t.type;
+  const sigOf = (f) => `${f.name}(${(f.inputs || []).map(canon).join(",")})`;
+  const ON = { hub: "IIntact", pool: "Pool", reach: "Reach", parley: "Parley", roster: "Roster", postage: "Postage", keys: "KeyRegistry",
+               kiln: "Kiln", launchpad: "Launchpad", coin: "Coin", locks: "Locks", steward: "Steward", router: "Router",
+               erc20: "MockERC20", engine: "Engine", catalog: "Catalog" };
+  const fns = {};
+  for (const [on, name] of Object.entries(ON)) fns[on] = new Set(find(name).abi.filter((f) => f.type === "function").map(sigOf));
+  const unserved = SV.services.filter((r) => !fns[r.on] || !fns[r.on].has(r.sig));
+  ok(`every one of the ${SV.services.length} service rows names a function its contract's ABI serves`, unserved.length === 0,
+     unserved.map((r) => `${r.on}.${r.sig}`).join(", "));
+  const tableErr = new Set(Object.values(SV.errors));
+  const errSels = new Set(Object.keys(SV.errors));
+  // every error a panel-facing contract can revert with, by selector; two
+  // are construction-time and never reach a panel
+  const PANEL_FACING = ["CoreFacet", "RightsFacet", "MintFacet", "SiteFacet", "Pool", "Reach", "Grip", "Parley", "Roster", "Postage",
+                        "KeyRegistry", "Kiln", "Coin", "Launchpad", "Locks", "Steward", "Router", "IMarket", "IRoles"];
+  const CONSTRUCTION_ONLY = new Set(["BadBand()", "WrongRegistry()"]);
+  const lacking = new Set();
+  for (const name of PANEL_FACING) for (const f of find(name).abi) {
+    if (f.type !== "error") continue;
+    const sig = sigOf(f);
+    if (!CONSTRUCTION_ONLY.has(sig) && !errSels.has(selOf(sig))) lacking.add(`${name}.${sig}`);
+  }
+  ok(`every error a panel-facing contract declares is in the err table (${errSels.size} entries, ${PANEL_FACING.length} contracts)`, lacking.size === 0, [...lacking].join(", "));
+  ok("and every err entry names the error whose selector it is", Object.entries(SV.errors).every(([s2, name]) => {
+    return [...PANEL_FACING, "Engine", "Timelock", "IIntact"].some((n) => find(n).abi.some((f) => f.type === "error" && f.name === name && selOf(sigOf(f)) === s2));
+  }));
+  const eventHashes = new Set();
+  for (const cs of Object.values(out.contracts)) for (const c2 of Object.values(cs)) for (const f of c2.abi || []) if (f.type === "event") eventHashes.add(kec(Buffer.from(sigOf(f))));
+  ok(`every one of the ${Object.keys(SV.topics).length} topics is the keccak of an event some contract declares`,
+     Object.values(SV.topics).every((t) => eventHashes.has(t)));
+  void art;
+}
+
 /*──────────────────── the equality step ────────────────────*/
 head("the two surfaces are one byte-stream");
 const live = await GET(["token", "1", "live"]);
@@ -240,6 +301,9 @@ ok("the two surfaces are one byte-stream: animation_url's bytes equal /token/<id
    `live ${live.body.length} vs tokenURI ${html.length}`);
 ok(`/live reads for under ${gas(CAPS.live)} gas`, live.gas <= CAPS.live, gas(live.gas));
 ok("the live document carries the service-desc Link", String(live.header("Link")).includes("/token/1/services.json"));
+ok("no RPC string, no host of any kind, in the served document: the only network path is the origin that served it",
+   !/https?:\/\//i.test(live.body) && !/wss?:\/\//i.test(live.body), (live.body.match(/(?:https?|wss?):\/\/[^"' <]*/i) || [])[0]);
+ok("nor in the state block alone", !/https?:\/\//i.test(st.text));
 const hashes = JSON.parse((await GET(["token", "1", "hash"])).body);
 eq("/token/<id>/hash: document is the keccak of the live body", hashes.document, kec(live.bodyBytes));
 eq("/token/<id>/hash: state is the keccak of the state block's bytes", hashes.state, kec(Buffer.from(st.text, "utf8")));

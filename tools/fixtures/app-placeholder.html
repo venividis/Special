@@ -80,7 +80,9 @@ section.on{display:block}
     var chip = document.createElement("span");
     var on = (S.reported & S.bits[name]) !== 0;
     chip.className = "chip " + (on ? "on" : "off");
-    text(chip, name + ": " + (on ? "reported" : "not reported"));
+    /* and a clear bit has two spellings, which the absent word tells apart */
+    var why = on ? "reported" : ((S.absent & S.bits[name]) !== 0 ? "not deployed on this chain" : "could not be read at block " + S.block);
+    text(chip, name + ": " + why);
     rep.appendChild(chip);
   });
 

@@ -203,9 +203,12 @@ abstract contract SiteFixture is IntactFixture {
     ///      counting deployments by hand.
     function _myNonce() internal returns (uint256) {
         address probe = address(new Probe());
-        for (uint256 n = 1; n < 4096; ++n) if (_create(address(this), n) == probe) return n + 1;
-        revert("nonce not found");
+        // from zero: a runner that installs the suite's code directly leaves
+        // the account at nonce 0 (BundleFixture learned this the same way)
+        for (uint256 n; n < 4096; ++n) if (_create(address(this), n) == probe) return n + 1;
+        revert NonceNotFound();
     }
+    error NonceNotFound();
 
     /// @dev keccak256(rlp([sender, nonce]))[12:], for nonces under 2^16.
     function _create(address a, uint256 nonce) internal pure returns (address) {
@@ -295,18 +298,26 @@ contract PremisesTest is SiteFixture {
         assertTrue(s.reported & 1 != 0, "the Reach reported");
         assertTrue(s.reported & 2 != 0, "the pool reported");
         assertTrue(s.reported & 4 == 0, "no Parley on this chain: the bit is clear, not zero");
+        assertTrue(s.absent & 4 != 0, "and absent says why: there is no code at the Parley address");
         assertTrue(s.reported & 8 == 0, "no Postage either");
+        assertTrue(s.absent & 8 != 0);
+        // the Roles stand-in has code but no liveRoleCount: it answered nothing,
+        // and that is a third fact — neither reported nor absent
+        assertTrue(s.reported & 512 == 0 && s.absent & 512 == 0, "code that gave no answer is 'could not be read', not 'not deployed'");
+        assertTrue(s.absent & 1 == 0 && s.absent & 2 == 0 && s.absent & 16 == 0, "what answered is not absent");
         assertTrue(s.reported & 16 != 0, "the locks reported");
         assertTrue(s.reported & 1024 != 0, "the key registry reported a zero key, which is a zero and not an absence");
         assertTrue(s.reported & 4096 == 0, "no AgentCard until U17");
         bytes memory st = catalog_.state(id);
         assertTrue(has(st, bytes('"home":null')), "the block says null for the home room, never a number");
         assertTrue(has(st, bytes('"locks":0,')), "and a reported zero is the number zero, unquoted");
+        assertTrue(has(st, abi.encodePacked('"reported":', bytes(LibNum.str(s.reported)), ',"absent":', bytes(LibNum.str(s.absent)), ',')), "both words are in the block");
 
         // give the chain a Parley: the same read now sets the bit
         vm.etch(parley, address(new FakeParley()).code);
         s = catalog_.stateOf(id);
         assertTrue(s.reported & 4 != 0, "the bit follows the code");
+        assertTrue(s.absent & 4 == 0, "and absent clears with it");
         assertTrue(has(catalog_.state(id), bytes('"home":{"room":"')), "and the block carries the room");
     }
 
@@ -324,7 +335,9 @@ contract PremisesTest is SiteFixture {
         assertTrue(has(st, bytes('"baseSymbol":"\\u003c/script\\u003e\\u003cscript\\u003ex\\u003c/script\\u003e"')), "the symbol is escaped");
         assertTrue(has(st, bytes('"name":"\\u003c/script\\u003ex"')), "and so is the name trait");
         (, bytes memory live, ) = get(path3("token", "1", "live"));
-        assertEq(count(live, bytes("</script>")), 2, "the document closes exactly its two scripts: the state and the loader");
+        // three, and never a fourth: the state, the base64 payload (which
+        // cannot hold a `<`) and the loader; a hostile symbol or name adds none
+        assertEq(count(live, bytes("</script>")), 3, "the document closes exactly its three scripts: the state, the payload and the loader");
         (, bytes memory sj, ) = get(path3("token", "1", "state.json"));
         assertEq(sj, st, "the JSON route serves the same bytes");
     }

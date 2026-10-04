@@ -150,9 +150,15 @@ const engineShard = Buffer.from(site.plan.body[0].data.slice(2), "hex");
 const hay = Buffer.from(code).toString("hex");
 ok("it holds none of the artwork's bytes", !hay.includes(engineShard.subarray(0, 32).toString("hex")),
    "the router has a copy of the document — then it is infrastructure, not convenience");
-ok("the Premises pins the renderer, the engine, the catalog, the crest and the hub",
-   [["RENDERER()", site.renderer], ["ENGINE()", site.engine], ["CATALOG()", site.catalog], ["CREST()", site.crest], ["HUB()", site.hub]]
-     .every(async ([fn, want]) => (await c.read(site.premises, fn)).slice(-40) === want.slice(2).toLowerCase()));
+/*  Awaited one by one: the first draft wrote this as `.every(async …)`,
+    which returns a Promise for every element and so passed vacuously. */
+let pinned = 0;
+for (const [fn, want] of [["RENDERER()", site.renderer], ["ENGINE()", site.engine], ["CATALOG()", site.catalog], ["CREST()", site.crest], ["HUB()", site.hub]]) {
+  if ((await c.read(site.premises, fn)).slice(-40) === want.slice(2).toLowerCase()) pinned++;
+}
+eq("the Premises pins the renderer, the engine, the catalog, the crest and the hub", pinned, 5);
+ok("every function on the ABI is a view or pure", abi.filter((f) => f.type === "function").every((f) => ["view", "pure"].includes(f.stateMutability)));
+ok("the ABI has no fallback and no receive", !abi.some((f) => f.type === "fallback" || f.type === "receive"));
 console.log("      the tokens render identically whether this contract exists,");
 console.log("      is abandoned, or is replaced by something else entirely");
 

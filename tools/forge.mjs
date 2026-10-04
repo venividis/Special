@@ -759,9 +759,12 @@ for (const file of files) {
   const contracts = out.contracts[file] || {};
   for (const [cname, c] of Object.entries(contracts)) {
     const abi = c.abi || [];
+    /*  `--match` is a substring of the test's name, its contract's name or
+        its file (`--match Premises` runs test/Premises.t.sol), as forge's
+        own --match-test / --match-contract / --match-path would together. */
     const tests = abi.filter((f) =>
       f.type === "function" && /^test/.test(f.name || "") &&
-      (!MATCH || f.name.includes(MATCH)));
+      (!MATCH || f.name.includes(MATCH) || cname.includes(MATCH) || file.includes(MATCH)));
     if (!tests.length) continue;
 
     console.log(`\n  \x1b[1m${cname}\x1b[0m  \x1b[2m${file}\x1b[0m`);

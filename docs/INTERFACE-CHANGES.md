@@ -69,6 +69,7 @@ Behaviour decided in the same pass, outside the interfaces:
 | `IRenderer` | `AGENTCARD() → address` | Face 2 is `AgentCard.registration(id)` once the card has code and face 1 until then (DESIGN §4.6); the renderer needs the pinned address. Codeless until U17. |
 | `ICatalog` | `routes() → bytes` | `contractURI()` carries the route table (DESIGN §4.6); the Catalog owns it. |
 | `IPremises` | `CREST() → address` | `/token/<id>/crest.svg` is drawn by the Crest the renderer pins; the router reads it rather than asking the renderer per request. |
+| `TokenState` | `uint32 absent` appended after `reported` | DESIGN §5.5 wants a clear bit printed as "not deployed on this chain" when `extcodesize` was zero and "could not be read at block N" when the call reverted; one word per satellite cannot say which. `absent` carries the same bits, set where there was no code. The state block gains `"absent":<n>` beside `"reported"`. Appended, so the struct's prefix is unchanged. |
 
 Nothing in `IIntact`, `IReach`, `IPool`, `IParley`, `ILaunchpad`, `ISteward`,
 `IPostage` or `ILocks` changed.

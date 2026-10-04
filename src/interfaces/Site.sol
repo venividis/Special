@@ -40,6 +40,11 @@ struct TokenState {
     ///      8 postage, 16 locks, 32 launchpad, 64 steward, 128 router,
     ///      256 market, 512 roles, 1024 keys, 2048 nameplate, 4096 agentcard
     uint32  reported;
+    /// @dev U7 addition, appended: the same bits, set where `extcodesize`
+    ///      was zero. `reported` clear and `absent` clear is a contract that
+    ///      has code and gave no answer ("could not be read at block N");
+    ///      `absent` set is "not deployed on this chain" (DESIGN §5.5).
+    uint32  absent;
 }
 
 interface IEngine {

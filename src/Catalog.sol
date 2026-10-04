@@ -704,7 +704,23 @@ contract CatalogText is Templated {
         "BadDestination();StillSpeaking(uint64);AlreadyCalled();NotCalled();NotYet(uint64);AlreadyAttested();StaleNonce();Void();"
         "NotReach(address);VenueDrifted(address,bytes32,bytes32);VenueAbsent(uint8);BadPath();HookedKey(address);"
         "QuoteResult(uint256,uint256,uint160);NotListed(uint256);AlreadyListed(uint256);FingerprintMoved(bytes32,bytes32);"
-        "FloorBroken(address,uint256,uint256);SealsTooShort(uint64,uint64,uint64);NotCurator();IsFrozen();BadPanel()";
+        "FloorBroken(address,uint256,uint256);SealsTooShort(uint64,uint64,uint64);NotCurator();IsFrozen();BadPanel();"
+        /*  Added in U7 after tools/verify.mjs learned to diff this table
+            against the compiled ABIs of every contract a panel calls: the
+            fifty-eight below were declared by those contracts and absent
+            here, so a panel decoding an estimateGas revert would have shown
+            a bare selector. The gate now fails the build on the next one. */
+        "AllowanceStuck(address,address);AlreadyGraduated(uint256);AlreadyListed();AmountTooLarge(uint256);"
+        "ApproveFailed(address,address,uint256);BadCurveParameters();BadDecimals();BadDelta(int128,int128);BadExpiry();"
+        "BadHands();BadIndex();BadKeyType();BadPriceLimit();BadReplyWindow(uint64);BadSignature();BadThreshold();"
+        "CreatorShareTooHigh(uint16);DeadlineTooFar(uint64);DivByZero();ERC20CallFailed(address);EmptyKey();"
+        "ExpirationInThePast(uint64);Expired(uint64);FairWindowTooLong(uint64);FeeTooHigh(uint16);HubUnreadable();"
+        "InexactERC20Transfer(address,uint256,uint256);IrrevocableUnsupported();ManifestBusy();MulOverflow();NoLiquidity();"
+        "NoQuote(uint8);NoSuchStamp(uint256);NotEnoughCredit(uint256,uint256);NotEntitled();NotHeld();NotKiln();NotListed();"
+        "NotLocked(uint256);NotOwnerOrApproved(uint256,address);NotPoolManager();PieceLeft(address,uint256);PiecesFull();"
+        "Reentered();Stale(uint256);StampPending(uint256);StartsInThePast(uint64);StillLocked(uint256,uint64);TooManyFloors();"
+        "UnknownRecipe(uint8);UnsupportedCollection(address);UnsupportedSchedule();WrongChain();WrongCommitment();"
+        "WrongPrice(uint256,uint256);WrongTarget();ZeroInput();ZeroRecipient()";
 
     /// @dev `name=signature;` — the topics the panels filter logs with.
     string internal constant EVENTS =
@@ -858,7 +874,7 @@ contract CatalogState is Templated {
         '"launchCount":\x02,"curve":\x02,"name":"\x04","fingerprint":"\x04",'
         '"clocks":{"sealedUntil":\x02,"marketSealedUntil":\x02,"userExpires":\x02,"transferSealUntil":\x02,"createdAt":\x02},'
         '"market":\x04,"inbox":\x04,"home":\x04,"commons":\x04,"key":\x04,"launches":\x04,"locks":\x04,'
-        '"steward":\x04,"roles":\x04,"holderKeyId":\x04,"reported":\x02,';
+        '"steward":\x04,"roles":\x04,"holderKeyId":\x04,"reported":\x02,"absent":\x02,';
 
     string internal constant TPL_COLLECTION =
         '"price":"\x02","minted":\x02,"open":\x04,"recent":\x04,"commons":\x04,';
@@ -882,7 +898,7 @@ contract CatalogState is Templated {
 
     string internal constant TPL_SERVICES_OF =
         '{"schema":"intact.services/1","token":\x02,"chainId":\x02,"hub":"\x01","holder":"\x01","reach":"\x01","grip":"\x01",'
-        '"epoch":\x02,"status":\x02,"reported":\x02,"fingerprint":"\x04","live":"/token/\x02/live",'
+        '"epoch":\x02,"status":\x02,"reported":\x02,"absent":\x02,"fingerprint":"\x04","live":"/token/\x02/live",'
         '"state":"/token/\x02/state.json","door":"/token/\x02/live?as=\\u003ckey\\u003e","catalog":"/services.json"}';
 
     string internal constant TPL_OPEN =
@@ -930,7 +946,7 @@ contract CatalogState is Templated {
         return _fill(bytes(TPL_TOKEN), abi.encode(
             price, s.owner, s.reach, s.grip, c.guardian, c.user, c.agentWallet, c.proposedWallet, feeSink,
             s.epoch, s.status, s.locked, c.lockCount, c.guardianHold, c.feesToGrip, c.pinnedFace, c.launchCount, c.curve,
-            s.sealedUntil, s.marketSealedUntil, s.userExpires, s.transferSealUntil, c.createdAt, s.reported
+            s.sealedUntil, s.marketSealedUntil, s.userExpires, s.transferSealUntil, c.createdAt, s.reported, s.absent
         ), B);
     }
 
@@ -966,7 +982,7 @@ contract CatalogState is Templated {
         bytes[] memory B = new bytes[](1);
         B[0] = _hex(s.fingerprint, 32);
         return _fill(bytes(TPL_SERVICES_OF), abi.encode(
-            s.id, block.chainid, hub, s.owner, s.reach, s.grip, s.epoch, s.status, s.reported, s.id, s.id, s.id
+            s.id, block.chainid, hub, s.owner, s.reach, s.grip, s.epoch, s.status, s.reported, s.absent, s.id, s.id, s.id
         ), B);
     }
 
@@ -1278,7 +1294,12 @@ contract Catalog {
 
     /// @notice Everything the shell's first paint needs, each satellite
     ///         behind `extcodesize` AND a raw staticcall. A clear `reported`
-    ///         bit means "not reported", never "0".
+    ///         bit means "not reported", never "0" — and `absent` says WHY:
+    ///         its bit is set when there was no code at the address, clear
+    ///         when there was code and the call still gave no answer. The
+    ///         shell prints the first as "not deployed on this chain" and
+    ///         the second as "could not be read at block N" (DESIGN §5.5);
+    ///         one word per satellite could not have told them apart.
     function stateOf(uint256 id) public view returns (TokenState memory s) {
         IIntact hub = IIntact(HUB);
         s.id = id;
@@ -1293,9 +1314,11 @@ contract Catalog {
         s.locked = c.lockCount != 0 || c.guardianHold;
         s.fingerprint = hub.getStateFingerprint(id);
 
+        if (s.reach.code.length == 0) s.absent |= BIT_REACH;
         (bool ok, bytes memory ret) = _probe(s.reach, abi.encodeCall(IReach.sealedUntil, ()), 32);
         if (ok) { s.sealedUntil = uint64(uint256(bytes32(ret))); s.reported |= BIT_REACH; }
 
+        if (POOL.code.length == 0) s.absent |= BIT_POOL;
         (ok, ret) = _probe(POOL, abi.encodeCall(IPool.marketOf, (id)), 32 * 16);
         if (ok) {
             Market memory m = abi.decode(ret, (Market));
@@ -1317,6 +1340,7 @@ contract Catalog {
         uint8[10] memory L = [17, 5, 1, 1, 1, 1, 7, 1, 1, 1];
         uint32 bit = BIT_PARLEY;
         for (uint256 i; i < 10; ++i) {
+            if (T[i].code.length == 0) s.absent |= bit;
             (ok, ) = _probe(T[i], abi.encodeWithSelector(F[i], G[i]), uint256(L[i]) * 32);
             if (ok) s.reported |= bit;
             bit <<= 1;
