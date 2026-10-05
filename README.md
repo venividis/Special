@@ -18,7 +18,8 @@ This repository merges four earlier projects by the same author: ANIMA
 (Cutting-edge-technologically-advanced-NFT), IPSEITY (Most-Advanced-NFT-Possible), ANIMA v7
 (MASTER-NFT-PROJECT) and Pixel-Garden. `research/` holds the source-level reads of each, the 2026
 ecosystem research, the candidate architectures and the judges' verdicts. `DESIGN.md` and
-`BUILD-PLAN.md` are the authoritative specification once the synthesis step lands them.
+`BUILD-PLAN.md` are the authoritative specification; `docs/CHECKPOINT.md` says what is built, what is
+verified and how to continue.
 
 ## Toolchain
 
@@ -32,4 +33,5 @@ npm run forge       # tools/forge.mjs   — runs test/*.t.sol on @ethereumjs/vm 
 npm run check       # both
 ```
 
-Status: design complete, implementation starting. Unaudited; nothing is deployed.
+Status: waves 0–2 of the build plan are merged except the real app shell (U9) and the deployment
+tooling (U10); `npm run check` runs 271 tests on both hub builds. Unaudited; nothing is deployed.
