@@ -15,3 +15,6 @@ dist/
 .testnet-key
 .testnet-crew
 *.ens-secret
+
+# deploy journals: a crashed run resumes from one; the record is what is committed
+deployments/*.journal.json
