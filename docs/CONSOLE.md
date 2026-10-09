@@ -121,8 +121,13 @@ late wallet joins, and the gesture asks"*.
 
 The choice is remembered in `localStorage["intact.wallet"]` inside
 `try/catch`, as a convenience only. Clicking your own address in the crest
-clears it and asks again. Closing the tab is logout; there is no SIWE, no
-nonce, no server.
+clears it and asks again; until the picker is answered the page is in the
+dismissed state above (with one announcer there is no picker: the page is
+disconnected first and that wallet is asked again; it reconnects when the
+wallet answers, and a decline leaves it disconnected). A wallet the page
+dropped, or passed over on a late pick, is never heard again: its
+`chainChanged` and `accountsChanged` move nothing for the wallet in use.
+Closing the tab is logout; there is no SIWE, no nonce, no server.
 
 **Order on the chosen provider**, before anything else:
 `eth_chainId` → compare to `INTACT.chainId` → on mismatch `body.dataset.chain
@@ -435,13 +440,13 @@ different lanes, and the two that would have collided outright are renamed
 | `body[data-mode]` | `viewer` \| `console` \| `session` |
 | `body[data-rights]` | the decimal bits; `""` before connect and when the read failed |
 | `body[data-chain]` | `ok` \| `wrong` \| `none` |
-| `#crest` | the wallet cell: *read only — connect* / *<wallet> · 0x12… 3456*; on a wrong chain *your wallet is on <name>; this token lives on <name>*; clicking an address drops the remembered choice |
+| `#crest` | the wallet cell: *read only — connect* / *<wallet> · 0x12… 3456*; on a wrong chain *your wallet is on <name>; this token lives on <name>*; clicking the wallet cell — the address, the *read only — connect* text or the chain sentence — drops the remembered choice and asks again (§2) |
 | `#connect`, `#switch` | the gesture controls; neither exists in the viewer (`#switch` is rendered only when `mode !== "viewer"`). `#connect` is visible while the chain is `ok` and nobody is connected, and also after a dismissed picker (§2), so it can ask again |
 | `#picker button[data-rdns]` | the EIP-6963 picker |
 | `#lanes a[data-lane=<name>]` | the nav; absent or `aria-disabled="true"` in the viewer **without a provider** (with one, the viewer loads panels through `engine.panel(i)`); no `agent` link until the AgentCard has code |
 | `#lane-home`, `#lane-<name>` | one section per lane; `.on` on the visible one; `dataset.loaded="1"` once a panel was injected |
 | `#tick` | the ticker (`.ok`, `.err`, `.fade`) |
-| `#facts [data-fact=<key>]` | Home facts: `id chain holder epoch status locked reach grip seal market fingerprint name engine catalog block` (`locked` reads *yes*/*no* from `INTACT.locked`, refreshed from `hub.locked(id)` after receipts); on the collection page `minted price` |
+| `#facts [data-fact=<key>]` | Home facts: `id chain holder epoch status locked reach grip seal market fingerprint name engine catalog block` (`locked` reads *yes*/*no* from `INTACT.locked`, refreshed after receipts from the same `hub.coreOf(id)` read as the other live facts — words 2 and 7, the lock count and the guardian hold, the rule `_locked` applies); on the collection page `minted price` |
 | `#chips .chip[data-bit=<name>][data-state=…]` | §6.3 |
 | `#rights-sentence` | Home's one sentence about who is reading: with no provider at all, the §2 sentence *no wallet in this browser; everything above is still true* (every mode) — or, when wallets announced and the picker was dismissed, *no wallet chosen; connect asks again*; else, after a successful `rightsOf`, the sentence for the bit that is not `HOLD` — `USE` *you are the user until <date>*, `CUSTODY` *an operator may move the token, not speak*, `GUARDIAN`, `SESSION` *a session speaks only through the Reach* (§3); `""` for the holder, a stranger, and while the read has no answer |
 | `#verified` | the self-hash footer (§8) |

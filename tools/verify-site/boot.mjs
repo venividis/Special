@@ -1,5 +1,5 @@
 /*───────────────────────────────────────────────────────────────────────────
-  INTACT · verify-site group "boot" — the shell itself (H §7.1 planned 103 sentences; 119 run, the rest split or added by review)
+  INTACT · verify-site group "boot" — the shell itself (H §7.1 planned 103 sentences; 137 run, the rest split or added by review)
 
   Twelve blocks, each on the runner's fresh chain: A build and boot, B the
   viewer ("the opaque origin boots the viewer and never offers connect"),
@@ -9,6 +9,25 @@
   shell's half of escaping, P the loader, G′ the slab's generic rules. The
   two BUILD-PLAN sentences this file owns end their blocks as `t.ok(...,
   "<sentence>")`, verbatim, so INVARIANTS can quote them.
+
+  Nine sentences in N landed with the shell's fix round (review round two,
+  each reproduced through the shim before the fix): a click inside the
+  picker does not spend the dismissal; clicking your own address with two
+  wallets enters the dismissed state — a read while the picker is open is
+  refused with the §2 sentence, no read reaches the dropped wallet until the
+  picker is answered, and the answer connects the chosen one; with one
+  announcer it asks that wallet again; a failed eth_chainId is not "chain
+  0"; an older rights read landing later is thrown away (the shim's queue is
+  bypassed by hand to stage the overtaking); a successful #switch refreshes
+  once; and the shim itself cannot click what a person cannot see.
+
+  Three more landed with the review of that round (round three, each
+  reproduced through the shim first): a wallet the page dropped, or passed
+  over on a late pick, moves nothing — its chainChanged and accountsChanged
+  are heard only while it is the provider in use; a stale rights read is
+  thrown away whether it answers or rejects, and an answer landing on a
+  wrong chain writes nothing; and with one announcer the crest click
+  disconnects the page honestly before asking, so a decline leaves it so.
 
   Setup this group performs on its chain (every id literal below refers to
   it): #1, #2, #3 minted to `me`; `setUser(1, renter, +7 d)`; a session on
@@ -70,7 +89,7 @@ export async function run(t, ctx) {
     const fact = (k) => page.text(`#facts [data-fact=${k}]`);
     t.ok(fact("id") === "1" && fact("chain") === "1" && fact("holder").toLowerCase() === S.owner && fact("epoch") === "1" && fact("status") === "Active",
       "Home prints the baked facts through textContent", `${fact("id")} ${fact("chain")} ${fact("holder")} ${fact("epoch")} ${fact("status")}`);
-    t.ok(ctx.gzipBytes <= 15_000, `the shell's gzip is under the ceiling and the routes are cold-measured (${ctx.gzipBytes.toLocaleString()} B gzip; the runner printed the cold gas)${ctx.gzipBytes > 14_000 ? " — over the 14,000 budget" : ""}`);
+    t.ok(ctx.gzipBytes <= 15_000, `the shell's gzip is under the ceiling and the routes are cold-measured (${ctx.gzipBytes.toLocaleString()} B gzip; the runner printed the cold gas)`);
     t.ok(page.innerHTMLWrites === 0, "nothing was assigned through innerHTML, by anybody, all run (checked again at the end)");
     page.close();
   }
@@ -223,6 +242,31 @@ export async function run(t, ctx) {
     const order = W.calls.map((x) => x.method);
     t.ok(order[0] === "eth_chainId" && order[1] === "eth_accounts" && order.indexOf("eth_requestAccounts") > order.indexOf("eth_accounts"), "quiet first, loud on a gesture", order.join(","));
     t.ok(W.lastIndex("eth_getCode") > W.firstIndex("eth_requestAccounts") && page.ctx.localStorage.getItem("intact.wallet") === W.info.rdns, "the remembered choice is a convenience, and the delegate check happens at connect", order.join(","));
+    /* the shim models a person, not the API: #connect is hidden once connected, and a hidden control
+       dispatches nothing — the group once clicked it here and the shell prompted (review, round two) */
+    const req = W.count("eth_requestAccounts");
+    const pressed = page.click(page.$("#connect")); await page.settle();
+    t.ok(page.$("#connect").hidden && pressed === false && W.count("eth_requestAccounts") === req, "the shim cannot click what a person cannot see: a hidden #connect dispatches nothing", `hidden ${page.$("#connect").hidden} pressed ${pressed} prompts ${W.count("eth_requestAccounts") - req}`);
+    /* CONSOLE §2: with one announcer there is no picker — clicking your own address asks that wallet again and stays connected */
+    const name0 = page.text("#c-wallet-v");
+    page.click(page.$("#c-wallet-v")); await page.settle(); await page.settle();
+    t.ok(W.count("eth_requestAccounts") === req + 1 && page.ctx.INTACT.ui.account() === checksum(ME, kec) && page.$("body").dataset.rights === "1" && page.text("#c-wallet-v") === name0 && /Shim Wallet · 0x/.test(name0),
+      "with one announcer, clicking your own address asks that wallet again and stays connected", `prompts +${W.count("eth_requestAccounts") - req} account ${page.ctx.INTACT.ui.account()} rights "${page.$("body").dataset.rights}" crest "${page.text("#c-wallet-v")}"`);
+    /* review, round three: the same click nulled the account and asked, so for the length of the wallet prompt
+       ui.account() was null under a crest that named the wallet, rights 1, #connect hidden, no intact:rights — and a
+       propose in that window was refused with "connect the holding wallet" under a crest that said it was. The page
+       is now disconnected first, honestly, and a decline leaves it so (CONSOLE §2); the sentence above holds because
+       the shim's wallet answers, this one holds the prompt open */
+    let held = null; W.override("eth_requestAccounts", () => new Promise((_, j) => { held = j; }));
+    const fired = []; page.ctx.addEventListener("intact:rights", (e) => fired.push(e.detail.bits));
+    page.click(page.$("#c-wallet-v")); await page.settle(); await page.settle();
+    const asked = typeof held === "function" && page.ctx.INTACT.ui.account() === null && page.ctx.INTACT.ui.rights() === null && page.$("body").dataset.rights === "" &&
+      page.text("#c-wallet-v") === "read only — connect" && !page.$("#connect").hidden && fired.length === 1 && fired[0] === null;
+    const detail = `asked ${asked}: account ${page.ctx.INTACT.ui.account()} rights ${page.ctx.INTACT.ui.rights()} body "${page.$("body").dataset.rights}" crest "${page.text("#c-wallet-v")}" connect hidden ${page.$("#connect").hidden} fired ${JSON.stringify(fired)}`;
+    if (held) held(Object.assign(new Error("User rejected the request."), { code: 4001 })); await page.settle(); await page.settle();
+    t.ok(asked && page.ctx.INTACT.ui.account() === null && page.$("body").dataset.rights === "" && !page.$("#connect").hidden && page.text("#c-wallet-v") === "read only — connect" && page.text("#tick") === "you declined to connect",
+      "with one announcer the page is disconnected while the wallet is asked again, and a decline leaves it so", `${detail}; declined: account ${page.ctx.INTACT.ui.account()} rights "${page.$("body").dataset.rights}" crest "${page.text("#c-wallet-v")}" tick "${page.text("#tick")}"`);
+    W.override("eth_requestAccounts", null);
     page.close();
   }
   {
@@ -262,6 +306,118 @@ export async function run(t, ctx) {
     page.close();
   }
   {
+    /* review, round two: the backdrop's dismissal was registered { once }, and a click anywhere inside the
+       card (its heading, the space between buttons) spent it — after that the backdrop never dismissed and
+       the only way out was to pick a wallet. A click inside the card must leave the dismissal intact,
+       first time and every time */
+    const WA = walletFor(c, me, { rdns: "io.a", name: "Wallet A" }), WB = walletFor(c, me, { rdns: "io.b", name: "Wallet B" });
+    const { page, ctx: vctx } = await bootToken(1, { wallets: [WA, WB], awaitReady: false });
+    await page.settle(); await page.settle();
+    page.click(page.$("#picker .card")); await page.settle();
+    const stillOpen = !page.$("#picker").hidden;
+    page.click(page.$("#picker")); await page.settle();
+    await vctx.INTACT.ui.ready; await page.settle();
+    const dismissed = page.$("#picker").hidden && page.$("body").dataset.chain === "none" && page.$("body").dataset.rights === "" && !page.$("#connect").hidden && page.text("#rights-sentence") === "no wallet chosen; connect asks again";
+    page.click(page.$("#connect")); await page.settle();
+    const reopened = !page.$("#picker").hidden && page.$$("#picker button[data-rdns]").length === 2;
+    page.click(page.$("#picker .card")); await page.settle();
+    page.click(page.$("#picker")); await page.settle();
+    t.ok(stillOpen && dismissed && reopened && page.$("#picker").hidden && WA.calls.length + WB.calls.length === 0,
+      "a click inside the picker does not spend the dismissal", `open after card ${stillOpen} dismissed ${dismissed} reopened ${reopened} hidden again ${page.$("#picker").hidden} calls ${WA.calls.length + WB.calls.length}`);
+    page.close();
+  }
+  {
+    /* review, round two: clicking your own address nulled the account without the rights path — a dismissed
+       re-opened picker left ui.rights() at 1, #connect hidden, the crest naming the dropped wallet and every
+       read still going to it. CONSOLE §2 now: with two or more announcers the page is in the dismissed state
+       until the picker is answered */
+    const WA = walletFor(c, me, { rdns: "io.a", name: "Wallet A" }), WB = walletFor(c, me, { rdns: "io.b", name: "Wallet B" });
+    const { page, ctx: vctx } = await bootToken(1, { wallets: [WA, WB], awaitReady: false });
+    await page.settle(); await page.settle();
+    page.click(page.$$("#picker button[data-rdns]")[1]); await page.settle();
+    await vctx.INTACT.ui.ready; await page.settle();
+    const ui = vctx.INTACT.ui, nB = WB.calls.length, fired = [];
+    const connected = ui.account() === checksum(ME, kec) && ui.rights() === 1 && /Wallet B · 0x/.test(page.text("#c-wallet-v"));
+    vctx.addEventListener("intact:rights", (e) => fired.push(e.detail.bits));
+    page.click(page.$("#c-wallet-v")); await page.settle();
+    const open = !page.$("#picker").hidden && page.$$("#picker button[data-rdns]").length === 2;
+    const during = ui.account() === null && ui.rights() === null && page.$("body").dataset.chain === "none" && page.$("body").dataset.rights === "" && page.text("#c-wallet-v") === "read only" && !page.$("#connect").hidden &&
+      page.text("#rights-sentence") === "no wallet chosen; connect asks again" && fired.length === 1 && fired[0] === null;
+    const refused = await t.refuses(() => ui.read(hub, "hub.custodyEpoch", [1n]), /^no wallet chosen; connect asks again$/, "clicking your own address drops the wallet into the dismissed state, and a read while the picker is open is refused with the §2 sentence");
+    page.click(page.$("#picker")); await page.settle(); await page.settle();
+    t.ok(connected && open && during && refused && ui.account() === null && ui.rights() === null && !page.$("#connect").hidden && WB.calls.length === nB && WA.calls.length === 0,
+      "after drop-then-dismiss the page is in the dismissed state, and no eth_call reached the dropped wallet", `connected ${connected} open ${open} during ${during} account ${ui.account()} rights ${ui.rights()} connect hidden ${page.$("#connect").hidden} B calls +${WB.calls.length - nB} A calls ${WA.calls.length} fired ${JSON.stringify(fired)}`);
+    /* the picker, answered: the chosen wallet connects and every read goes to it */
+    page.click(page.$("#connect")); await page.settle();
+    const nB2 = WB.calls.length;
+    page.click(page.$$("#picker button[data-rdns]").find((b) => b.dataset.rdns === "io.a")); await page.settle(); await page.settle(); await page.settle();
+    t.ok(ui.account() === checksum(ME, kec) && ui.rights() === 1 && page.$("body").dataset.rights === "1" && /Wallet A · 0x/.test(page.text("#c-wallet-v")) && page.$("#connect").hidden && ethCalls(WA).length >= 1 && WB.calls.length === nB2 && WA.count("eth_requestAccounts") === 1,
+      "the picker answered after a drop connects the chosen wallet, and the dropped one is still never asked", `account ${ui.account()} rights ${ui.rights()} crest "${page.text("#c-wallet-v")}" A calls ${ethCalls(WA).length} B +${WB.calls.length - nB2}`);
+    page.close();
+  }
+  {
+    /* review, round three: a wallet dropped from the crest, or passed over on a late pick, stayed wired, so its
+       chainChanged moved the gate for the wallet that replaced it — a read on the chosen wallet was refused with the
+       dropped one's chain sentence, and in the inverse case a read passed the gate to a wallet on Base for one
+       eth_chainId round trip; its accountsChanged re-read everything through the chosen one. Three stagings, one
+       sentence: B dropped for A with A on Ethereum, then with A on Base; A passed over for B on a late pick */
+    const drop = async (optsA) => {
+      const WA = walletFor(c, me, { rdns: "io.a", name: "Wallet A", ...optsA }), WB = walletFor(c, me, { rdns: "io.b", name: "Wallet B" });
+      const { page, ctx: vctx } = await bootToken(1, { wallets: [WA, WB], awaitReady: false });
+      await page.settle(); await page.settle();
+      page.click(page.$$("#picker button[data-rdns]")[1]); await page.settle(); await vctx.INTACT.ui.ready; await page.settle();
+      page.click(page.$("#c-wallet-v")); await page.settle();
+      page.click(page.$$("#picker button[data-rdns]").find((b) => b.dataset.rdns === "io.a")); await page.settle(); await page.settle(); await page.settle();
+      return { WA, WB, page, ui: vctx.INTACT.ui };
+    };
+    const one = await drop({});
+    const onA = one.ui.account() === checksum(ME, kec) && one.page.$("body").dataset.chain === "ok";
+    const nA = one.WA.calls.length, nB = one.WB.calls.length;
+    one.WB.setChain(0x2105);
+    const stillOk = one.page.$("body").dataset.chain === "ok" && /Wallet A · 0x/.test(one.page.text("#c-wallet-v"));
+    let epoch = null; try { epoch = (await one.ui.read(hub, "hub.custodyEpoch", [1n])).w(0); } catch {}
+    await one.page.settle();
+    one.WB.setAccounts([renter.from.toString()]); await one.page.settle(); await one.page.settle();
+    const quiet = one.WA.calls.length === nA + 1 && one.WB.calls.length === nB;
+    const d1 = `A: onA ${onA} chain after B's chainChanged ${one.page.$("body").dataset.chain} crest "${one.page.text("#c-wallet-v")}" read ${epoch} A +${one.WA.calls.length - nA} (${one.WA.calls.slice(nA).map((x) => x.method).join(",")}) B +${one.WB.calls.length - nB}`;
+    one.page.close();
+    const two = await drop({ chainId: 0x2105 });
+    const wrongOnA = two.page.$("body").dataset.chain === "wrong" && ethCalls(two.WA).length === 0;
+    two.WB.setChain(1);
+    const stillWrong = two.page.$("body").dataset.chain === "wrong";
+    let msg = null; try { await two.ui.read(hub, "hub.custodyEpoch", [1n]); } catch (e) { msg = e.message; }
+    await two.page.settle(); await two.page.settle();
+    const noRead = ethCalls(two.WA).length === 0 && /on Base; this token lives on Ethereum/.test(msg || "");
+    const d2 = `A on Base: wrong ${wrongOnA} chain after B's chainChanged(0x1) ${stillWrong ? "wrong" : two.page.$("body").dataset.chain} read "${msg}" A eth_call ${ethCalls(two.WA).length}`;
+    two.page.close();
+    const WA = walletFor(c, me, { rdns: "io.a", name: "A", connected: false }), WB = walletFor(c, me, { rdns: "io.b", name: "B", connected: false });
+    const { page, ctx: vctx } = await bootToken(1, { wallet: WA });
+    WB.attach(vctx, page); await page.settle();
+    page.click(page.$("#connect")); await page.settle();
+    page.click(page.$$("#picker button[data-rdns]").find((b) => b.dataset.rdns === "io.b")); await page.settle(); await page.settle();
+    const onB = /B · 0x/.test(page.text("#c-wallet-v")) && page.$("body").dataset.chain === "ok";
+    const nB3 = WB.calls.length;
+    WA.setChain(0x2105);
+    const lateOk = page.$("body").dataset.chain === "ok";
+    await page.settle(); await page.settle();
+    t.ok(onA && stillOk && epoch === 1n && quiet && wrongOnA && stillWrong && noRead && onB && lateOk && WB.calls.length === nB3,
+      "a wallet the page dropped moves nothing: its chainChanged and accountsChanged neither move the gate nor cause a read", `${d1}; ${d2}; late pick: onB ${onB} chain after A's chainChanged ${lateOk ? "ok" : page.$("body").dataset.chain} B +${WB.calls.length - nB3}`);
+    page.close();
+  }
+  {
+    /* review, round two: a failed eth_chainId left walletChain at 0 and the crest read "your wallet is on
+       chain 0". Zero and no answer are different facts here too: the chain is unreachable, no read is sent,
+       and the move is still offered */
+    const W = walletFor(c, me);
+    W.override("eth_chainId", () => { throw Object.assign(new Error("boom"), { code: -32603 }); });
+    const { page } = await bootToken(1, { wallet: W });
+    const crest = page.text("#c-wallet-v");
+    t.ok(!/chain 0/.test(crest) && crest === "your wallet is on an unreachable chain; this token lives on Ethereum" && page.$("body").dataset.chain === "wrong" && ethCalls(W).length === 0 && !page.$("#switch").hidden &&
+      page.text("#verified") === "self-consistent; wallet on an unreachable chain, not this token's chain",
+      "a failed eth_chainId is not chain 0: the crest says the chain is unreachable, reads nothing, and offers the move", `crest "${crest}" chain ${page.$("body").dataset.chain} calls ${ethCalls(W).length} verified "${page.text("#verified")}"`);
+    page.close();
+  }
+  {
     /* discovery happened before this document existed: document.open() erases the wallets' listeners,
        so a loader that did not capture the announcements finds no wallet at all. The same two wallets,
        the capture lines cut from the served document — the shim's open() erases exactly as a browser's */
@@ -295,6 +451,13 @@ export async function run(t, ctx) {
     t.ok(pre && sw.length === 1 && sw[0].params[0].chainId === "0x1" && W.count("wallet_addEthereumChain") === 0, "the wrong chain is refused before any read, and offers the move", `calls ${ethCalls(W).length} chain ${page.$("body").dataset.chain} sw ${sw.length} verified "${page.text("#verified")}"`);
     t.ok(callsWith(W, hub, sel("rightsOf(uint256,address)")).length >= 1 && page.$("body").dataset.chain === "ok" && page.$$("#lanes a").length > 0 && page.$$("#lanes a").every((a) => a.getAttribute("aria-disabled") !== "true"),
       "chainChanged recomputes", `rights calls ${callsWith(W, hub, sel("rightsOf(uint256,address)")).length} chain ${page.$("body").dataset.chain}`);
+    /* review, round two: the resolved wallet_switchEthereumChain refreshed again after the chainChanged event
+       had — every read twice. One eth_chainId at boot, one from the event, one rightsOf, one eth_accounts.
+       Once, for a wallet that emits chainChanged before its request resolves (the shim's order); a wallet that
+       resolves first and emits on a later tick re-reads eth_chainId once more, by design — the resolved request
+       is the only refresh for a wallet that switched without saying so (round three, info) */
+    t.ok(W.count("eth_chainId") === 2 && callsWith(W, hub, sel("rightsOf(uint256,address)")).length === 1 && W.count("eth_accounts") === 1,
+      "a successful #switch refreshes every read once", `eth_chainId ${W.count("eth_chainId")} rightsOf ${callsWith(W, hub, sel("rightsOf(uint256,address)")).length} eth_accounts ${W.count("eth_accounts")}`);
     const r0 = page.$("body").dataset.rights;
     W.setAccounts([renter.from.toString()]); await page.settle(); await page.settle();
     const rc = callsWith(W, hub, sel("rightsOf(uint256,address)"));
@@ -332,6 +495,57 @@ export async function run(t, ctx) {
     const msg = await t.refuses(() => vctx.INTACT.ui.read(hub, "hub.custodyEpoch", [1n]), /your wallet is on Base; this token lives on Ethereum/, "a read parked between chainChanged and the re-read is refused by the gate, not answered by the new chain");
     if (release) release("0x2105"); await page.settle(); await page.settle();
     t.ok(atOnce && ethCalls(W).length === n && page.$("body").dataset.chain === "wrong" && /Base/.test(msg || ""), "the gate moved on the event itself, and the re-read only confirmed it", `atOnce ${atOnce} calls ${n} → ${ethCalls(W).length} chain ${page.$("body").dataset.chain}`);
+    page.close();
+  }
+  {
+    /* review, round two: rights() wrote after its await with no sequence check, so an older read could land
+       after a newer one and publish a dropped account's bits. The shim's one-at-a-time queue cannot stage
+       that (the second read waits behind the first), so the first rightsOf is held OUTSIDE the queue by
+       replacing the provider's request for one call: the holder's read is held open, accountsChanged moves
+       the page to the renter, the renter's read answers 4, then the holder's answer (1) is released — and
+       must be thrown away */
+    const W = walletFor(c, me);
+    const { page, ctx: vctx } = await bootToken(1, { wallet: W });
+    const orig = W.provider.request; let hold = null;
+    W.provider.request = (req) => (!hold && req.method === "eth_call" && String(req.params[0].data).toLowerCase().startsWith(sel("rightsOf(uint256,address)"))) ? new Promise((r) => { hold = r; }) : orig(req);
+    W.setAccounts([ME]); await page.settle();
+    W.provider.request = orig;
+    const held = typeof hold === "function";
+    W.setAccounts([renter.from.toString()]); await page.settle(); await page.settle();
+    const mid = page.$("body").dataset.rights;
+    if (held) hold(await c.read(hub, "rightsOf(uint256,address)", [1, ME]));
+    await page.settle(); await page.settle();
+    t.ok(held && mid === "4" && page.$("body").dataset.rights === "4" && vctx.INTACT.ui.rights() === 4 && vctx.INTACT.ui.account() === checksum(renter.from.toString(), kec),
+      "only the latest rights read writes the body: an older read landing later is thrown away", `held ${held} ${mid} → ${page.$("body").dataset.rights} rights() ${vctx.INTACT.ui.rights()} account ${vctx.INTACT.ui.account()}`);
+    page.close();
+  }
+  {
+    /* review, round three: the sequence check sat after the await inside the try, so it guarded a stale read's
+       SUCCESS only — a stale read that rejected after the newer one landed still printed "could not be read" over a
+       read that had succeeded and fired intact:rights again; and a stale answer landing after chainChanged, before
+       the pending refresh had reached rights() (its eth_chainId still in flight), wrote its bits under a wrong
+       chain. Both stagings hold the holder's rightsOf outside the shim's queue, as above */
+    const hold = (W, asAnswer) => { const orig = W.provider.request; let h = null; W.provider.request = (req) => (!h && req.method === "eth_call" && String(req.params[0].data).toLowerCase().startsWith(sel("rightsOf(uint256,address)"))) ? new Promise((res, rej) => { h = asAnswer ? res : rej; }) : orig(req); return () => { W.provider.request = orig; return h; }; };
+    const W = walletFor(c, me);
+    const { page, ctx: vctx } = await bootToken(1, { wallet: W });
+    let release = hold(W, false); W.setAccounts([ME]); await page.settle(); const rej = release();
+    W.setAccounts([renter.from.toString()]); await page.settle(); await page.settle();
+    const fired = []; vctx.addEventListener("intact:rights", (e) => fired.push({ bits: e.detail.bits, chain: page.$("body").dataset.chain }));
+    const tick0 = page.text("#tick"), mid = page.$("body").dataset.rights;
+    if (rej) rej(Object.assign(new Error("boom"), { code: -32000 }));
+    await page.settle(); await page.settle();
+    const rejectionIgnored = typeof rej === "function" && mid === "4" && page.text("#tick") === tick0 && fired.length === 0 && page.$("body").dataset.rights === "4" && vctx.INTACT.ui.rights() === 4;
+    const d1 = `rejection: held ${typeof rej === "function"} body ${mid} → ${page.$("body").dataset.rights} tick "${tick0}" → "${page.text("#tick")}" fired ${JSON.stringify(fired)}`;
+    release = hold(W, true); W.setAccounts([ME]); await page.settle(); const res = release();
+    let relChain = null; W.override("eth_chainId", () => new Promise((r) => { relChain = r; }));
+    W.setChain(0x2105);
+    const wrongNow = page.$("body").dataset.chain === "wrong" && vctx.INTACT.ui.rights() === null;
+    if (res) res(await c.read(hub, "rightsOf(uint256,address)", [1, ME]));
+    await page.settle(); await page.settle();
+    const during = { rights: vctx.INTACT.ui.rights(), fired: fired.length, chain: page.$("body").dataset.chain };
+    if (relChain) relChain("0x2105"); await page.settle(); await page.settle();
+    t.ok(rejectionIgnored && typeof res === "function" && wrongNow && during.rights === null && during.fired === 0 && page.$("body").dataset.rights === "" && page.$("body").dataset.chain === "wrong",
+      "a stale rights read is thrown away whether it answers or rejects, and an answer landing on a wrong chain writes nothing", `${d1}; chain: held ${typeof res === "function"} wrongNow ${wrongNow} during ${JSON.stringify(during)} after rights "${page.$("body").dataset.rights}" chain ${page.$("body").dataset.chain} fired ${JSON.stringify(fired)}`);
     page.close();
   }
   {

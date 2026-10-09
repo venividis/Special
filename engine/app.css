@@ -20,14 +20,22 @@
   but read this first. --bad is failure, a refusal, or a deadline that has
   passed. --ok is a live connection, a landed transaction, a verified
   document.
+
+  The shell's fix round (U9, review round two) paid for its fixes partly
+  here, cutting only what nothing read: the two palette tokens no rule used
+  (--void-3, --a-dim), the two layout constants (--crest 46px, --col 300px —
+  each now written where it is used), a cursor on anchors that already
+  carry an href, and a background a [disabled] button already had from .b;
+  the slab is styled by its id (#cslab) rather than a class the shell never
+  read. 42 B of gzip in all. The language above is untouched.
 ═══════════════════════════════════════════════════════════════════════════*/
 :root{
   /* --h is set by the shell on documentElement before first paint from the
      token's id ((id * 137) % 360): every token its own colour, the collection hue 0 */
-  --h:34;--a:hsl(var(--h) 92% 66%);--a-dim:hsl(var(--h) 62% 44%);--a-ghost:hsl(var(--h) 92% 66% / .1);
-  --void:#04050a;--void-2:#070912;--void-3:#0b0e18;--rule:#151a26;--rule-2:#212838;--rule-3:#2e3648;
+  --h:34;--a:hsl(var(--h) 92% 66%);--a-ghost:hsl(var(--h) 92% 66% / .1);
+  --void:#04050a;--void-2:#070912;--rule:#151a26;--rule-2:#212838;--rule-3:#2e3648;
   --dim:#5d6780;--mid:#8b95ad;--txt:#c8d0e2;--lit:#eef2fb;--ok:#5fe3b4;--warn:#ffc95c;--bad:#ff6b63;
-  --crest:46px;--col:300px}
+  }
 html,body{background:var(--void);color:var(--txt);margin:0;height:100%;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
 /* the document arrives rather than appearing — an animation, not a class a script could fail to add */
 body{opacity:0;animation:arrive .9s forwards;overflow:hidden}
@@ -45,7 +53,7 @@ a{color:var(--a);text-decoration:none}
 h1{font-size:13px;color:var(--lit);margin:16px 0 6px;font-weight:400}
 h3{font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--dim);margin:14px 0 8px;font-weight:400}
 /*──── the crest ────*/
-#crest{position:fixed;top:0;left:0;right:0;z-index:7;display:flex;height:var(--crest);background:var(--void);border-bottom:1px solid var(--rule)}
+#crest{position:fixed;top:0;left:0;right:0;z-index:7;display:flex;height:46px;background:var(--void);border-bottom:1px solid var(--rule)}
 .cell{display:flex;flex-direction:column;justify-content:center;gap:1px;padding:0 13px;border-right:1px solid var(--rule);min-width:0;overflow:hidden}
 .cell .v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;word-break:normal}
 #c-wallet{flex-direction:row;align-items:center;gap:7px;margin-left:auto;border-right:0;border-left:1px solid var(--rule)}
@@ -57,7 +65,7 @@ h3{font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--dim);
 .led.bad{background:var(--bad)}
 @media(max-width:560px){#c-chain{display:none}}
 /*──── the two columns; on a phone the lane is a sheet over the state column ────*/
-#body{position:fixed;left:0;right:0;top:var(--crest);bottom:28px;display:grid;grid-template-columns:var(--col) minmax(0,1fr)}
+#body{position:fixed;left:0;right:0;top:46px;bottom:28px;display:grid;grid-template-columns:300px minmax(0,1fr)}
 #col{overflow-y:auto;overflow-x:hidden;padding:18px 16px 40px}
 #lane{overflow-y:auto;overflow-x:hidden;padding:18px 20px 40px;border-left:1px solid var(--rule);max-width:680px}
 section{display:none}
@@ -71,7 +79,7 @@ section.on{display:block}
 #qr svg{display:block;width:100%;height:auto}
 /*──── the verb row ────*/
 #lanes{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 14px}
-#lanes a{display:block;padding:7px 12px;border-bottom:2px solid transparent;font-size:12px;color:var(--txt);cursor:pointer}
+#lanes a{display:block;padding:7px 12px;border-bottom:2px solid transparent;font-size:12px;color:var(--txt)}
 #lanes a.on{border-bottom-color:var(--a);color:var(--lit);background:var(--a-ghost)}
 /* a lane that cannot open keeps its word, marked with a middot, not a padlock */
 #lanes a[aria-disabled=true]{color:#3d4457}
@@ -79,7 +87,7 @@ section.on{display:block}
 .b{display:block;width:100%;margin:10px 0 0;padding:9px;cursor:pointer;background:transparent;border:1px solid var(--a);color:var(--a);font:inherit;font-size:10px;letter-spacing:.24em;text-transform:uppercase}
 .b.g{border-color:var(--rule-3);color:var(--mid)}
 .b.red{border-color:var(--bad);color:var(--bad)}
-.b[disabled]{border-color:var(--rule);color:#3d4457;cursor:default;background:transparent}
+.b[disabled]{border-color:var(--rule);color:#3d4457;cursor:default}
 input,textarea,select{width:100%;padding:8px 9px;margin:4px 0 8px;background:var(--void-2);color:var(--lit);border:1px solid var(--rule-2);border-radius:0;font:inherit;font-size:12px}
 .kv{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:6px 0;border-bottom:1px solid var(--rule)}
 .kv:last-child{border-bottom:0}
@@ -102,8 +110,8 @@ button.chip{cursor:pointer}
 /*──── the confirm slab ────*/
 #cbox{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;background:rgba(4,5,10,.86);padding:18px}
 #cbox.on{display:flex}
-.slab{width:min(460px,100%);max-height:86vh;overflow-y:auto;background:var(--void-2);border:1px solid var(--rule-2);padding:18px}
-.slab [data-sentence]{margin:12px 0 0;padding-left:11px;border-left:1px solid var(--a);color:var(--lit)}
+#cslab{width:min(460px,100%);max-height:86vh;overflow-y:auto;background:var(--void-2);border:1px solid var(--rule-2);padding:18px}
+#cslab [data-sentence]{margin:12px 0 0;padding-left:11px;border-left:1px solid var(--a);color:var(--lit)}
 /*──── the picker: page UI, one card, one button per announcer ────*/
 #picker{position:fixed;inset:0;z-index:10;display:grid;place-items:center;background:rgba(4,5,10,.86)}
 #picker .card{width:min(320px,92%);background:var(--void-2);border:1px solid var(--rule-2);padding:16px}
