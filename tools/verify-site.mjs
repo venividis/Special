@@ -101,7 +101,7 @@ t.head("the shell's gzip beside the cold gas");
   await cold(); const live = await GET(["token", "1", "live"]);
   await cold(); const hash = await GET(["token", "1", "hash"]);
   console.log(`      shell ${gzipBytes.toLocaleString()} B gzip · cold tokenURI ${M(uriGas)} · /token/1/live ${M(live.gas)} · /token/1/hash ${M(hash.gas)}`);
-  t.ok(gzipBytes <= 15_000, `the shell's gzip is under the 15,000 ceiling (${gzipBytes.toLocaleString()} B; budget 14,000${gzipBytes > 14_000 ? " — over budget, under the ceiling" : ""})`);
+  t.ok(gzipBytes <= 15_000, `the shell's gzip is under the 15,000 ceiling (${gzipBytes.toLocaleString()} B)`);
   t.ok(uriGas <= CAPS.tokenURI, `cold tokenURI ≤ ${M(CAPS.tokenURI)} (${M(uriGas)})`);
   t.ok(hash.gas <= CAPS.live, `cold /token/1/hash ≤ ${M(CAPS.live)} (${M(hash.gas)})`);
   t.ok(live.gas <= CAPS.live, `cold /token/1/live ≤ ${M(CAPS.live)} (${M(live.gas)})`);
