@@ -45,6 +45,27 @@
   stripped module no longer parses. The placeholder fixtures carry no
   marker and are left alone.
 
+  Three more refusals and one option landed with the shell (U9, the shell
+  agent; this is U7's file and the edits are additive):
+
+      · a panel whose top level is anything but simple statements is
+        refused ("panel <name> declares at top level") — terser mangles
+        each <script> block's top level to one-letter names, so a top-level
+        `const` in a Blob-injected panel can collide with a shell name and
+        the panel never runs (measured, E §3.4); an IIFE declares nothing;
+      · the host scan on dist/ removes exactly one literal before it runs,
+        the SVG namespace `http://www.w3.org/2000/svg` that `createElementNS`
+        needs for the QR (CONSOLE §13). It is a namespace identifier, never
+        fetched (`connect-src 'self'` would refuse it anyway), and the scan
+        measured `true` on it; it is removed whole, so a split spelling of
+        the same host would still be caught;
+      · `compress.toplevel` in shrinkShell only: block 1 of the shell is the
+        wallet library's chain half published onto a one-shot `$lib`, and
+        without that option terser keeps every unreferenced top-level
+        function (measured: `function o(){return 2}` survives the default
+        options and is dropped with it). The panels are IIFEs and lose
+        nothing; selftest reads the source, not the build.
+
   Sources: `engine/app.html` and `engine/panels/<name>.js` (U9). Until
   those land this builds from `tools/fixtures/` — a placeholder shell and
   six placeholder panels that read `window.INTACT` and render through
@@ -135,6 +156,9 @@ export function checkLoader() {
 /*──────────────── the inlinings ────────────────*/
 
 export const CSS_MARKER = '<link rel="stylesheet" href="app.css">';
+/// The one host-shaped literal a document may carry: a namespace, not a URL
+/// anything fetches. verify-site's B3 removes the same string before its scan.
+export const SVG_NS = "http://www.w3.org/2000/svg";
 export const WHISPERS_MARKER = "/*@inline engine/whispers.mjs*/";
 
 /// `engine/app.css` into the shell at its single marker. A fixture (no
@@ -155,6 +179,18 @@ export function inlineCss(html, { fixture, cssPath = path.join(ROOT, "engine/app
 /// `engine/whispers.mjs` into a panel at its marker line, `export ` stripped
 /// so the text is a script, not a module. Only the social panel carries the
 /// marker today; any panel may. A fixture passes through.
+/// A panel is one IIFE and nothing else at its top level. Each <script>
+/// block's top level is mangled separately, so a panel's own `const x`
+/// becomes a one-letter global that can already be declared by the shell —
+/// a SyntaxError before the panel's first line runs. Parsed with terser's
+/// own parser (no minification), so what is judged is the source.
+export async function checkPanelTopLevel(js, name) {
+  const r = await minify(js, { compress: false, mangle: false, format: { ast: true } });
+  if (r.error) throw r.error;
+  const bad = r.ast.body.filter((n) => n.TYPE !== "SimpleStatement");
+  if (bad.length) throw new Error(`panel ${name} declares at top level (${bad.map((n) => n.TYPE).join(", ")}); a panel is one IIFE`);
+}
+
 export function inlineWhispers(js, name, { fixture, modPath = path.join(ROOT, "engine/whispers.mjs") } = {}) {
   const n = js.split(WHISPERS_MARKER).length - 1;
   if (n === 0) {
@@ -181,7 +217,10 @@ async function shrinkShell(html) {
   for (const s of scripts) {
     const r = await minify(s[1], {
       ecma: 2022, module: false,
-      compress: { passes: 2, drop_debugger: true },
+      /*  toplevel: the shell's two blocks are hashed, published and read
+          through window.INTACT, never by name; what nothing references is
+          dead (U9, cut rule 6 of the byte budget).                    */
+      compress: { passes: 2, drop_debugger: true, toplevel: true },
       mangle: { toplevel: true, reserved: ["INTACT"] },
       format: { comments: false, ascii_only: false }
     });
@@ -264,6 +303,7 @@ export async function build() {
     const js = inlineWhispers(fs.readFileSync(p.path, "utf8"), p.name, { fixture: p.path.includes("fixtures") });
     refuse(js, `panel ${p.name}`);
     if (!/window\.INTACT/.test(js)) throw new Error(`panel ${p.name} never reads window.INTACT`);
+    await checkPanelTopLevel(js, p.name);
     const min = MINIFY ? await shrinkPanel(js, p.name) : js;
     refuse(min, `minified panel ${p.name}`);
     const gz = zlib.gzipSync(Buffer.from(min, "utf8"), { level: 9 });
@@ -308,7 +348,10 @@ export async function build() {
   /*  No RPC string anywhere in dist/ (DESIGN §5.1): the only network path
       a document has is the origin that served it and an injected provider. */
   for (const f of ["app.html", ...builtPanels.map((p) => "panels/" + p.name + ".js")]) {
-    const t = fs.readFileSync(path.join(dist, f), "utf8");
+    /*  The sole exception: the SVG namespace identifier the QR's
+        createElementNS needs (CONSOLE §13). Removed whole, before the scan,
+        so "www.w3" split across two strings would still be a host.      */
+    const t = fs.readFileSync(path.join(dist, f), "utf8").split(SVG_NS).join("");
     if (/https?:\/\/[a-z0-9.-]+\.(?:org|com|io|xyz|net)\b/i.test(t) || /\bwss?:\/\//i.test(t)) {
       throw new Error(`dist/${f} names a host — no RPC URL may ship in a document`);
     }
