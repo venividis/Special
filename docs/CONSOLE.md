@@ -411,6 +411,23 @@ different lanes, and the two that would have collided outright are renamed
 | `#session` | the session-mode Home (§11) |
 | `#cbox.on`, `#cslab`, `[data-go]`, `[data-no]`, `[data-to]`, `[data-value]`, `[data-function]`, `[data-selector]`, `[data-arg=<i>]`, `[data-calldata]`, `[data-digest]`, `[data-engine]`, `[data-gas]`, `[data-sentence]` | the slab (§4) |
 
+**As shipped by the shell (U9, reconciled by the shell agent).** The table
+above holds; these are the ids the shell added beside it, listed so a test
+or a driver finds them by the same name: `#ident` (the `h1`, *INTACT #<id>*
+or *INTACT*); the crest cells `#c-chain` with `#c-chain-v` (the chain's
+name) and `#c-wallet` with `#c-wallet-v` (the wallet text) — there is no
+separate id cell; `#viewer` (the block that holds `#viewer-note`,
+`#link-web3`, `#link-https` and `#qr`, shown on every token page in every
+mode, with `#viewer-note` carrying the §1 sentence only in the viewer);
+`#collection` (the `id === 0` block that holds `#mint`, `#directory`,
+`#recent`, `#commons`); `#picker` carries the `hidden` attribute until the
+rule needs it; `#connect` and `#switch` carry `hidden` when they do not
+apply and are absent from the tree in the viewer. On the collection page
+the facts are `chain minted price engine catalog block`; on a token page
+they are the fifteen above. The agent stub's one id is `#agent-stub`.
+There is no `#stand` and no `#still` in the MVB shell (cut for the byte
+budget; neither is in the table).
+
 ### 6.2 The panels
 
 | Lane | Elements |
