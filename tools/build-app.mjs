@@ -18,8 +18,53 @@
   The build refuses what the site refuses (DESIGN §5.5): an external
   `src="https://`, `eval(`, `new Function`, the `(1n<<256n)-1n` mask, an
   `innerHTML` assignment, `window.INTACT=` baked into the head, a loader
-  (src/Renderer.sol INFLATE) that declares a global, a shell over 18,000
+  (src/Renderer.sol INFLATE) that declares a global, a shell over 15,000
   bytes of gzip, a panel over 8,192.
+
+  The shell ceiling was 18,000 (DESIGN §5.5) and is 15,000 since U9 (D16),
+  because the gas sweep measured the slope: `tokenURI` ≈ 3.44 M + 262 gas
+  per gzip byte (271 above 14 KB), crossing the 8 M cap at ≈ 17.4 KB, and
+  `/token/<id>/hash` — which shares `/live`'s 2.5 M cap — crosses it COLD
+  at ≈ 16.5 KB. A ceiling the gas gate would already have failed is not a
+  ceiling. The shell's budget is ≤ 14,000 B gzip (tokenURI ≈ 7.09 M cold,
+  `/hash` ≈ 2.34 M cold); 15,000 is the hard stop (≈ 7.35 M / ≈ 2.40 M).
+
+  Two inlinings happen before the minifier and before the refusals (U9,
+  D18), so the checks see what ships:
+
+      engine/app.css      replaces the single `<link rel="stylesheet"
+                          href="app.css">` in the real shell with
+                          `<style>…</style>` — a `<link>` would be a fetch
+      engine/whispers.mjs replaces the one-line `@inline engine/whispers.mjs`
+                          block comment (WHISPERS_MARKER below) in a panel
+                          with the module's text, every `export ` keyword
+                          stripped (a Blob script is not a module)
+
+  Each is a hard error when the real source is missing its marker, when the
+  marker appears twice, when the file it names is absent, or when the
+  stripped module no longer parses. The placeholder fixtures carry no
+  marker and are left alone.
+
+  Three more refusals and one option landed with the shell (U9, the shell
+  agent; this is U7's file and the edits are additive):
+
+      · a panel whose top level is anything but simple statements is
+        refused ("panel <name> declares at top level") — terser mangles
+        each <script> block's top level to one-letter names, so a top-level
+        `const` in a Blob-injected panel can collide with a shell name and
+        the panel never runs (measured, E §3.4); an IIFE declares nothing;
+      · the host scan on dist/ removes exactly one literal before it runs,
+        the SVG namespace `http://www.w3.org/2000/svg` that `createElementNS`
+        needs for the QR (CONSOLE §13). It is a namespace identifier, never
+        fetched (`connect-src 'self'` would refuse it anyway), and the scan
+        measured `true` on it; it is removed whole, so a split spelling of
+        the same host would still be caught;
+      · `compress.toplevel` in shrinkShell only: block 1 of the shell is the
+        wallet library's chain half published onto a one-shot `$lib`, and
+        without that option terser keeps every unreferenced top-level
+        function (measured: `function o(){return 2}` survives the default
+        options and is dropped with it). The panels are IIFEs and lose
+        nothing; selftest reads the source, not the build.
 
   Sources: `engine/app.html` and `engine/panels/<name>.js` (U9). Until
   those land this builds from `tools/fixtures/` — a placeholder shell and
@@ -47,7 +92,7 @@ const arg = (f, d) => { const i = ARGV.indexOf(f); return i < 0 ? d : ARGV[i + 1
 const MINIFY = !has("--no-min");
 const CHUNK = Number(arg("--chunk", 24000));
 const MAX_SHARD = 24575;                       // EIP-170 minus the STOP prefix
-export const SHELL_GZIP_CEILING = 18_000;      // DESIGN §5.5
+export const SHELL_GZIP_CEILING = 15_000;      // DESIGN §5.5 said 18,000; see the header (U9, D16)
 export const PANEL_GZIP_CEILING = 8_192;       // DESIGN §5.1
 export const PANELS = ["swap", "social", "launch", "vault", "identity", "agent"];
 
@@ -108,6 +153,59 @@ export function checkLoader() {
   return loader;
 }
 
+/*──────────────── the inlinings ────────────────*/
+
+export const CSS_MARKER = '<link rel="stylesheet" href="app.css">';
+/// The one host-shaped literal a document may carry: a namespace, not a URL
+/// anything fetches. verify-site's B3 removes the same string before its scan.
+export const SVG_NS = "http://www.w3.org/2000/svg";
+export const WHISPERS_MARKER = "/*@inline engine/whispers.mjs*/";
+
+/// `engine/app.css` into the shell at its single marker. A fixture (no
+/// marker) passes through untouched; the real shell must carry exactly one.
+export function inlineCss(html, { fixture, cssPath = path.join(ROOT, "engine/app.css") } = {}) {
+  const n = html.split(CSS_MARKER).length - 1;
+  if (n === 0) {
+    if (fixture) return html;
+    throw new Error(`the shell has no ${CSS_MARKER} marker — engine/app.css has no way in`);
+  }
+  if (n > 1) throw new Error(`the shell carries the app.css marker ${n} times; exactly one`);
+  if (!fs.existsSync(cssPath)) throw new Error(`the shell asks for app.css and ${path.relative(ROOT, cssPath)} does not exist`);
+  const css = fs.readFileSync(cssPath, "utf8");
+  if (/<\/style/i.test(css)) throw new Error("engine/app.css contains </style> and would end its own block");
+  return html.replace(CSS_MARKER, () => "<style>" + css + "</style>");
+}
+
+/// `engine/whispers.mjs` into a panel at its marker line, `export ` stripped
+/// so the text is a script, not a module. Only the social panel carries the
+/// marker today; any panel may. A fixture passes through.
+/// A panel is one IIFE and nothing else at its top level. Each <script>
+/// block's top level is mangled separately, so a panel's own `const x`
+/// becomes a one-letter global that can already be declared by the shell —
+/// a SyntaxError before the panel's first line runs. Parsed with terser's
+/// own parser (no minification), so what is judged is the source.
+export async function checkPanelTopLevel(js, name) {
+  const r = await minify(js, { compress: false, mangle: false, format: { ast: true } });
+  if (r.error) throw r.error;
+  const bad = r.ast.body.filter((n) => n.TYPE !== "SimpleStatement");
+  if (bad.length) throw new Error(`panel ${name} declares at top level (${bad.map((n) => n.TYPE).join(", ")}); a panel is one IIFE`);
+}
+
+export function inlineWhispers(js, name, { fixture, modPath = path.join(ROOT, "engine/whispers.mjs") } = {}) {
+  const n = js.split(WHISPERS_MARKER).length - 1;
+  if (n === 0) {
+    if (fixture || name !== "social") return js;
+    throw new Error(`panel social has no ${WHISPERS_MARKER} marker — the sealing module has no way in`);
+  }
+  if (n > 1) throw new Error(`panel ${name} carries the whispers marker ${n} times; exactly one`);
+  if (!fs.existsSync(modPath)) throw new Error(`panel ${name} asks for whispers.mjs and ${path.relative(ROOT, modPath)} does not exist`);
+  const stripped = fs.readFileSync(modPath, "utf8").replace(/^(\s*)export\s+/gm, "$1");
+  if (/\bexport\b/.test(stripped)) throw new Error("whispers.mjs still says `export` after stripping — an inline form the build does not handle");
+  try { new vm.Script(stripped, { filename: "whispers.inlined.js" }); }
+  catch (e) { throw new Error(`whispers.mjs does not parse once its exports are stripped: ${e.message}`); }
+  return js.replace(WHISPERS_MARKER, () => stripped);
+}
+
 /*──────────────── minification ────────────────*/
 
 async function shrinkShell(html) {
@@ -119,7 +217,10 @@ async function shrinkShell(html) {
   for (const s of scripts) {
     const r = await minify(s[1], {
       ecma: 2022, module: false,
-      compress: { passes: 2, drop_debugger: true },
+      /*  toplevel: the shell's two blocks are hashed, published and read
+          through window.INTACT, never by name; what nothing references is
+          dead (U9, cut rule 6 of the byte budget).                    */
+      compress: { passes: 2, drop_debugger: true, toplevel: true },
       mangle: { toplevel: true, reserved: ["INTACT"] },
       format: { comments: false, ascii_only: false }
     });
@@ -169,14 +270,14 @@ export function sources() {
     return { name, path: fs.existsSync(real) ? real : path.join(ROOT, "tools/fixtures/panels", name + ".js") };
   });
   const placeholder = shellPath.includes("fixtures") || panels.some((p) => p.path.includes("fixtures"));
-  return { shellPath, panels, placeholder };
+  return { shellPath, panels, placeholder, shellIsFixture: shellPath.includes("fixtures") };
 }
 
 /*──────────────── build ────────────────*/
 
 export async function build() {
-  const { shellPath, panels, placeholder } = sources();
-  const source = fs.readFileSync(shellPath, "utf8");
+  const { shellPath, panels, placeholder, shellIsFixture } = sources();
+  const source = inlineCss(fs.readFileSync(shellPath, "utf8"), { fixture: shellIsFixture });
 
   if (/window\.INTACT\s*=/.test(source.slice(0, source.indexOf("</head>"))))
     throw new Error("state must be injected by the contract, not baked into the head");
@@ -199,9 +300,10 @@ export async function build() {
 
   const builtPanels = [];
   for (const p of panels) {
-    const js = fs.readFileSync(p.path, "utf8");
+    const js = inlineWhispers(fs.readFileSync(p.path, "utf8"), p.name, { fixture: p.path.includes("fixtures") });
     refuse(js, `panel ${p.name}`);
     if (!/window\.INTACT/.test(js)) throw new Error(`panel ${p.name} never reads window.INTACT`);
+    await checkPanelTopLevel(js, p.name);
     const min = MINIFY ? await shrinkPanel(js, p.name) : js;
     refuse(min, `minified panel ${p.name}`);
     const gz = zlib.gzipSync(Buffer.from(min, "utf8"), { level: 9 });
@@ -216,8 +318,12 @@ export async function build() {
   const B = chunk(bodyBuf);
   const engineHash = kec(Buffer.from(doc, "utf8"));
 
+  /*  `placeholder` is true while ANY source is a fixture; `shellIsFixture` and `fixturePanels`
+      say which, so a runner can hold a fixture panel against its landed group file and a
+      label can say "shell" only when it means the shell (U9, additive). */
   const plan = {
-    mode: "packed", minified: MINIFY, placeholder, chunkBytes: CHUNK,
+    mode: "packed", minified: MINIFY, placeholder, shellIsFixture, chunkBytes: CHUNK,
+    fixturePanels: panels.filter((p) => p.path.includes("fixtures")).map((p) => p.name),
     shell: path.relative(ROOT, shellPath),
     sourceBytes: Buffer.byteLength(source, "utf8"),
     documentBytes: Buffer.byteLength(doc, "utf8"),
@@ -246,7 +352,10 @@ export async function build() {
   /*  No RPC string anywhere in dist/ (DESIGN §5.1): the only network path
       a document has is the origin that served it and an injected provider. */
   for (const f of ["app.html", ...builtPanels.map((p) => "panels/" + p.name + ".js")]) {
-    const t = fs.readFileSync(path.join(dist, f), "utf8");
+    /*  The sole exception: the SVG namespace identifier the QR's
+        createElementNS needs (CONSOLE §13). Removed whole, before the scan,
+        so "www.w3" split across two strings would still be a host.      */
+    const t = fs.readFileSync(path.join(dist, f), "utf8").split(SVG_NS).join("");
     if (/https?:\/\/[a-z0-9.-]+\.(?:org|com|io|xyz|net)\b/i.test(t) || /\bwss?:\/\//i.test(t)) {
       throw new Error(`dist/${f} names a host — no RPC URL may ship in a document`);
     }
@@ -265,7 +374,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   shell               ${plan.shell}
   source              ${plan.sourceBytes.toLocaleString()} bytes
   after minifying     ${plan.documentBytes.toLocaleString()} bytes   ${pct(plan.documentBytes, plan.sourceBytes)} of source
-  stored on chain     ${plan.storedBytes.toLocaleString()} bytes   ${pct(plan.storedBytes, plan.sourceBytes)} of source  (ceiling ${SHELL_GZIP_CEILING.toLocaleString()} gzip)
+  shell gzip          ${plan.body.reduce((a, s) => a + s.bytes, 0).toLocaleString()} bytes   (ceiling ${SHELL_GZIP_CEILING.toLocaleString()}; budget 14,000)
+  stored on chain     ${plan.storedBytes.toLocaleString()} bytes   ${pct(plan.storedBytes, plan.sourceBytes)} of source  (the plain prologue + the shell gzip)
   engine hash         ${plan.engineHash}
   ───────────────────────────────────────────────────────────────
   head                ${plan.head.reduce((a, s) => a + s.bytes, 0).toLocaleString()} bytes -> ${plan.head.length} shard(s)

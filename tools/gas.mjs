@@ -24,6 +24,24 @@
   the routes — the whole MVB deployed from dist/ by tools/site.mjs, every
   row of DESIGN §5.3 probed with its own cap (U7).
 
+  Every probe is measured COLD. `evm.runCall` leaves the EIP-2929 warm
+  address and slot sets populated between calls — only `runTx` cleans the
+  journal at the end of a transaction — so a second view on the same
+  contracts reads cheaper than a node would ever bill it: a real `eth_call`
+  is always the first call of its own transaction. Measured on the
+  placeholder shell (3,015 B gzip), the same deployment, the same call
+  twice with a transaction before the first: `/token/1/hash` 1,623,201
+  cold against 1,432,701 warm (+190,500, 13.3 %), `/token/1/live` 968,955
+  against 778,455 (+190,500), `hub.tokenURI(1)` 4,342,557 against
+  4,148,057 (+194,500), `/token/1/state.json` +175,000, `/` +84,000 — the
+  same ≈ 0.19 M on every route that touches the engine's shards and the
+  hub's immutables again, and the warm number is the one this file used to
+  print. `/hash` shares the 2.5 M cap and crosses it at ≈ 16.5 KB of gzip
+  cold while a warm number would still print 2.41 M at 18 KB; the gate was
+  measuring the wrong thing. So a one-wei transaction to a stranger now
+  lands between every two probes (U9, D16), and the numbers below are what
+  a node bills.
+
     node tools/gas.mjs              measure; non-zero if anything is over its cap
     node tools/gas.mjs --json       machine-readable
     node tools/gas.mjs --fixture    include test/mocks/GasHog.hog(400000) as a probe (must fail)
@@ -171,7 +189,13 @@ const probes = await buildProbes(chain, out);
    is the body for a route, the raw return for a view */
 
 const rows = [];
+/*  The one-wei transaction between probes: `runTx` cleans the journal's
+    warm sets at the end of every transaction, so each probe is the first
+    call after one and pays cold access everywhere — the number a node's
+    `eth_call` bills. The recipient is a stranger with no code.           */
+const STRANGER = "0x" + "77".repeat(20);
 for (const p of probes) {
+  await chain.send({ to: STRANGER, value: 1n, label: "chill" });
   const r = await measure(chain, p.to, p.data);
   rows.push({ ...p, ...r, ...verdict({ ...p, ...r }) });
 }
@@ -204,7 +228,7 @@ if (JSON_OUT) {
   }
   console.log("\n  \x1b[1mverdict\x1b[0m");
   if (!over.length) {
-    console.log(`      \x1b[32mevery measured view is under its cap\x1b[0m (${rows.length} probed; every view ≤ ${M(CAPS.any)}, tokenURI ≤ ${M(CAPS.tokenURI)}, /live ≤ ${M(CAPS.live)})`);
+    console.log(`      \x1b[32mevery measured view is under its cap\x1b[0m (${rows.length} probed cold, a transaction between each; every view ≤ ${M(CAPS.any)}, tokenURI ≤ ${M(CAPS.tokenURI)}, /live ≤ ${M(CAPS.live)})`);
   } else {
     for (const r of over) console.log(`      \x1b[31m${r.label} needs ${M(r.gas)}\x1b[0m, over its ${M(r.capValue)} cap.`);
     console.log(`\n      \x1b[2mA call over the cap does not fail politely. The node returns "out of gas"` +

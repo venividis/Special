@@ -1,13 +1,32 @@
 #!/usr/bin/env node
 /*───────────────────────────────────────────────────────────────────────────
-  IPSEITY · self-test
+  INTACT · self-test
 
-  The token carries its own keccak-256, its own ABI coder, its own EIP-55
-  checksum, its own EIP-712 hasher and its own CREATE2 derivation for the
-  ERC-6551 account. None of that is worth anything unless it agrees with
-  Ethereum. This lifts those functions straight out of engine/ipseity.html
-  — the same bytes that go on chain, not a copy — and holds them against
-  published vectors.
+  Origin: IPSEITY tools/selftest.mjs, repointed at engine/app.html (U9,
+  D12). The shell carries its own keccak-256, its own ABI coder, its own
+  EIP-55 checksum, its own EIP-712 hasher and its own CREATE2 derivation
+  for the two ERC-6551 accounts. None of that is worth anything unless it
+  agrees with Ethereum. This lifts those functions straight out of
+  engine/app.html — the same bytes that go on chain, not a copy — and
+  holds them against published vectors.
+
+  The slice is the "chain half" of the shell: from the line that begins
+  with the keccak-256 box opener (FROM below) to the explicit box comment
+  that reads "end of the chain half" (TO below), which app.html places on
+  its own line right after `agrees()`. That slice is
+  the verbatim unit BUILD-PLAN §U9 names (the donor's wallet library,
+  byte-identical but for the two salt lines and `S.collection → S.hub`),
+  and its keccak is recorded in docs/INVARIANTS.md F3 so "unchanged" is a
+  measured sentence. The donor ran 55 vectors; five of them tested
+  IPSEITY's orientation word, which INTACT does not have, and are gone.
+  The fifty that remain are what "vectors unchanged" means, plus one hard
+  ERC-6551 vector the donor never had: token 7 of a collection at
+  0x1234567890AbcdEF1234567890aBcdef12345678 on chain 1 with a zero
+  implementation derives the Reach 0x6aFB0ef97eB85b6742326c7372421a166C5dac1a,
+  the number test/Binding.t.sol pins against AccountBinding.predict.
+
+  Until engine/app.html exists this exits 1 with that sentence rather than
+  an ENOENT, and it is not in `npm run check` until the shell lands.
 
     node tools/selftest.mjs
 ───────────────────────────────────────────────────────────────────────────*/
@@ -15,32 +34,37 @@ import fs from "node:fs";
 import vm from "node:vm";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { keccak256 } from "ethereum-cryptography/keccak.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const SRC  = fs.readFileSync(path.join(ROOT, "engine/ipseity.html"), "utf8");
+const SHELL = path.join(ROOT, "engine/app.html");
+if (!fs.existsSync(SHELL)) {
+  console.error("\n  engine/app.html missing — the shell has not landed, so there is nothing to self-test yet.\n" +
+                "  (tools/selftest.mjs reads the shell's chain half between the markers FROM and TO it exports.)\n");
+  process.exit(1);
+}
+const SRC  = fs.readFileSync(SHELL, "utf8");
 
-/* the chain half of the engine, verbatim */
-const FROM = "/*── keccak-256";
-const TO   = "\n 10 · THE SHEET";
+/* the chain half of the shell, verbatim: FROM the keccak box to the explicit
+   end marker app.html places right after agrees() */
+export const FROM = "/*── keccak-256";
+export const TO   = "/*── end of the chain half ──*/";
 const a = SRC.indexOf(FROM);
 const b = SRC.indexOf(TO);
-if (a < 0 || b < 0) throw new Error("engine markers moved; update tools/selftest.mjs");
-const slice = SRC.slice(a, SRC.lastIndexOf("/*", b));
+if (a < 0) throw new Error("engine/app.html has no `" + FROM + "` marker; the chain half must begin with it");
+if (b < 0) throw new Error("engine/app.html has no `" + TO + "` marker; put it on its own line right after agrees()");
+if (b < a) throw new Error("the end marker precedes the start marker in engine/app.html");
+const slice = SRC.slice(a, b);
+const sliceHash = "0x" + Buffer.from(keccak256(Buffer.from(slice, "utf8"))).toString("hex");
 
-/* the few things that half depends on, also verbatim, plus inert stubs for
-   everything that only exists once there is a document */
-const grab = (marker, end) => {
-  const i = SRC.indexOf(marker);
-  const j = SRC.indexOf(end, i);
-  return SRC.slice(i, j);
-};
-
+/* inert stubs for everything the half depends on that only exists once
+   there is a document: the state object with INTACT's keys (the shell
+   defines its alias outside the slice), the DOM helpers, the wallet */
 const prelude = `
-const TAU = Math.PI * 2;
-${grab("const u16ToAngle", "/* live, unsigned view")}
-const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
-const S = { id: 7, collection: "0x1234567890AbcdEF1234567890aBcdef12345678", chainId: 1,
-            owner: "0x0000000000000000000000000000000000000000", rpc: "" };
+const S = { id: 7, hub: "0x1234567890AbcdEF1234567890aBcdef12345678", chainId: 1,
+            reachImpl: "0x0000000000000000000000000000000000000000",
+            gripImpl: "0x0000000000000000000000000000000000000000",
+            owner: "0x0000000000000000000000000000000000000000" };
 const $  = () => null;
 const $$ = () => [];
 const say = () => {};
@@ -55,8 +79,8 @@ const ctx = vm.createContext({ TextEncoder, TextDecoder, console, BigInt, Math, 
   Array, Object, JSON, Uint8Array, Date, Promise, setTimeout, parseInt, isNaN });
 vm.runInContext(prelude + "\n" + slice + "\n;globalThis.__X = {" +
   ["keccak256","khex","kbytes","selector","checksum","encodeCall","encodeParams","utf8","toHex","fromHex",
-   "decUint","decAddr","decString","decStringLoose","fmtUnits","toUnits","account6551",
-   "digest712","domainSeparator","hashStruct","typeHash","packSection","unpackSection","isAddr"].join(",") +
+   "decUint","decAddr","decString","decStringLoose","fmtUnits","toUnits","account6551","grip6551",
+   "digest712","domainSeparator","hashStruct","typeHash","isAddr"].join(",") +
   "};", ctx);
 const X = ctx.__X;
 
@@ -200,22 +224,18 @@ eq("final digest", X.digest712(MAIL.domain, "Mail", MAIL.message, MAIL.types),
 
 console.log("\n  ERC-6551 — the account derived, not asked for");
 /* The registry's own derivation, recomputed here by hand from the spec so
-   the two must agree: keccak(0xff · registry · salt · keccak(creationCode)) */
+   the two must agree: keccak(0xff · registry · salt · keccak(creationCode)).
+   The hard vector is the stub above — token 7, chain 1, a zero
+   implementation — and the same number is pinned in test/Binding.t.sol
+   against AccountBinding.predict, so the shell, the test harness and the
+   contract library are held to one address. */
 const acct = X.account6551();
 eq("is an address",        X.isAddr(acct), true);
 eq("is checksummed",       acct, X.checksum(acct));
 eq("deterministic",        X.account6551(), acct);
+eq("the Reach of token 7 on chain 1 with a zero implementation", acct, "0x6aFB0ef97eB85b6742326c7372421a166C5dac1a");
+eq("and the Grip of the same token",                            X.grip6551(), "0xc4392998811A83E714e2E443D5C1f3EC72C55E0A");
 
-console.log("\n  the section word — one uint256 carries the whole orientation");
-const rot = [0.1, 1.2, 2.3, 3.4, 4.5, 5.6];
-const packed = X.packSection(rot, 0.75, 5, 200);
-const un = X.unpackSection(packed);
-eq("form survives", un.form, 5);
-eq("hue survives",  un.hue, 200);
-eq("w survives to 1/65535", Math.abs(((un.w / 65535) * 3.2 - 1.6) - 0.75) < 1e-4, true);
-eq("angles survive to 1/65536 turn",
-   rot.every((a, i) => Math.abs(((un.rot[i] / 65536) * Math.PI * 2) - a) < 1e-4), true);
-eq("word fits in 128 bits", packed < (1n << 128n), true);
-
+console.log(`\n  chain half: ${Buffer.byteLength(slice, "utf8").toLocaleString()} bytes, keccak ${sliceHash}`);
 console.log(`\n  ${pass} passed, ${fail} failed\n`);
 process.exit(fail ? 1 : 0);
