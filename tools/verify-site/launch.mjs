@@ -57,16 +57,44 @@
   repaint; swap's card behaves the same); the chain moving to a wrong chain
   under an open launch lane (boot.mjs N asserts the gate with the swap lane;
   probed here: no eth_call, no control, no input); a coin whose decimals()
-  will not answer (the refusal is one helper, `dec`); a launch or a raise
-  composed through the Reach (not built — U17).
+  reverts (the refusal is one helper, `dec`, reached here through an
+  address with no code, whose empty answer is no answer); a clock refused
+  at the paint of a live raise (the buy and the sell are not drawn, since
+  both wait on the anchored clock — probed, not asserted); a launch or a
+  raise composed through the Reach (not built — U17).
+
+  The review round, each finding a sentence here: the locks list is
+  written by strangers (Locks.lock is anyone's), so O locks a worthless
+  token that calls itself ETH for #1's Reach and the viewer must tell it
+  from ether by the row's key cell, and O stages a decimals() of 2^256 − 1
+  that once threw inside the list and hid every lock after it; V gives
+  lock #2 back to #1's Reach (listed twice before) and types an address
+  with no code into the lock form (an approve to an EOA, forever, before);
+  C refuses the coin's balanceOf (drawn as holding nothing, before); F
+  boots the buyer past the deadline (a buy and a sell that could only
+  revert, before); J12 waits for the collected market (a collect of
+  nothing, before); O boots #5, never launched, with the clock and
+  launchesOf refused (the clock's sentence over "none yet", and silent
+  sealed markets, before). Four checks that claimed more than they read
+  now read it: J9 looks for a Transfer topic in the buy's receipt, the
+  countdown between reads compares the #launch-tax node and the
+  snipeTaxBps calls before and after the warp, G tests the co-sign
+  sentence it used to wait for, and K reads the rest of the supply at
+  #3's Reach. What is typed surviving a repaint is proven by the buy's own
+  receipt (the contribution typed beside it stays); the lock form's "still
+  holds what was typed" is the approve step, which repaints nothing.
 
   Setup this group performs on its chain (every id literal below refers to
   it): #1, #2, #3, #4 to `me`; #1 launches AGENT1 (900 M of 1 B to the
   raise) and opens raise L with a 1000 s fair window, a 99 % opening tax,
   a 1 % fee and a 3 ETH target; #2 launches AGENT3 and opens a raise whose
-  window caps each buyer at 2 ETH, and after its spacing AGENT6 (S); #3
+  window caps each buyer at 2 ETH and which closes in fourteen days, so it
+  is still open when, after its spacing, #2 launches AGENT6 (S); #3
   launches AGENT4 from the page (K); #4's guardian is `guardianW` (G), and
-  #4 launches AGENT5 into a raise that fails (F); WETH to `me` (V).
+  #4 launches AGENT5 into a raise that fails (F); WETH to `me` (V), and
+  lock #2 given back to #1's Reach from #2's (V); a stranger's lock of
+  FAKE-ETH, a MockERC20 whose symbol is "ETH", for #1's Reach, and #5 to
+  `me`, never launched (O).
 
   Elements this group reads from its panel (CONSOLE §6.2; every selector
   scoped to #lane-launch): #launch-coin, #launch-coin-form (inputs
@@ -76,7 +104,8 @@
   #launch-buy-out[data-raw], #launch-buy-fee[data-raw],
   #launch-buy-snipe[data-raw], #launch-create (inputs name=curve|vq|tgt|win|
   cap|tax|fee|cr|vest|days), #launch-positions .sealed[data-key],
-  #launch-locks .lock (inputs name=e<k>|g<k>, la|lv|ld),
+  #launch-locks .lock (its key cell "lock #<k> · native ETH" or "lock
+  #<k> · token <short address>"; inputs name=e<k>|g<k>, la|lv|ld),
   [data-act=launch|coinAt|create|buy|sell|graduate|fail|refund|claim|
   launchCollect|contribute|redeem|lock|lockRelease|extend|give|
   approveFirstLaunch] — every one pressed. From the shell: the slab
@@ -130,6 +159,11 @@ export async function run(t, ctx) {
   };
   const repaint = async (page, vctx) => { vctx.dispatchEvent(new vctx.CustomEvent("intact:lane", { detail: { name: "launch" } })); await page.settle(); await page.settle(); };
   const field = (page, scope, name) => L(page, `${scope} input[name=${name}]`);
+  /// a lock row's key cell — the lane's own words, which no token writes — and the id it starts with
+  /// (an empty row, which a row that threw half-way once left, reads as "")
+  const lockKey = (r) => (r.firstChild && r.firstChild.firstChild || r).textContent;
+  const lockId = (r) => lockKey(r).split(" · ")[0];
+  const reverted = () => { throw Object.assign(new Error("execution reverted"), { code: 3, data: "0xdeadbeef" }); };
   const launchOf = (id) => c.read(pad, "launchOf(uint256)", [id]);
   const quoteBuy = async (id, v) => { const r = await c.read(pad, "quoteBuy(uint256,uint256)", [id, v]); return [decUint(r, 0), decUint(r, 1), decUint(r, 2)]; };
   const credit = async (id, who) => decUint(await c.read(pad, "creditOf(uint256,address)", [id, who]));
@@ -210,12 +244,19 @@ export async function run(t, ctx) {
     j(word(cd, 1) === min && new RegExp("no less than " + esc(full(min)) + " AGENT1 — or nothing moves").test(line(page, "Credit") || "") && /credits, not tokens/.test(line(page, "Holds") || "") && /^\d+ units$/.test(gasRow(page)),
       "the buy states its floor in words, and the floor in the words is minBaseOut in the calldata", `w1 ${word(cd, 1)} vs ${min}; "${line(page, "Credit")}"`);
     await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
+    /* a contribution typed beside the buy before Sign: the receipt's own then() repaints and clears only what it consumed */
+    page.type(field(page, "#launch-raise", "c1"), "0.01");
+    const bin0 = L(page, "#launch-buy-in");
     await sign(page, W, 1);
-    const cr = await credit(LID, BUYER);
-    j(cr > 0n && cr === q[0] && [...W.receipts.values()].pop().status === "0x1", "J9 the buy lands as credit, and nothing ERC-20 moved", `credit ${cr} vs quoted ${q[0]}`);
+    const cr = await credit(LID, BUYER), rc9 = [...W.receipts.values()].pop(), TRANSFER = topic("Transfer(address,address,uint256)");
+    j(cr > 0n && cr === q[0] && rc9.status === "0x1" && rc9.logs.length > 0 && rc9.logs.every((l) => l.topics[0] !== TRANSFER),
+      "J9 the buy lands as credit, and nothing ERC-20 moved", `credit ${cr} vs quoted ${q[0]}; topics ${rc9.logs.map((l) => l.topics[0].slice(0, 10))}`);
+    await page.until(() => !!L(page, "#launch-buy-in") && L(page, "#launch-buy-in").value === "", 40);
+    t.ok(L(page, "#launch-buy-in") !== bin0 && L(page, "#launch-buy-in").value === "" && (field(page, "#launch-raise", "c1") || {}).value === "0.01",
+      "the buy's receipt repaints the lane and clears only what it consumed: the amount it paid is gone, the contribution typed beside it stays",
+      `new node ${L(page, "#launch-buy-in") !== bin0} buy "${L(page, "#launch-buy-in").value}" contribution "${field(page, "#launch-raise", "c1") && field(page, "#launch-raise", "c1").value}"`);
 
     /* the re-quote inside the press: the curve moves between the slab and Sign, and Sign refuses with a sentence */
-    await page.until(() => !!L(page, "#launch-buy-in") && L(page, "#launch-buy-in").value === "", 40);
     page.type(L(page, "#launch-buy-in"), "1");
     await page.until(() => !!L(page, "#launch-buy-out").dataset.raw && !L(page, "[data-act=buy]").disabled, 60);
     await press(page, L(page, "[data-act=buy]"));
@@ -256,12 +297,15 @@ export async function run(t, ctx) {
       "a clock that will not answer disables the buy with the clock sentence, and no deadline is guessed", `tick "${tick(page)}" disabled ${L(page, "[data-act=buy]").disabled}`);
     W.override("eth_getBlockByNumber", null);
 
-    /* between reads the percentage itself counts down on the contract's own line: the chain moves 250 s, no repaint */
+    /* between reads the percentage itself counts down on the contract's own line: the chain moves 250 s, no repaint
+       (the same #launch-tax node before and after) and no read (the wallet saw no snipeTaxBps call in between) */
+    const taxNode = L(page, "#launch-tax"), taxReads = W.callsTo(pad, sel("snipeTaxBps(uint256)")).length;
     ctx.warp(T0 + 250n);
     await page.until(() => /in 750 s$/.test(page.text("#lane-launch #launch-tax-countdown")), 60);
-    const mid = decUint(await c.read(pad, "snipeTaxBps(uint256)", [LID]));
-    j(page.text("#lane-launch #launch-tax-countdown") === "falls to nothing in 750 s" && L(page, "#launch-tax").textContent === "74.25 %" && mid === 7425n,
-      "between reads the tax itself counts down: 250 s on, with no repaint, it reads 74.25 %, which is what snipeTaxBps then answers", `${L(page, "#launch-tax").textContent} ${page.text("#lane-launch #launch-tax-countdown")} chain ${mid}`);
+    const mid = decUint(await c.read(pad, "snipeTaxBps(uint256)", [LID])), taxReads2 = W.callsTo(pad, sel("snipeTaxBps(uint256)")).length;
+    j(page.text("#lane-launch #launch-tax-countdown") === "falls to nothing in 750 s" && L(page, "#launch-tax").textContent === "74.25 %" && mid === 7425n && L(page, "#launch-tax") === taxNode && taxReads2 === taxReads,
+      "between reads the tax itself counts down: 250 s on, with no repaint, it reads 74.25 %, which is what snipeTaxBps then answers",
+      `${L(page, "#launch-tax").textContent} ${page.text("#lane-launch #launch-tax-countdown")} chain ${mid} same node ${L(page, "#launch-tax") === taxNode} reads +${taxReads2 - taxReads}`);
 
     /* J4, J5: the window moves on the chain's clock */
     ctx.warp(T0 + 500n);
@@ -330,6 +374,10 @@ export async function run(t, ctx) {
     const b0 = await c.balanceOf(sink1);
     await sign(page, W, 1);
     j((await c.balanceOf(sink1)) - b0 === owedQ && lower(sink1) === lower(reach1), "J12 collecting pays exactly what the row said to #1's fee sink, the Reach", `delta ${(await c.balanceOf(sink1)) - b0} owed ${owedQ}`);
+    await page.until(() => /owes 0 AGENT1 · 0 ETH/.test(page.text("#lane-launch #launch-positions")), 60);
+    const mk2 = await c.read(pool, "marketOf(uint256)", [KEY]);
+    t.ok(decUint(mk2, 13) === 0n && decUint(mk2, 14) === 0n && /owes 0 AGENT1 · 0 ETH to #1's fee sink/.test(page.text("#lane-launch #launch-positions")) && !L(page, "[data-act=launchCollect]"),
+      "a sealed market that owes nothing offers no collect, as a lock with nothing releasable offers no release", page.text("#lane-launch #launch-positions"));
 
     /*═══ C · credits become coins after graduation, and the floor is anyone's to raise and a holder's to burn into ═══*/
     t.head("C · credits become coins, and the floor");
@@ -362,6 +410,12 @@ export async function run(t, ctx) {
     const f1 = decUint(await c.read(coin, "floorPerToken()"));
     await page.until(() => L(page, "#launch-floor") && L(page, "#launch-floor").dataset.raw === String(f1), 60);
     t.ok(f1 > f0 && L(page, "#launch-floor").dataset.raw === String(f1), "Sign → every holder's floor rose, and the lane reads the new floor", `${f0} → ${f1}`);
+    /* holding nothing draws no burn; a balance that does not answer must not look the same */
+    W.answer(coin, sel("balanceOf(address)"), reverted);
+    await repaint(page, page.ctx);
+    await page.until(() => /you holdnot reported/.test(page.text("#lane-launch #launch-raise")), 60);
+    t.ok(/you holdnot reported: unknown error 0xdeadbeef/.test(page.text("#lane-launch #launch-raise")) && !L(page, "[data-act=redeem]") && page.errors.length === 0,
+      "a coin balance that does not answer is said where the burn would be, never drawn as holding nothing", page.text("#lane-launch #launch-raise").slice(-200));
     page.close();
   }
 
@@ -393,7 +447,8 @@ export async function run(t, ctx) {
   {
     await c.exec(kiln, LAUNCH, [2, "Agent Three", "AGENT3", 18, SUPPLY, SALT, RAISE], { label: "launch" });
     const coin3 = "0x" + lastLog(kiln, "Launched(address,uint256,address,string,uint256,uint256)").topics[1].slice(26);
-    await c.exec(pad, `create(${PARAMS})`, [[2n, coin3, 700_000_000n * WAD, WAD, 3n * WAD, 0n, 3600n, 2n * WAD, 0, 100, 0, 0, now() + 7n * 86400n, 0]], { label: "create" });
+    /* fourteen days, not seven: the raise must outlive #2's seven-day spacing, so S's two raises are both open (a closed one draws no buy card) */
+    await c.exec(pad, `create(${PARAMS})`, [[2n, coin3, 700_000_000n * WAD, WAD, 3n * WAD, 0n, 3600n, 2n * WAD, 0, 100, 0, 0, now() + 14n * 86400n, 0]], { label: "create" });
     const L2 = decUint(lastLog(pad, "LaunchCreated(uint256,uint256,address,uint8,bytes32)").topics[1]);
     await buyer.exec(pad, BUY, [L2, 0n, now() + 600n, 10000], { value: WAD / 2n, label: "buy" });
     const bought = decUint(await c.read(pad, "boughtInWindow(uint256,address)", [L2, BUYER]));
@@ -433,8 +488,10 @@ export async function run(t, ctx) {
     await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
     await sign(page, W, 1);
     const coin4 = "0x" + lastLog(kiln, "Launched(address,uint256,address,string,uint256,uint256)").topics[1].slice(26);
-    t.ok(lower(coin4) === lower(preview) && decUint(await c.read(kiln, "launchedBy(address)", [coin4])) === 3n && decUint(await c.read(coin4, "balanceOf(address)", [pad])) === 900_000n * WAD,
-      "the launch landed exactly where the page said it would, attributed to #3, its raise share at the Launchpad", `${coin4} vs ${preview}`);
+    const reach3 = decAddr(await c.read(hub, "account(uint256)", [3]));
+    t.ok(lower(coin4) === lower(preview) && decUint(await c.read(kiln, "launchedBy(address)", [coin4])) === 3n && decUint(await c.read(coin4, "balanceOf(address)", [pad])) === 900_000n * WAD &&
+      decUint(await c.read(coin4, "balanceOf(address)", [reach3])) === 100_000n * WAD,
+      "the launch landed exactly where the page said it would, attributed to #3, its raise share at the Launchpad and the rest at #3's Reach", `${coin4} vs ${preview}`);
     /* the raise: createChecked with the termsHash read in the same press */
     await page.until(() => !!field(page, "#launch-create", "curve") && /AGENT4/.test(page.text("#lane-launch #launch-create")), 80);
     for (const [k, v] of [["curve", "700000"], ["vq", "1"], ["tgt", "3"], ["win", "1000"], ["cap", ""], ["tax", "9900"], ["fee", "100"], ["cr", "0"], ["vest", "0"], ["days", "7"]]) page.type(field(page, "#launch-create", k), v);
@@ -474,7 +531,7 @@ export async function run(t, ctx) {
     await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
     await sign(page, W, 1);
     await page.until(() => /co-signed at this epoch/.test(laneText(page)), 60);
-    t.ok((await c.read(pad, "firstLaunchApproved(uint256)", [4])).endsWith("1") && !L(page, "[data-act=approveFirstLaunch]"),
+    t.ok((await c.read(pad, "firstLaunchApproved(uint256)", [4])).endsWith("1") && !L(page, "[data-act=approveFirstLaunch]") && /co-signed at this epoch: #4's Reach may make the first launch/.test(laneText(page)),
       "Sign → firstLaunchApproved(4), and the lane says the Reach may now make the first launch", laneText(page).slice(0, 200));
     page.close();
   }
@@ -489,6 +546,18 @@ export async function run(t, ctx) {
     const L5 = decUint(lastLog(pad, "LaunchCreated(uint256,uint256,address,uint8,bytes32)").topics[1]);
     await buyer.exec(pad, BUY, [L5, 0n, now() + 600n, 10000], { value: WAD, label: "buy" });
     ctx.warp(dl5 + 1n);
+    {
+      /* past the deadline nothing can be bought or sold (Launchpad._live: DeadlinePassed): the buyer, credit in hand, is offered neither */
+      const WB = walletFor(c, buyer);
+      const { page: pp } = await bootToken(4, { wallet: WB });
+      await lane(pp, "launch");
+      await pp.until(() => /your credit/.test(pp.text("#lane-launch #launch-raise")) && !!L(pp, "[data-act=contribute]") && !!L(pp, "[data-act=fail]"), 80);
+      const cr5 = await credit(L5, BUYER);
+      t.ok(cr5 > 0n && new RegExp("your credit" + esc(full(cr5)) + " AGENT5").test(pp.text("#lane-launch #launch-raise")) && !L(pp, "[data-act=buy]") && !L(pp, "#launch-buy-in") &&
+        !L(pp, "[data-act=sell]") && !L(pp, `#launch-raise input[name=s${L5}]`) && !!L(pp, "[data-act=fail]"),
+        "past its deadline the raise offers no buy and no sell, only fail — the buyer's credit still printed", `acts ${LL(pp, "[data-act]").map((b) => b.dataset.act)}`);
+      pp.close();
+    }
     const WS = walletFor(c, stranger);
     const { page } = await bootToken(4, { wallet: WS });
     await lane(page, "launch");
@@ -601,6 +670,20 @@ export async function run(t, ctx) {
     await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
     await sign(page, W, 5);
     j((await c.balanceOf(reach1)) - r0 === WAD, "J15 the release pays the Reach, to the wei", (await c.balanceOf(reach1)) - r0);
+    /* given back: Locks.give pushes the id onto #1's index again, so lockIdOf names lock #2 twice */
+    await c.exec(reach2, EXEC, [locks, 0n, ctx.enc("give(uint256,address)", [idB, reach1]), 0n], { label: "give back" });
+    await repaint(page, vctx);
+    await page.until(() => LL(page, "#launch-locks .lock").length >= 3, 60);
+    const idx = await Promise.all([0, 1, 2, 3].map(async (i) => decUint(await c.read(locks, "lockIdOf(address,uint256)", [reach1, i]))));
+    t.ok(idx.filter((k) => k === idB).length === 2 && LL(page, "#launch-locks .lock").filter((r) => lockId(r) === "lock #2").length === 1 && LL(page, "#launch-locks .lock").length === 3,
+      "a lock given away and given back is listed once, though lockIdOf now names it twice", `index ${idx.join(",")} rows ${LL(page, "#launch-locks .lock").map(lockId).join(",")}`);
+    /* an address with no code answers every eth_call with nothing: that is no answer, not a coin with 0 decimals */
+    const eoa = stranger.from.toString(), p5 = W.prompts().length, U = page.ctx.INTACT.ui;
+    page.type(field(page, "#launch-locks", "la"), eoa); page.type(field(page, "#launch-locks", "lv"), "5"); page.type(field(page, "#launch-locks", "ld"), "30");
+    page.click(L(page, "[data-act=lock]"));
+    await page.until(() => /did not answer/.test(tick(page)) || slabOpen(page), 40);
+    t.ok(!slabOpen(page) && tick(page) === U.short(eoa) + "'s decimals did not answer; nothing is guessed" && W.prompts().length === p5,
+      "an address with no code is not a coin with 0 decimals: the lock form says its decimals did not answer and builds no approve", `slab ${slabOpen(page)} tick "${tick(page)}"`);
     t.ok(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML and no script threw on the holder's page", page.errors.map((e) => e.message).join("; "));
     page.close();
   }
@@ -609,6 +692,13 @@ export async function run(t, ctx) {
 
   /*═══════════ O · the gates: the viewer offers nothing ═══════════*/
   t.head("O · the gates: who may press, and a read with no answer");
+  /* Locks.lock is anyone's, for any asset and any Reach: a stranger locks a worthless token that calls itself ETH for #1's Reach */
+  const fake = await c.deploy(ctx.A("test/mocks/MockERC20.sol", "MockERC20").bytecode, encodeParams("string,string,uint8,uint256,bool", ["Ether", "ETH", 18, 0, false]), "FAKE-ETH");
+  await stranger.exec(fake, "mint(address,uint256)", [stranger.from.toString(), WAD]);
+  await stranger.exec(fake, "approve(address,uint256)", [locks, WAD]);
+  const tf = now() + 30n * 86400n;
+  await stranger.exec(locks, LOCK, [fake, WAD, reach1, 0, tf, tf, false], { label: "lock" });
+  const fid = decUint(await c.read(locks, "lockCount()"));
   {
     const W = walletFor(c, me);
     const { page } = await bootToken(1, { opaque: true, wallet: W });
@@ -617,6 +707,39 @@ export async function run(t, ctx) {
     t.ok(page.$("body").dataset.mode === "viewer" && LL(page, "[data-act]").length === 0 && LL(page, "input").length === 0 && (laneText(page).match(/nothing here can sign/g) || []).length === 1 &&
       LL(page, "#launch-raises .raise").length === 1 && W.prompts().length === 0,
       "the viewer reads every raise and offers no control and no input, with the one sentence", `acts ${LL(page, "[data-act]").length} inputs ${LL(page, "input").length}`);
+    /* the buyer's own view: what #1's Reach carries, ether or a token named ETH */
+    await page.until(() => LL(page, "#launch-locks .lock").some((r) => lockId(r) === "lock #" + fid), 60);
+    const U = page.ctx.INTACT.ui, keys = LL(page, "#launch-locks .lock").map(lockKey), fr = LL(page, "#launch-locks .lock").find((r) => lockId(r) === "lock #" + fid);
+    t.ok(keys.includes("lock #1 · native ETH") && keys.includes("lock #" + fid + " · token " + U.short(U.checksum(fake))) && !!fr && /^1 ETH · unlocks at /.test(fr.firstChild.lastChild.textContent),
+      "the viewer tells ether from a token that calls itself ETH: each lock row names its asset in a cell no token writes, native ETH or the token's address", keys.join(" | "));
+    page.close();
+  }
+  {
+    /* a decimals() that answers 2^256 − 1 is no exponent: that lock prints raw units, and every lock after it still lists */
+    const W = walletFor(c, me);
+    W.answer(weth, sel("decimals()"), () => "0x" + "f".repeat(64));
+    const { page } = await bootToken(1, { opaque: true, wallet: W });
+    await lane(page, "launch");
+    await page.until(() => LL(page, "#launch-locks .lock").some((r) => lockId(r) === "lock #" + fid) || page.errors.length > 0, 60);
+    const wr = LL(page, "#launch-locks .lock").find((r) => lockId(r) === "lock #3");
+    t.ok(!!wr && /^5000000000000000000 units of WETH · unlocks at /.test(wr.firstChild.lastChild.textContent) && LL(page, "#launch-locks .lock").some((r) => lockId(r) === "lock #" + fid) && page.errors.length === 0,
+      "a decimals() of 2^256 − 1 hides nothing: that lock prints raw units, and the locks after it still list", `${LL(page, "#launch-locks .lock").map((r) => r.textContent.slice(0, 60)).join(" | ")} errors ${page.errors.map((e) => e.message)}`);
+    page.close();
+  }
+  {
+    /* a token that never launched, with the clock and the launch list both refused: each fact keeps its own sentence */
+    await mint(c, site, ME);
+    const W = walletFor(c, me);
+    W.refuse("eth_getBlockByNumber", Object.assign(new Error("boom"), { code: -32603 }));
+    W.answer(pad, sel("launchesOf(uint256)"), reverted);
+    const { page } = await bootToken(5, { wallet: W });
+    await lane(page, "launch");
+    await page.until(() => !/reading/.test(page.text("#lane-launch #launch-spacing")) && /not reported/.test(page.text("#lane-launch #launch-raises")), 60);
+    t.ok(page.text("#lane-launch #launch-spacing") === "none yet: the first is the holder's" && decUint(await c.read(pad, "lastLaunchAt(uint256)", [5])) === 0n,
+      "a token that never launched says none yet with the clock refused: lastLaunchAt's zero needs no clock", `spacing "${page.text("#lane-launch #launch-spacing")}"`);
+    t.ok(/not reported: unknown error 0xdeadbeef/.test(page.text("#lane-launch #launch-raises")) && /not reported: unknown error 0xdeadbeef/.test(page.text("#lane-launch #launch-positions")) &&
+      !/none yet/.test(page.text("#lane-launch #launch-positions")) && page.errors.length === 0,
+      "a launch list that does not answer is said under the raises and under the sealed markets, never as none", `positions "${page.text("#lane-launch #launch-positions")}"`);
     page.close();
   }
   {
@@ -677,6 +800,8 @@ export async function run(t, ctx) {
     page.click(rows[0]); await page.settle();
     const L2 = decUint(await c.read(pad, "launchesOf(uint256)", [2]), 2);
     await page.until(() => !!L(page, "#launch-raise") && opened(L2), 60);
+    /* the two counts below are document-wide on purpose — the one exception to "every selector scoped to the lane"
+       (BLUEPRINT §4): that an id names one element is a fact about the document, not the lane */
     t.ok(first && opened(L2) && LL(page, "#launch-raises .raise")[0].classList.contains("on") && page.$$("#launch-tax").length === 1 && page.$$("#launch-buy-in").length === 1,
       "with two raises the newest opens first, a press opens the other, and every id stays one element", `first ${first} opened ${L(page, "#launch-raise") && L(page, "#launch-raise").firstChild.textContent}`);
     page.close();

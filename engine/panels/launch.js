@@ -17,9 +17,10 @@
     applied to everything it sends: a quote that does not answer, a coin's
     decimals that do not answer, a landing address that does not answer, a
     clock that does not answer — each is a sentence and no slab. The donor's
-    `unbuilt` line ("launching a coin … not built into the console yet") is
-    the lane this file is, and its other half survives as the note under the
-    sealed markets naming what is still not built. The coin form's checks
+    `unbuilt` line ("Launching a coin and giving the token a name are not
+    built into the console yet") is half this lane; the naming half is
+    Identity's setTrait("name"). The note under the sealed markets is this
+    lane's own CONSOLE §14 line, not the donor's. The coin form's checks
     are IPSEITY src/DeskLaunch.sol's (`form()`: a name and a symbol, decimals
     0 to 36, a supply above nothing, the salt as hex), its "where would it
     land" preview is `coinAt` with `by` = the wallet that will send (D19),
@@ -60,6 +61,20 @@
         and each lock is asked for its beneficiary (lockIdOf is a finding
         aid that keeps a given lock's entry).
 
+    The review round (each a sentence in the group): Locks.lock is anyone's,
+    for any asset and any Reach, so the locks list is written by strangers.
+    A worthless token whose symbol() said "ETH" read exactly like ether;
+    every lock row now names its asset in its key cell, "native ETH" or
+    "token <address>", and the new lock's slab says the same. A decimals()
+    of 2^256 − 1 threw inside the list and hid every lock after it; an
+    address with no code read as a coin with 0 decimals, so the lock form
+    proposed the same approve to an EOA forever; a lock given away and
+    back was listed twice; a balance that did not answer drew the same page
+    as holding nothing; a raise past its deadline still offered a buy and a
+    sell that could only revert; a sealed market that owed nothing still
+    offered its collect; a refused clock hid "none yet" in the spacing row;
+    and a launchesOf that did not answer left the sealed markets silent.
+
     Not in the MVB (CONSOLE §14), and the lane says so where a holder would
     look — under the sealed markets: Uniswap v4 launches, their positions
     and the LP custodian. A coin is launched here from the holder's wallet
@@ -81,7 +96,8 @@
                                    (dataset.raw = quoteBuy's three words)
       #launch-create               the raise form (HOLD), inputs name=curve|vq|tgt|win|cap|tax|fee|cr|vest|days
       #launch-positions .sealed    graduated raises' sealed markets (dataset.key)
-      #launch-locks .lock          the locks whose beneficiary is the Reach
+      #launch-locks .lock          the locks whose beneficiary is the Reach; the key cell names the asset,
+                                   "lock #<k> · native ETH" or "lock #<k> · token <short address>"
       [data-act=launch|coinAt|create|buy|sell|graduate|fail|refund|claim|launchCollect|contribute|
                 redeem|lock|lockRelease|extend|give|approveFirstLaunch]
     Sentences the group proves (tools/verify-site/launch.mjs): "the raise
@@ -119,6 +135,10 @@
     var isEth = function (a) { return lower(a) === ZERO; };
     var eth = function (v) { return fmt(v, 18, 18) + " ETH"; };
     var amt = function (v, c) { return c.d == null ? v + " units of " + c.s : fmt(v, c.d, c.d) + " " + c.s; };
+    /*  an asset is named by the lane, never by its own symbol: Locks.lock is anyone's, for any asset and any
+        Reach, so a worthless token whose symbol() says "ETH" once read exactly like ether (the review's
+        finding, reproduced) — the key cell of a lock row, which no token writes, carries the asset */
+    var asset = function (a) { return isEth(a) ? "native ETH" : "token " + short(a); };
     var pct = function (b) { return b / 100n + "." + String(b % 100n).padStart(2, "0") + " %"; };
     var date = function (t) { return new Date(Number(t) * 1e3).toISOString().replace("T", " ").slice(0, 16) + " UTC"; };
     /* a read with no answer prints why, never a zero; the clock's refusal is its own sentence */
@@ -147,11 +167,15 @@
     var bad = function (g, n) { return function (e) { if (g === gen) n.textContent = unread(e); }; };
     /* the three-way rule: a satellite that did not report is a chip in one of two spellings, never a zero */
     var three = function (p, b, n) { if (S.reported & b) return 0; ui.chip(p, n + ": " + (S.absent & b ? "not deployed on this chain" : "could not be read at block " + S.block), S.absent & b ? "absent" : "unread"); return 1; };
-    /* a coin's symbol and exponent; the exponent is custody — when decimals() does not answer it stays null */
+    /*  a coin's symbol and exponent; the exponent is custody — when decimals() does not answer it stays null.
+        A reply with no words is no answer (an address with no code answers every eth_call with nothing,
+        which once read as 0 decimals and an empty symbol, so the lock form proposed the same approve to an
+        EOA forever), and an exponent past Kiln.MAX_DECIMALS is not one (2^256 − 1 once threw inside the
+        locks list and hid every lock after it) */
     var meta = function (a) {
       return isEth(a) ? Promise.resolve({ s: "ETH", d: 18, a: a }) : Promise.all([
-        read(a, "erc20.symbol", []).then(function (x) { return x.s(0).slice(0, 32); }, function () { return short(a); }),
-        read(a, "erc20.decimals", []).then(function (x) { return Number(x.w(0)); }, function () { return null; })
+        read(a, "erc20.symbol", []).then(function (x) { return x.s(0).slice(0, 32) || short(a); }, function () { return short(a); }),
+        read(a, "erc20.decimals", []).then(function (x) { var d = x.w(0); return x.words.length && d < 37n ? Number(d) : null; }, function () { return null; })
       ]).then(function (m) { return { s: m[0], d: m[1], a: a }; });
     };
     /* a re-quote inside the press: a floor the curve no longer meets, or a curve that will not answer, closes the slab unsent */
@@ -178,12 +202,13 @@
       note(b, "minted once, never again: the raise share to the Launchpad, the rest to " + tok + "'s Reach");
       var sp = slot(b, "launches", "launch-spacing");
       var last = read(LP, "launchpad.lastLaunchAt", [ID]).then(function (r) { return r.w(0); });
-      Promise.all([last, ck]).then(function (v) {
-        if (g !== gen) return;
-        var at = v[0] + 604800n;
-        if (!v[0]) sp.textContent = "none yet: the first is the holder's";
-        else count(g, sp, at, function (l) { return "next launch in " + l + " s, at " + date(at); }, function () { sp.textContent = "a launch may be made now"; });
-      }, bad(g, sp));
+      /* "none yet" is lastLaunchAt's answer and needs no clock; only the countdown waits on it (a refused
+         clock once hid a token's having never launched behind the clock's sentence) */
+      last.then(function (v) {
+        var at = v + 604800n;
+        if (g === gen && !v) return sp.textContent = "none yet: the first is the holder's";
+        return ck.then(function () { count(g, sp, at, function (l) { return "next launch in " + l + " s, at " + date(at); }, function () { sp.textContent = "a launch may be made now"; }); });
+      }).catch(bad(g, sp));
       var f = el("div"), bits = ui.rights() || 0; b.append(f);
       /*  the guardian's one act here: the Reach's first launch, co-signed once and stamped with the
           custody epoch, so a sale voids it (Launchpad.approveFirstLaunch) */
@@ -238,6 +263,8 @@
     function raises(p, pos, g) {
       var b = el("div"); b.id = "launch-raises"; p.insertBefore(b, pos);
       b.append(el("h3", "", "raises"));
+      /* a list that did not answer is said under the raises and under the sealed markets, which are read from
+         it (the second once said nothing at all, neither "none yet" nor "not reported") */
       read(LP, "launchpad.launchesOf", [ID]).then(function (r) {
         return Promise.all(r.arr(0).map(function (L) {
           return Promise.all([read(LP, "launchpad.launchOf", [L]), read(LP, "launchpad.graduationTargetOf", [L])]).then(function (x) {
@@ -255,7 +282,7 @@
         if (sel) detail(b, sel, g);
         if (hold) create(b, xs, g);
         positions(pos, xs, g);
-      }, function (e) { if (g === gen) note(b, "the raises " + unread(e), "warn"); });
+      }, function (e) { if (g === gen) [b, pos].forEach(function (p) { note(p, "the raises " + unread(e), "warn"); }); });
     }
 
     function detail(b, x, g) {
@@ -283,6 +310,10 @@
       }, function (e) { bad(g, tx)(e); cd.remove(); });
       ck.then(function (now) {
         if (g !== gen || !can || !live) return;
+        /*  buys and sells end at the deadline (Launchpad._live: DeadlinePassed), so they are drawn on the
+            anchored clock — past it the card once offered a live quote and a slab that could only revert.
+            A clock that will not answer draws neither: a deadline is never guessed (CONSOLE §12) */
+        if (now <= w(12)) buy(box, x, g);
         /* the per-buyer cap counts what reaches the curve, after fee and tax; 2^128 − 1 is "no cap" */
         if (now < end && !(w(13) >> 127n)) read(LP, "launchpad.boughtInWindow", [L, me]).then(function (r) {
           if (g === gen) note(win, "you may still buy " + eth(w(13) - r.w(0)) + " in the window, counted after fee and tax");
@@ -297,7 +328,6 @@
         return send(LP, "launchpad.graduate", [L], [["Raise", R0], ["Opens", "a sealed market at the curve's last price"], ["Burns", "the base that price does not need"]],
           "graduates raise #" + L + " into a sealed market nobody can withdraw; the base its price does not need is burned");
       });
-      if (live) buy(box, x, g);
       /* credits: claimed after graduation, refunded after a failure, sold back while live — never an approval */
       read(LP, "launchpad.creditOf", [L, me]).then(function (r) {
         var cr = r.w(0), a = amt(cr, c);
@@ -310,7 +340,7 @@
         if (st === 3n) act(cb, "refund", "take the refund", 0, function () {
           return send(LP, "launchpad.refund", [L, me], [["Raise", R0 + ", failed"], ["Pays", short(me) + " its share of the pot, pro rata to " + a]], "pays " + me + " its share of failed raise #" + L + "'s pot, pro rata to " + a);
         });
-        if (live) sell(cb, x, a, R0);
+        if (live) ck.then(function (now) { now > w(12) || sell(cb, x, a, R0); }, function () {});
       }, bad(g, cb));
       floor(fd, x, me, g);
     }
@@ -375,6 +405,8 @@
         return send(c.a, "coin.contribute", [], [["Coin", c.s], ["Adds", eth(v) + " to its floor, for every holder"], ["Back", "never: only burning " + c.s + " takes it out"]],
           "gives " + eth(v) + " to " + c.s + "'s floor for every holder; it does not come back", { value: v, spend: true, then: done(["c" + L]) });
       }), { spend: true });
+      /* holding nothing draws no burn; a balance that did not answer says so where the burn would be (it once
+         drew the same page as holding nothing, and its rejection went unhandled) */
       read(c.a, "erc20.balanceOf", [me]).then(function (r) {
         if (g !== gen || !r.w(0)) return;
         var ri = fld(fd, "x" + L, "burn for the floor, in " + c.s + " (you hold " + amt(r.w(0), c) + ")", "");
@@ -388,7 +420,7 @@
               "burns " + amt(v, c) + " for at least " + eth(back) + " from its floor; burned coins are gone", { spend: true, then: done(["x" + L]) });
           });
         }), { spend: true });
-      });
+      }, function (e) { g === gen && kv(fd, "you hold", unread(e)); });
     }
 
     /*── a raise: createChecked pins the terms by their hash, read in the same press; the tuple is laid by
@@ -445,7 +477,8 @@
         read(PL, "pool.marketOf", [key]).then(function (m) {
           if (g !== gen) return;
           v.textContent = "owes " + amt(m.w(13), x.c) + " · " + eth(m.w(14)) + " to " + tok + "'s fee sink";
-          if (can) act(row, "launchCollect", "collect it", 0, function () {
+          /* drawn only when it owes, as lockRelease is only when something is releasable: a collect of nothing reverts ZeroAmount */
+          if (can && (m.w(13) || m.w(14))) act(row, "launchCollect", "collect it", 0, function () {
             return send(PL, "pool.collect", [key], [["Sealed market", String(key)], ["Pays", "what it owes, to " + tok + "'s fee sink and nobody else"]],
               "collects the fees sealed market " + ks + " owes to " + tok + "'s fee sink");
           });
@@ -465,8 +498,10 @@
         for (var i = 0n; i < r.w(0); i++) ids.push(read(LK, "locks.lockIdOf", [RE, i]).then(function (x) { return x.w(0); }));
         return Promise.all(ids);
       }).then(function (ids) {
-        /* lockIdOf is a finding aid: after a give the old index keeps its entry, so the lock itself is asked */
-        return Promise.all(ids.map(function (k) {
+        /*  lockIdOf is a finding aid: after a give the old index keeps its entry, so the lock itself is asked;
+            and give pushes the id again, so a lock given away and back (or to its own Reach) once listed
+            twice — one row per id */
+        return Promise.all(ids.filter(function (k, i) { return ids.indexOf(k) === i; }).map(function (k) {
           return Promise.all([read(LK, "locks.lockOf", [k]), read(LK, "locks.releasable", [k])]).then(function (v) {
             return lower(v[0].a(1)) !== lower(RE) ? null : meta(v[0].a(2)).then(function (c) { return { k: k, w: v[0].w, c: c, rel: v[1].w(0) }; });
           });
@@ -482,7 +517,7 @@
 
     function lock(list, x) {
       var w = x.w, c = x.c, k = x.k, row = el("div", "lock"), K = "lock #" + k; list.append(row);
-      kv(row, K, amt(w(3), c) + " · " + (w(8) ? "vests until " : "unlocks at ") + date(w(7)) + " · released " + amt(w(4), c) + " · releasable now " + amt(x.rel, c));
+      kv(row, K + " · " + asset(c.a), amt(w(3), c) + " · " + (w(8) ? "vests until " : "unlocks at ") + date(w(7)) + " · released " + amt(w(4), c) + " · releasable now " + amt(x.rel, c));
       if (can && x.rel) act(row, "lockRelease", "release " + amt(x.rel, c) + " to the Reach", 0, function () {
         return send(LK, "locks.release", [k], [["Lock", "#" + k], ["Pays", "what has vested, " + amt(x.rel, c) + " or more, to " + tok + "'s Reach and nobody else"]],
           "releases what " + K + " has vested to " + tok + "'s Reach");
@@ -523,7 +558,7 @@
             var end = now + dd * 86400n, ln = !!typed.lin;
             return ui.approveExactThen(isEth(a) ? [] : [{ token: a, spender: LK, amount: v, symbol: c.s, decimals: c.d }], function () {
               return send(LK, "locks.lock", [a, v, RE, 0n, ln ? 0n : end, end, ln],
-                [["Locks", amt(v, c)], ["For", tok + "'s Reach: the claim goes with the token"], ["Releases", (ln ? "evenly from now until " : "all of it at ") + date(end)], ["Early", "never: no function ends a lock early"]],
+                [["Locks", amt(v, c)], ["Asset", asset(a)], ["For", tok + "'s Reach: the claim goes with the token"], ["Releases", (ln ? "evenly from now until " : "all of it at ") + date(end)], ["Early", "never: no function ends a lock early"]],
                 "locks " + amt(v, c) + " for " + tok + "'s Reach until " + date(end) + "; nothing ends it early, and it goes with the token", { value: isEth(a) ? v : 0n, spend: true, then: done(["lv"]) });
             });
           });
