@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'self'; form-action 'none'; base-uri 'none'">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>INTACT</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header id="crest">
+  <div class="cell" id="c-chain"><span class="k">chain</span><span class="v" id="c-chain-v"></span></div>
+  <div class="cell" id="c-wallet"><span class="led"></span><span class="v" id="c-wallet-v">read only</span>
+    <button class="b g" id="connect" hidden>connect</button>
+    <button class="b" id="switch" hidden>switch chain</button></div>
+</header>
+<div id="body">
+  <aside id="col">
+    <section id="lane-home" class="on">
+      <h1 id="ident"></h1>
+      <p id="rights-sentence" class="blurb"></p>
+      <div id="facts"></div>
+      <div id="chips"></div>
+      <div id="viewer" hidden>
+        <p class="blurb" id="viewer-note"></p>
+        <p><a id="link-web3" class="v"></a></p>
+        <p><span id="link-https" class="v"></span></p>
+        <div id="qr"></div>
+      </div>
+      <div id="session" hidden></div>
+      <div id="collection" hidden>
+        <div id="mint"></div>
+        <div id="directory"></div>
+        <div id="recent"></div>
+        <div id="commons"></div>
+      </div>
+    </section>
+  </aside>
+  <main id="lane">
+    <nav id="lanes"></nav>
+  </main>
+</div>
+<p id="tick"></p>
+<p id="verified" class="s"></p>
+<div id="cbox"><div id="cslab"></div></div>
+<div id="picker" hidden></div>
+<script>
+/*═══════════════════════════════════════════════════════════════════════════
+  INTACT · the console — engine/app.html
+
+  THE SHELL. Deployable source: no bundler, no import, no external resource.
+  tools/build-app.mjs inlines engine/app.css at the one stylesheet link marker
+  below, minifies each bare script block separately, gzips the whole
+  document and shards it into Engine; src/Renderer.sol serves it as the
+  body of /token/<id>/live and of tokenURI's animation_url, after a
+  state block the Catalog writes (one script, one object) and a loader that
+  inflates this document and writes it over itself. The keccak of the
+  minified bytes is Engine.engineHash(); the footer at the bottom of the
+  page recomputes it from the bytes that actually ran (CONSOLE §8).
+
+  Two script blocks, both at the end of <body> so every element exists when
+  they run — a browser runs them where they are, the verify-site shim runs
+  them in document order after mounting, and both agree only there.
+
+    1 · THE CHAIN   the wallet library's chain half, from IPSEITY
+                    engine/ipseity.html (working tree, lines 1866–2038,
+                    2203–2210, 2322–2394): keccak, hex/utf8, EIP-55, the
+                    ABI coder, units, EIP-712, ERC-6551. tools/selftest.mjs
+                    lifts the slice between the two markers out of THIS
+                    file and holds it against published vectors; its
+                    keccak is recorded in docs/INVARIANTS.md F3. It touches
+                    no DOM, no provider and no location, and ends by
+                    publishing the names block 2 reads (15 today; the
+                    slice defines 24) onto a one-shot INTACT.$lib.
+    2 · THE SHELL   one IIFE: the first statement copies $lib into its
+                    closure and deletes it. Mode, the chooser, the chain
+                    gate, rights, the slab, Home, the QR, the loader, the
+                    footer, and INTACT.ui — the whole surface a panel may
+                    call (docs/CONSOLE.md §5).
+
+  Rules this file keeps (each enforced by tools/build-app.mjs, tools/
+  verify.mjs or tools/verify-site.mjs): every string from chain or user
+  reaches the DOM through textContent; no innerHTML; no eval, no
+  Function, no external src; no URL of any kind — no RPC, no explorer, no
+  gateway host — the one host-shaped literal is the SVG namespace the QR
+  needs; amounts are BigInt; nothing is stored but the picker's rdns;
+  nothing at the top level of block 2 but the IIFE.
+
+  1 · THE CHAIN
+
+  Everything below this line is carried inside the token: the sponge, the
+  encoder, the checksum, the two account derivations. A page that has to
+  ask a library what a selector is cannot honestly claim to be on chain.
+  The only name this block reads from outside is S, the state object; the
+  only name it leaves behind is INTACT.$lib, and block 2 takes that away.
+═══════════════════════════════════════════════════════════════════════════*/
+const S = window.INTACT || {};
+/*── keccak-256 (the Ethereum variant: 0x01 padding, not SHA-3's 0x06) ──*/
+const K_RC = [
+  0x0000000000000001n, 0x0000000000008082n, 0x800000000000808an, 0x8000000080008000n,
+  0x000000000000808bn, 0x0000000080000001n, 0x8000000080008081n, 0x8000000000008009n,
+  0x000000000000008an, 0x0000000000000088n, 0x0000000080008009n, 0x000000008000000an,
+  0x000000008000808bn, 0x800000000000008bn, 0x8000000000008089n, 0x8000000000008003n,
+  0x8000000000008002n, 0x8000000000000080n, 0x000000000000800an, 0x800000008000000an,
+  0x8000000080008081n, 0x8000000000008080n, 0x0000000080000001n, 0x8000000080008008n];
+const K_ROT = [0,1,62,28,27, 36,44,6,55,20, 3,10,43,25,39, 41,45,15,21,8, 18,2,61,56,14];
+const M64 = (1n << 64n) - 1n;
+const rotl64 = (x, n) => n === 0n ? x : ((x << n) | (x >> (64n - n))) & M64;
+
+function keccakF(A){
+  for(let r = 0; r < 24; r++){
+    const Cc = new Array(5), D = new Array(5);
+    for(let x = 0; x < 5; x++) Cc[x] = A[x] ^ A[x+5] ^ A[x+10] ^ A[x+15] ^ A[x+20];
+    for(let x = 0; x < 5; x++) D[x] = Cc[(x+4) % 5] ^ rotl64(Cc[(x+1) % 5], 1n);
+    for(let x = 0; x < 5; x++) for(let y = 0; y < 5; y++) A[x + 5*y] ^= D[x];
+    const B = new Array(25);
+    for(let x = 0; x < 5; x++) for(let y = 0; y < 5; y++)
+      B[y + 5 * ((2*x + 3*y) % 5)] = rotl64(A[x + 5*y], BigInt(K_ROT[x + 5*y]));
+    for(let x = 0; x < 5; x++) for(let y = 0; y < 5; y++)
+      A[x + 5*y] = B[x + 5*y] ^ ((~B[(x+1) % 5 + 5*y] & M64) & B[(x+2) % 5 + 5*y]);
+    A[0] ^= K_RC[r];
+  }
+}
+function keccak256(bytes){
+  const rate = 136;
+  const A = new Array(25).fill(0n);
+  const padLen = rate - (bytes.length % rate);
+  const P = new Uint8Array(bytes.length + padLen);
+  P.set(bytes);
+  P[bytes.length] |= 0x01;
+  P[P.length - 1] |= 0x80;
+  for(let off = 0; off < P.length; off += rate){
+    for(let i = 0; i < rate / 8; i++){
+      let lane = 0n;
+      for(let b = 7; b >= 0; b--) lane = (lane << 8n) | BigInt(P[off + i*8 + b]);
+      A[i] ^= lane;
+    }
+    keccakF(A);
+  }
+  const out = new Uint8Array(32);
+  for(let i = 0; i < 4; i++){
+    let l = A[i];
+    for(let b = 0; b < 8; b++){ out[i*8 + b] = Number(l & 0xffn); l >>= 8n; }
+  }
+  return out;
+}
+
+const utf8    = s => new TextEncoder().encode(s);
+const toHex   = u => "0x" + Array.from(u, b => b.toString(16).padStart(2, "0")).join("");
+const fromHex = h => {
+  h = String(h).replace(/^0x/, ""); if(h.length % 2) h = "0" + h;
+  const u = new Uint8Array(h.length / 2);
+  for(let i = 0; i < u.length; i++) u[i] = parseInt(h.substr(i*2, 2), 16);
+  return u;
+};
+const khex     = s => toHex(keccak256(utf8(s)));
+const kbytes   = h => toHex(keccak256(fromHex(h)));
+const selector = sig => khex(sig).slice(0, 10);
+
+/*── EIP-55: every address this token prints can be checked by eye ──*/
+function checksum(addr){
+  const a = String(addr).replace(/^0x/, "").toLowerCase();
+  if(!/^[0-9a-f]{40}$/.test(a)) throw new Error("not an address: " + addr);
+  const h = khex(a).slice(2);
+  let o = "0x";
+  for(let i = 0; i < 40; i++) o += parseInt(h[i], 16) >= 8 ? a[i].toUpperCase() : a[i];
+  return o;
+}
+const isAddr  = a => /^0x[0-9a-fA-F]{40}$/.test(String(a || "").trim());
+const short   = a => a ? a.slice(0, 6) + " … " + a.slice(-4) : "—";
+
+/*── ABI ────────────────────────────────────────────────────────────────*/
+const pad  = h => String(h).replace(/^0x/, "").padStart(64, "0");
+const padR = h => String(h).replace(/^0x/, "").padEnd(64, "0");
+const isDyn = t => t === "bytes" || t === "string" || /\[\]$/.test(t);
+
+function encWord(type, v){
+  if(type === "address"){
+    const a = String(v).trim();
+    if(!isAddr(a)) throw new Error("bad address: " + a);
+    return pad(a.slice(2).toLowerCase());
+  }
+  if(type === "bool") return pad(v === true || v === "true" || v === 1 || v === "1" ? "1" : "0");
+  if(/^u?int\d*$/.test(type)){
+    let n = BigInt(String(v).trim());
+    if(n < 0n) n = (1n << 256n) + n;                     // two's complement
+    return pad(n.toString(16));
+  }
+  if(/^bytes([1-9]|[12]\d|3[0-2])$/.test(type)) return padR(String(v));
+  throw new Error("unsupported type: " + type);
+}
+function encDyn(type, v){
+  if(type === "string" || type === "bytes"){
+    const b = type === "string" ? utf8(String(v)) : fromHex(v);
+    let body = "";
+    for(let i = 0; i < b.length; i += 32){
+      body += Array.from(b.subarray(i, i + 32), x => x.toString(16).padStart(2, "0"))
+                   .join("").padEnd(64, "0");
+    }
+    return pad(b.length.toString(16)) + body;
+  }
+  const base = type.slice(0, -2);
+  const arr  = Array.isArray(v) ? v : String(v).split(",").map(s => s.trim()).filter(Boolean);
+  return pad(arr.length.toString(16)) + arr.map(x => encWord(base, x)).join("");
+}
+function encodeParams(types, values){
+  let head = "", tail = "";
+  const headLen = types.length * 32;
+  for(let i = 0; i < types.length; i++){
+    if(isDyn(types[i])){
+      head += pad((headLen + tail.length / 2).toString(16));
+      tail += encDyn(types[i], values[i]);
+    } else head += encWord(types[i], values[i]);
+  }
+  return head + tail;
+}
+/* a human-readable signature is turned into calldata here, in the frame */
+function encodeCall(sig, args){
+  const m = String(sig).trim().match(/^([A-Za-z_$][\w$]*)\((.*)\)$/);
+  if(!m) throw new Error("a signature looks like transfer(address,uint256)");
+  const types = m[2].trim() ? m[2].split(",").map(s => s.trim()) : [];
+  const canonical = m[1] + "(" + types.join(",") + ")";
+  if(types.length !== args.length)
+    throw new Error(types.length + " argument" + (types.length === 1 ? "" : "s") + " expected, " + args.length + " given");
+  return { data: selector(canonical) + encodeParams(types, args), sig: canonical, types };
+}
+
+const word    = (hex, i) => String(hex).replace(/^0x/, "").substr(i * 64, 64);
+const decUint = (hex, i = 0) => BigInt("0x" + (word(hex, i) || "0"));
+const decInt  = (hex, i = 0) => { const v = decUint(hex, i); return v >= (1n << 255n) ? v - (1n << 256n) : v; };
+const decAddr = (hex, i = 0) => checksum("0x" + word(hex, i).slice(24));
+const decBool = (hex, i = 0) => decUint(hex, i) !== 0n;
+function decString(hex){
+  const h = String(hex).replace(/^0x/, "");
+  if(h.length <= 128) return "";
+  const off = Number(BigInt("0x" + h.substr(0, 64))) * 2;
+  const len = Number(BigInt("0x" + h.substr(off, 64)));
+  const b   = fromHex(h.substr(off + 64, len * 2));
+  return new TextDecoder().decode(b);
+}
+/* some contracts answer name()/symbol() with a raw bytes32. accept both. */
+function decStringLoose(hex){
+  const h = String(hex).replace(/^0x/, "");
+  if(!h) return "";
+  if(h.length === 64){
+    const b = fromHex(h).filter(x => x !== 0);
+    return new TextDecoder().decode(new Uint8Array(b));
+  }
+  try { return decString(hex); } catch { return ""; }
+}
+
+/*── units ──────────────────────────────────────────────────────────────*/
+function fmtUnits(v, dec = 18, prec = 6){
+  v = BigInt(v);
+  const neg = v < 0n; if(neg) v = -v;
+  const base = 10n ** BigInt(dec);
+  const whole = v / base;
+  const frac = (v % base).toString().padStart(dec, "0").slice(0, prec).replace(/0+$/, "");
+  /* never round a balance down to a flat zero — dust is still custody */
+  if(v > 0n && whole === 0n && frac === "")
+    return (neg ? ">-" : "<") + "0." + "0".repeat(prec - 1) + "1";
+  return (neg ? "-" : "") + whole.toString() + (frac ? "." + frac : "");
+}
+function toUnits(s, dec = 18){
+  const t = String(s).trim();
+  if(!/^\d*\.?\d*$/.test(t) || t === "" || t === ".") throw new Error("not a number: " + s);
+  const [w, f = ""] = t.split(".");
+  if(f.length > dec) throw new Error("too many decimal places");
+  return BigInt((w || "0") + f.padEnd(dec, "0"));
+}
+
+const REG_6551  = "0x000000006551c19487814612e58FE06813775758";
+/* Two implementations, two salts, two accounts per token. The implementations
+   are handed over in the state block rather than hardcoded, because this
+   collection ships its own — pinning the reference implementation here would
+   derive an address the token does not use. The salts are INTACT's two:
+   keccak("intact.reach.v1") for the Reach and keccak("intact.grip.v1") for the
+   Grip (src/lib/AccountBinding.sol REACH_SALT / GRIP_SALT), computed below by
+   this page's own keccak rather than pasted in, so a keccak that drifted would
+   derive a wrong account and agrees() would say so. */
+const REACH_IMPL = String(S.reachImpl || "0x0000000000000000000000000000000000000000");
+const GRIP_IMPL  = String(S.gripImpl  || "0x0000000000000000000000000000000000000000");
+
+/*── EIP-712, computed here so the wallet's display can be checked ──────*/
+function typeHash(primary, types){
+  const seen = new Set();
+  const collect = t => {
+    if(seen.has(t) || !types[t]) return;
+    seen.add(t);
+    types[t].forEach(f => collect(f.type.replace(/\[\d*\]$/, "")));
+  };
+  collect(primary);
+  const order = [primary, ...Array.from(seen).filter(t => t !== primary).sort()];
+  return khex(order.map(t => t + "(" + types[t].map(f => f.type + " " + f.name).join(",") + ")").join(""));
+}
+function encodeData(primary, data, types){
+  let enc = pad(typeHash(primary, types));
+  for(const f of types[primary]){
+    const v = data[f.name];
+    if(f.type === "string")      enc += pad(khex(String(v)));
+    else if(f.type === "bytes")  enc += pad(kbytes(v));
+    else if(types[f.type])       enc += pad(kbytes("0x" + encodeData(f.type, v, types)));
+    else if(/\[\d*\]$/.test(f.type)){
+      const base = f.type.replace(/\[\d*\]$/, "");
+      enc += pad(kbytes("0x" + (v || []).map(x => encWord(base, x)).join("")));
+    }
+    else enc += encWord(f.type, v);
+  }
+  return enc;
+}
+const hashStruct = (primary, data, types) => kbytes("0x" + encodeData(primary, data, types));
+function domainSeparator(domain){
+  const fields = [];
+  if(domain.name != null)              fields.push({ name:"name", type:"string" });
+  if(domain.version != null)           fields.push({ name:"version", type:"string" });
+  if(domain.chainId != null)           fields.push({ name:"chainId", type:"uint256" });
+  if(domain.verifyingContract != null) fields.push({ name:"verifyingContract", type:"address" });
+  if(domain.salt != null)              fields.push({ name:"salt", type:"bytes32" });
+  return hashStruct("EIP712Domain", domain, { EIP712Domain: fields });
+}
+const digest712 = (domain, primary, message, types) =>
+  kbytes("0x1901" + pad(domainSeparator(domain)) + pad(hashStruct(primary, message, types)));
+
+/*── ERC-6551: the token's two accounts, derived rather than requested ──*/
+const REACH_SALT = khex("intact.reach.v1").slice(2);
+const GRIP_SALT  = khex("intact.grip.v1").slice(2);
+
+function derive6551(impl, salt){
+  /* ERC-1167 minimal proxy with the 6551 footer, hashed per the registry's
+     CREATE2 derivation: salt · chainId · tokenContract · tokenId          */
+  const code = "0x3d60ad80600a3d3981f3363d3d373d3d3d363d73" + impl.slice(2).toLowerCase() +
+               "5af43d82803e903d91602b57fd5bf3" +
+               salt +
+               pad(BigInt(S.chainId).toString(16)) +
+               pad(String(S.hub).slice(2).toLowerCase()) +
+               pad(BigInt(S.id).toString(16));
+  const h = kbytes(code);
+  const create2 = "0xff" + REG_6551.slice(2).toLowerCase() + salt + h.slice(2);
+  return checksum("0x" + kbytes(create2).slice(-40));
+}
+
+/* The Reach — the hand that acts. */
+function account6551(){ return derive6551(REACH_IMPL, REACH_SALT); }
+
+/* The Grip — the hand that only closes. */
+function grip6551(){ return derive6551(GRIP_IMPL, GRIP_SALT); }
+
+/* Whether the address derived in this frame is the address the contract
+   reports. It should never disagree; the point of asking is that a viewer
+   which only reads what it is handed cannot tell a correct answer from a
+   convenient one. */
+function agrees(derived, reported){
+  return /^0x[0-9a-fA-F]{40}$/.test(String(reported || "")) &&
+         String(derived).toLowerCase() === String(reported).toLowerCase();
+}
+/*── end of the chain half ──*/
+/*  Exactly what block 2 reads. The selftest proves the whole slice above
+    from the SOURCE — all 23 names and agrees(), the two ERC-6551 vectors
+    included — while the build keeps only what is referenced
+    (compress.toplevel), so the EIP-712 hasher, decString, decStringLoose
+    and the 6551 derivation are proven here and absent from the chain
+    (H §3, cut rule 6). Measured: publishing the 24 names cost 2,705 B of
+    gzip for this block; this list costs 1,900 — the whole document stood
+    at 15,547 with the 24 and the ceiling is 15,000. A later unit that
+    needs a dropped helper adds its name here and pays its bytes. */
+window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, encodeParams, utf8, toHex, fromHex, decUint, decAddr, fmtUnits, toUnits, isAddr };
+</script>
+<script>
+/*═══════════════════════════════════════════════════════════════════════════
+  2 · THE SHELL
+
+  One IIFE. Block 1 published the chain half onto a one-shot
+  window.INTACT.$lib; the first statement here copies it into this closure
+  and deletes it, before `ready` resolves and before any panel is injected,
+  so no Blob script ever finds a keccak, an encoder or a provider by name
+  (CONSOLE §4; G′3 asserts it). Everything a panel may call is INTACT.ui
+  and nothing else; everything the shell reads from the chain passes
+  through one `rpc()` that throws the chain sentence unless the body says
+  the chain is right — the gate is a property of the primitive, not of
+  boot order (CONSOLE §2).
+
+  Terser mangles this block's top level separately from block 1 and from
+  every panel, so nothing here is reached by name from outside; the only
+  names that survive are `window.INTACT` and the ids in the document. The
+  prose is in the comments because the build strips them: a sentence here
+  costs nothing on chain, a sentence in a string costs its bytes, and the
+  byte budget (H §3) is the design force of this file.
+═══════════════════════════════════════════════════════════════════════════*/
+(() => {
+  const S = window.INTACT, L = S.$lib; delete S.$lib;
+  const D = document, B = D.body, $ = s => D.querySelector(s), $$ = s => [...D.querySelectorAll(s)];
+  /* names only — no endpoint, no explorer, no gateway host, anywhere (D14). Id 0 is not a chain: it
+     is what a failed eth_chainId leaves behind, and the crest says so instead of printing "chain 0" */
+  const NAMES = { 0: "an unreachable chain", 1: "Ethereum", 10: "OP Mainnet", 8453: "Base", 84532: "Base Sepolia", 11155111: "Sepolia", 31337: "local" };
+  const nameOf = id => NAMES[id] || "chain " + id;
+  const CHAIN = Number(S.chainId), ID = Number(S.id || 0), R = S.rights || {};
+  /*  Paths resolve from a base, never from the root (CONSOLE §10): on a
+      path-based gateway the document sits at /<premises>:<chain>/token/<id>/live
+      and a root-relative /panel/swap.js would leave this Premises. With no
+      /token/ in the path (the collection page) the base is the path itself
+      less its trailing slash, so a mint from /<premises>:<chain>/ stays home. */
+  const PATH = location.pathname, TI = PATH.indexOf("/token/");
+  const BASE = TI >= 0 ? PATH.slice(0, TI) : PATH.replace(/\/$/, "");
+  const PREM = String(S.premises).toLowerCase(), TOKEN = "/token/" + ID + "/live";
+  const WEB3 = "web3://" + PREM + ":" + CHAIN + TOKEN;
+  const hexQ = n => "0x" + BigInt(n).toString(16);
+  const pad = h => String(h).replace(/^0x/, "").padStart(64, "0"), padR = h => String(h).replace(/^0x/, "").padEnd(64, "0");
+  /* always with the spaces around the ellipsis: an address printed without
+     them reads as one word and gets copied wrong */
+  const short = a => a && !/^0x0{40}$/i.test(a) ? a.slice(0, 6) + " … " + a.slice(-4) : "nobody";
+  const nap = ms => new Promise(r => setTimeout(r, ms));
+  const fire = (name, detail) => dispatchEvent(new CustomEvent(name, { detail }));
+  const date = t => Number(t) ? new Date(Number(t) * 1e3).toISOString().replace("T", " ").slice(0, 16) + " UTC" : "none";
+  const lower = s => String(s).toLowerCase(), em = e => String(e && e.message).slice(0, 160);
+
+  /*── mode: decided before anything is read, written on the body (CONSOLE §1) ──*/
+  let opaque = false;
+  try { localStorage.getItem("intact"); } catch { opaque = true; }
+  const AS = new URLSearchParams(location.search).get("as");
+  const mode = opaque ? "viewer" : L.isAddr(AS) ? "session" : "console", viewer = mode === "viewer", sess = mode === "session";
+  const KEY = sess ? L.checksum(AS) : null;
+  B.dataset.mode = mode; B.dataset.rights = ""; B.dataset.chain = "";
+  D.documentElement.style.setProperty("--h", ID * 137 % 360);
+  /* removed from the tree, never merely hidden: the viewer has no gesture */
+  if (viewer) { $("#connect").remove(); $("#switch").remove(); }
+  const VIEWER = "nothing here can sign; open the console at " + WEB3;
+  const NONE = "no wallet in this browser; everything above is still true";
+  const SESSION = "a session speaks only through the Reach", OPER = "an operator may move the token, not speak";
+  const GUARD = "a guardian may pause, panic, seal and revoke sessions; nothing else";
+  const KEYED = "this page acts as key " + KEY;
+
+  /*── furniture: every text node through textContent ──*/
+  const el = (tag, cls, text) => { const e = D.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const kv = (p, k, v) => { const d = el("div", "kv"); d.append(el("span", "k", k), el("span", "v", v)); p.append(d); return d; };
+  const button = (p, label, grey, fn) => { const b = el("button", "b" + (grey ? " g" : ""), label); b.type = "button"; b.addEventListener("click", fn); p.append(b); return b; };
+  const field = (p, label, ph) => { p.append(el("div", "k", label)); const i = el("input"); i.type = "text"; i.placeholder = ph || ""; i.autocomplete = "off"; p.append(i); return i; };
+  const note = (p, text, cls) => { const q = el("p", "blurb" + (cls ? " " + cls : ""), text); p.append(q); return q; };
+  const chip = (p, label, state) => { const c = el("span", "chip", label); if (state) c.dataset.state = state; p.append(c); return c; };
+  let tickT = 0;
+  /* one line; it fades to .55 after seven seconds and never disappears */
+  const say = (msg, kind) => { const t = $("#tick"); t.className = kind || ""; t.textContent = msg; clearTimeout(tickT); tickT = setTimeout(() => t.classList.add("fade"), 7e3); };
+
+  /*── the ABI, read side: one decoder for return data, revert data, calldata rows and
+       the inner calls of execute*; the head/tail rule over a parsed type ──*/
+  const split = s => { const o = []; let d = 0, c = ""; for (const ch of s) { if (ch === "(") d++; if (ch === ")") d--; if (ch === "," && !d) { o.push(c); c = ""; } else c += ch; } if (c) o.push(c); return o; };
+  const inner = t => split(t.slice(1, t.lastIndexOf(")")));
+  const arr = t => t.match(/^(.*)\[(\d*)\]$/);
+  const isDyn = t => { const m = arr(t); return m ? !m[2] || isDyn(m[1]) : t === "bytes" || t === "string" || (t[0] === "(" && inner(t).some(isDyn)); };
+  const size = t => { const m = arr(t); return m ? m[2] * size(m[1]) : t[0] === "(" ? inner(t).reduce((n, x) => n + size(x), 0) : 32; };
+  const W = (h, at) => BigInt("0x" + (h.substr(at * 2, 64) || "0"));
+  const decSeq = (ts, h, base) => { let p = base; return ts.map(t => { const dyn = isDyn(t), v = decVal(t, h, dyn ? base + Number(W(h, p)) : p); p += dyn ? 32 : size(t); return v; }); };
+  function decVal(t, h, at) {
+    const m = arr(t);
+    if (m) { const n = m[2] ? +m[2] : Number(W(h, at)); return decSeq(Array(n).fill(m[1]), h, m[2] ? at : at + 32); }
+    if (t[0] === "(") return decSeq(inner(t), h, at);
+    if (t === "bytes" || t === "string") { const b = h.substr(at * 2 + 64, Number(W(h, at)) * 2); return t === "bytes" ? "0x" + b : new TextDecoder().decode(L.fromHex(b)); }
+    const w = h.substr(at * 2, 64).padEnd(64, "0"), v = BigInt("0x" + w);
+    return t === "address" ? L.checksum("0x" + w.slice(24)) : t === "bool" ? v !== 0n : /^bytes\d/.test(t) ? "0x" + w.slice(0, 2 * t.slice(5)) : t[0] === "i" && v >> 255n ? v - (1n << 256n) : v;
+  }
+  const decode = (types, hex) => decSeq(types, String(hex).replace(/^0x/, ""), 0);
+  const canon = sig => String(sig).replace(/\s+/g, "");
+  const sigTypes = sig => { const i = sig.indexOf("("); return i < 0 ? [] : split(sig.slice(i + 1, sig.lastIndexOf(")"))); };
+  const SEL = sig => L.selector(canon(sig));
+  /* a value in words: addresses checksummed (shortened in a sentence), numbers decimal,
+     booleans as words, bytes as their length (hex in a sentence) */
+  const words = (v, t, s) => Array.isArray(v) ? "[" + v.map((x, i) => words(x, arr(t) ? arr(t)[1] : inner(t)[i], s)).join(", ") + "]"
+    : typeof v === "boolean" ? (v ? "true" : "false") : t === "address" && s ? short(v) : t === "bytes" && !s ? (v.length / 2 - 1) + " bytes" : String(v);
+  /* the one place a revert becomes a sentence (CONSOLE §4.3) */
+  const errorSentence = h => {
+    h = String(h || "");
+    if (h.length < 10) return "";
+    const sel = lower(h.slice(0, 10)), sig = S.err[sel];
+    if (!sig) return "unknown error " + sel;
+    const ts = sigTypes(sig); let a = [];
+    try { a = decode(ts, h.slice(10)); } catch {}
+    return sig.slice(0, sig.indexOf("(")) + "(" + a.map((v, i) => words(v, ts[i], 1)).join(", ") + ")";
+  };
+  /* wallets differ in where they put the data: e.data, e.data.data, or a hex run in the message */
+  const revertData = e => {
+    const d = e && e.data;
+    for (const c of [d, d && d.data, d && d.originalError && d.originalError.data]) if (typeof c === "string" && /^0x[0-9a-f]*$/i.test(c)) return c;
+    const m = String(e && e.message || "").match(/0x[0-9a-f]{8,}/i); return m ? m[0] : null;
+  };
+
+  /*── the rows: a panel declares what it calls; the baked selector and this page's keccak must agree ──*/
+  const ROWS = {};
+  const rows = map => { for (const k in map) { const sig = canon(map[k]); if (!(k in S.sel)) throw Error(k + ": not a row the chain serves"); if (SEL(sig) !== lower(S.sel[k])) throw Error(k + ": this panel's ABI disagrees with the chain's"); ROWS[k] = sig; } };
+  const sigOf = key => { if (!(key in ROWS)) throw Error(key + ": not declared by this panel"); return ROWS[key]; };
+  const buildData = (key, args) => L.encodeCall(sigOf(key), args || []).data;
+
+  /*── the chooser (Chrome.sol WALLET_JS, D8): every announcer kept by rdns; one is used silently,
+       two or more ask before the first eth_call; window.ethereum only when none announce ──
+
+       Discovery happened BEFORE this document existed. document.open() erases every event
+       listener on the window (HTML "document open steps" 9–10; measured in Chromium 141: a
+       wallet's eip6963:requestProvider listener registered at injection never fires after the
+       loader's open/write/close, and a requestProvider dispatched from here is heard by nobody),
+       so the loader in src/Renderer.sol INFLATE dispatches the request and collects every
+       announcement while the wallets' listeners are still alive, and leaves the list on
+       INTACT.$wallets beside $doc. This block seeds the map from it, takes it away, and keeps
+       a live listener for a wallet injected later, which announces unsolicited. */
+  const P = new Map(); let CHO = null;
+  const announce = d => { if (d && d.info && d.info.rdns && d.provider) P.set(d.info.rdns, d); };
+  for (const d of S.$wallets || []) announce(d); delete S.$wallets;
+  addEventListener("eip6963:announceProvider", e => announce(e.detail));
+  /* storage only on a real origin, only inside try/catch; the viewer never touches it again */
+  const store = (fn) => { try { return opaque ? null : fn(localStorage); } catch { return null; } };
+  const saved = () => store(s => s.getItem("intact.wallet"));
+  const keep = r => store(s => s.setItem("intact.wallet", r));
+  const first = () => P.values().next().value;
+  /* a sole announcer is picked silently and NOT remembered: only a person's pick is kept, so
+     "two or more and nothing remembered" still asks when a second wallet announces later */
+  const pick = () => { if (CHO) return CHO; if (opaque) return null; const s = saved(); if (s && P.has(s)) return CHO = P.get(s); return P.size === 1 ? CHO = first() : null; };
+  const pv = () => { const d = pick(); return d ? d.provider : P.size ? first().provider : window.ethereum || null; };
+  /* page UI, not a wallet prompt: names through textContent, an icon only when it is a data: image */
+  const ask = () => new Promise(res => {
+    const o = $("#picker"); o.replaceChildren(); o.hidden = false;
+    const c = el("div", "card"); c.append(el("p", "k", "which wallet speaks for you?"));
+    /* a click inside the card bubbles to the backdrop: a { once } listener was spent by it and the
+       backdrop never dismissed again (review, round two) — so the handler is named and removed here */
+    const done = d => { o.hidden = true; o.removeEventListener("click", dis); res(d); };
+    const dis = e => { if (e.target === o) done(null); };
+    for (const d of P.values()) {
+      const b = el("button", "b g"); b.dataset.rdns = d.info.rdns;
+      const ic = String(d.info.icon || ""); if (ic.startsWith("data:image/")) { const i = el("img"); i.src = ic; i.alt = ""; b.append(i); }
+      b.append(el("span", "", d.info.name || d.info.rdns));
+      b.addEventListener("click", () => done(d)); c.append(b);
+    }
+    o.append(c); o.addEventListener("click", dis);
+  });
+  /*  The instant the rule is decided: extensions inject at different times, so the choice
+      waits for `load` or 150 ms after the request, whichever is later (CONSOLE §2). */
+  const loaded = new Promise(r => D.readyState === "complete" ? r() : addEventListener("load", r, { once: true }));
+  const instant = () => Promise.all([loaded, nap(150)]);
+  const take = d => { CHO = d; keep(d.info.rdns); PV = d.provider; wire(PV); };
+  /* a dismissed picker chooses nothing: with two announcers window.ethereum IS one of them,
+     and reading through it would be the choice the person declined to make (D8). The page
+     stays read-only with no provider, and #connect asks again. */
+  async function choose() {
+    await instant();
+    let d = pick();
+    if (!d && P.size > 1) { d = await ask(); if (d) keep(d.info.rdns); }
+    if (d) return CHO = d, d.provider;
+    return P.size ? null : window.ethereum || null;
+  }
+
+  /*── the provider, the chain gate, the account, the rights ──*/
+  let PV = null, chain = "", walletChain = 0, account = null, bits = null, delegate = null, seq = 0;
+  let epoch = S.epoch != null ? BigInt(S.epoch) : null;
+  const F = { status: S.status, locked: S.locked, holder: S.owner };
+  const wrong = () => "your wallet is on " + nameOf(walletChain) + "; this token lives on " + nameOf(CHAIN);
+  const chainSentence = () => wrong() + (viewer ? " — open the console to move" : " — the crest offers the move");
+  /* no provider has two spellings: none announced, or two did and none was chosen */
+  const none = () => P.size ? "no wallet chosen; connect asks again" : NONE;
+  const gateSentence = () => chain === "wrong" ? chainSentence() : none();
+  /* the one path to the provider; eth_chainId is the single method that may pass the gate */
+  async function rpc(method, params = []) {
+    if (!PV) throw Error(none());
+    if (method !== "eth_chainId" && chain !== "ok") throw Error(gateSentence());
+    return PV.request({ method, params });
+  }
+  const call = async (to, data, from) => {
+    try { return await rpc("eth_call", [from ? { to, data, from } : { to, data }, "latest"]); }
+    catch (e) { const d = revertData(e); if (d != null) throw Object.assign(Error(errorSentence(d) || "reverted"), { data: d }); throw e; }
+  };
+  const hub = (key, args) => call(S.hub, buildData(key, args));
+  const wired = new WeakSet();
+  /* chainChanged carries the new id: the gate moves on the event itself, synchronously, and
+     the re-read only confirms it — a read parked between the event and eth_chainId's answer
+     must already be refused, or the new chain answers it (CONSOLE §2). A handler acts only while
+     its provider is the one in use: a wallet dropped from the crest, or passed over on a late
+     pick, stays wired (the WeakSet is what keeps a re-pick from wiring it twice), and its events
+     must move nothing for the wallet that replaced it. (Review, round three: the dropped wallet's
+     chainChanged refused a read on the chosen one with the wrong chain sentence and, in the
+     inverse case, opened the gate for a wallet on Base for one eth_chainId round trip; its
+     accountsChanged re-read everything through the chosen one.) */
+  const setChain = n => { walletChain = n; B.dataset.chain = chain = n === CHAIN ? "ok" : "wrong"; };
+  const wire = p => { if (p && p.on && !wired.has(p)) { wired.add(p); p.on("accountsChanged", () => p === PV && refresh()); p.on("chainChanged", n => { if (p === PV) { setChain(Number(n)); refresh(); } }); } };
+  async function checkChain() {
+    if (!PV) B.dataset.chain = chain = "none";
+    else { let n = 0; try { n = Number(await PV.request({ method: "eth_chainId" })); } catch {} setChain(n); }
+    crest();
+    fire("intact:chain", { ok: chain === "ok", chainId: walletChain, name: nameOf(walletChain) });
+  }
+  /* the account: quietly at boot and on every change, loudly only from a gesture */
+  async function learn(loud) {
+    if (chain !== "ok") return;
+    try { const a = await rpc(loud ? "eth_requestAccounts" : "eth_accounts"); account = a && a[0] ? L.checksum(a[0]) : null; }
+    catch (e) { if (loud) say(declined(e, "you declined to connect"), "err"); }
+    await checkDelegate();
+  }
+  const declined = (e, s) => { const m = String(e && e.message || e); return /4001|reject|denied/i.test(m) ? s : m.slice(0, 160); };
+  /* the 7702 check: a code beginning 0xef0100 names a delegate; the 23 bytes are hashed and
+     compared to the Catalog's list, live (CONSOLE §3) */
+  async function checkDelegate() {
+    delegate = null;
+    if (!account || viewer || chain !== "ok") return;
+    try {
+      const code = await rpc("eth_getCode", [account, "latest"]);
+      if (/^0xef0100/i.test(code)) {
+        const [hs, ns] = decode(["bytes32[]", "string[]"], await call(S.catalog, buildData("catalog.knownDelegates")));
+        const h = L.kbytes(code.slice(0, 48)), i = hs.findIndex(x => lower(x) === h);
+        delegate = { code, name: i < 0 ? "unknown delegate" : ns[i], known: i >= 0, acked: false };
+      }
+    } catch {}
+  }
+  const setEpoch = e => { if (epoch !== null && e !== epoch) { epoch = e; fire("intact:epoch", { epoch }); } else epoch = e; };
+  /* one read is the whole authority model; zero and no answer stay different facts. Only the latest
+     read may write: a real provider does not serialise, so an older read — for an account since
+     dropped, or sent before the chain went wrong — can land after the newer one; the sequence
+     number throws it away whether it lands as an answer or as a rejection (review, round three: a
+     stale rejection printed "could not be read" over a read that had succeeded, and fired again).
+     An answer that lands while the chain is wrong is thrown away even when it is the latest: the
+     refresh chainChanged started has not reached rights() while its eth_chainId is in flight, so
+     the sequence number alone does not cover it. (The shim's one-at-a-time queue hid all of this;
+     the suite overtakes it by hand.) */
+  async function rights() {
+    const actor = sess ? (account && account !== KEY ? null : KEY) : account, n = ++seq;
+    bits = null;
+    if (actor && chain === "ok" && ID) {
+      try {
+        const r = await hub("hub.rightsOf", [ID, actor]);
+        if (n < seq || chain !== "ok") return;
+        let b = Number(L.decUint(r)); if (sess) b &= R.SESSION; bits = b;
+        setEpoch(L.decUint(r, 1)); F.holder = L.decAddr(r, 2);
+      } catch { if (n < seq) return; say("your rights could not be read at block " + S.block, "err"); }
+    }
+    B.dataset.rights = bits === null ? "" : String(bits);
+    crest(); home(); session(); sentence();
+    fire("intact:rights", { bits, account, epoch });
+  }
+  /* Home's one sentence about who is reading (CONSOLE §2, §3): no provider at all; else the
+     bit that is not HOLD — the user until a date, the operator, the guardian, the session.
+     The holder, a stranger and an unread wallet get no sentence; the chips carry the rest. */
+  function sentence() {
+    const C = S.clocks || {}, b = bits || 0;
+    $("#rights-sentence").textContent = !PV ? none() : b & R.HOLD || bits === null ? "" : b & R.USE ? "you are the user until " + date(C.userExpires)
+      : b & R.CUSTODY ? OPER : b & R.GUARDIAN ? GUARD : b & R.SESSION ? SESSION : "";
+  }
+  async function refresh() { await checkChain(); if (chain === "ok") await learn(false); await rights(); }
+  function crest() {
+    const c = $("#connect"), sw = $("#switch");
+    $("#c-wallet .led").className = "led" + (chain === "wrong" ? " bad" : account ? " live" : PV ? " ro" : "");
+    $("#c-wallet-v").textContent = chain === "wrong" ? wrong() : account ? ((CHO && CHO.info.name) || "wallet") + " · " + short(account) : PV && !viewer ? "read only — connect" : "read only";
+    /* the gesture shows when the chain is right and nobody is connected — and when two wallets
+       announced and the picker was dismissed, so it can be asked again */
+    if (c) c.hidden = !!account || chain !== "ok" && !!(PV || P.size < 2);
+    if (sw) sw.hidden = chain !== "wrong";
+  }
+  /* the sentence for the actual state, or null when the control may render */
+  function why(need) {
+    if (viewer) return VIEWER;
+    if (chain !== "ok") return gateSentence();
+    if (sess) return need & R.SESSION & bits ? null : SESSION + "; " + KEYED;
+    if (!account) return "connect the holding wallet to act as #" + ID;
+    if (!need) return null;
+    if (bits === null) return "your rights could not be read at block " + S.block;
+    if (bits & need) return null;
+    return bits & R.USE ? "you are the user; only the holder may act as it" : bits & R.CUSTODY ? OPER : bits & R.GUARDIAN ? GUARD
+      : "this wallet holds no right on #" + ID + "; it answers to the holder";
+  }
+  const gate = (parent, need) => { const w = why(need); if (w && parent && !parent.querySelector(".gate")) parent.append(el("p", "blurb gate", w)); return !w; };
+  /* a write button: console only; needBits 0 renders for any connected account */
+  function act(parent, name, label, need, fn, opts = {}) {
+    if (mode !== "console" || why(need)) return gate(parent, need), null;
+    const b = button(parent, label, false, fn); b.dataset.act = name;
+    if (opts.spend) { b.dataset.spend = ""; if (delegate && !delegate.known && !delegate.acked) b.hidden = true; }
+    return b;
+  }
+
+  /*── the slab: every write, one function, the rows by DOM (CONSOLE §4) ──*/
+  const APPROVE = "approve(address,uint256)", EXEC = "execute(address,uint256,bytes,uint8)", BATCH = "executeBatch((address,uint256,bytes)[])",
+        TYPED = "executeTyped((address,uint256,bytes,(address,uint256)[],(address,uint256)[],uint64))";
+  const INNER = { [SEL(EXEC)]: d => [decode(sigTypes(EXEC), d)[2]], [SEL(BATCH)]: d => decode(sigTypes(BATCH), d)[0].map(c => c[2]), [SEL(TYPED)]: d => [decode(sigTypes(TYPED), d)[0][2]] };
+  /* an approve word ≥ 2^255, in the outer call or inside any call the outer one carries */
+  const unlimited = data => {
+    const s = lower(data.slice(0, 10)), body = data.slice(10);
+    if ((s === SEL(APPROVE) || s === SEL("increaseAllowance(address,uint256)")) && body.length >= 128 && W(body, 32) >> 255n) return true;
+    try { if (INNER[s]) return INNER[s](body).some(unlimited); } catch {}
+    return false;
+  };
+  /* argument rows are decoded from the bytes only when every type is one data() can build */
+  const simple = ts => !/[()]|\]\[|\[\d|(bytes|string)\[/.test(ts.join());
+  let open = null;
+  /* always clears the body, even with nothing open: a slab that threw half-built must not
+     leave its rows under the next one's */
+  function closeSlab() { $("#cbox").classList.remove("on"); $("#cslab").replaceChildren(); const o = open; open = null; if (o) o.resolve(); }
+  function propose(tx) {
+    return new Promise(resolve => {
+      const no = m => { say(m, "err"); resolve(); };
+      /* the console is the only mode that writes; why() alone would let a session key whose
+         grant carries the SESSION bit through (CONSOLE §1, §11) */
+      if (mode !== "console") return no(viewer ? VIEWER : SESSION + "; " + KEYED);
+      const w = why(tx && tx.need || 0); if (w) return no(w);
+      if (!tx || !tx.sentence) return no("a panel bug: this write has no clear-signing sentence");
+      let sig, cd, gasRow, go, gas = null;
+      try {
+        if (tx.key != null) { sig = sigOf(tx.key); cd = L.encodeCall(sig, tx.args || []).data; }
+        else { sig = canon(tx.sig || ""); cd = lower(tx.data || ""); if (!sig || SEL(sig) !== cd.slice(0, 10)) return no("a panel bug: the signature does not name these bytes"); }
+      } catch (e) { return no("a panel bug: " + e.message); }
+      if (unlimited(cd)) return no("unlimited approvals are never built here");
+      if (tx.spend && delegate && !delegate.known && !delegate.acked) return no("an unknown delegate holds this account; acknowledge it on Identity first");
+      closeSlab();
+      const slab = $("#cslab"), ts = sigTypes(sig);
+      const row = (k, v, seam) => { const r = kv(slab, k, v).lastChild; r.dataset[seam] = ""; return r; };
+      let value;
+      /* the rows are built from what the panel passed; a destination that is not an address, a
+         value that is not a number or lines that are not a list are panel bugs, said as such,
+         and the promise still resolves (CONSOLE §4: it never rejects) */
+      try {
+        value = BigInt(tx.value || 0);
+        slab.append(el("h3", "", "confirm"));
+        for (const [k, v] of tx.lines || []) kv(slab, k, v);
+        row("To", L.checksum(tx.to), "to");
+        if (value) row("Value", L.fmtUnits(value) + " ETH", "value").dataset.wei = value;
+        row("Function", sig, "function"); row("Selector", cd.slice(0, 10), "selector");
+        if (simple(ts)) try { decode(ts, cd.slice(10)).forEach((v, i) => { row("arg " + i + " · " + ts[i], words(v, ts[i]), "arg").dataset.arg = i; }); } catch {}
+        const code = el("pre", "code", cd); code.dataset.calldata = ""; slab.append(code);
+        row("Digest", L.kbytes(cd), "digest"); row("Engine", String(S.engineHash), "engine");
+        gasRow = row("Gas", "estimating…", "gas");
+        if (tx.note) note(slab, tx.note, "warn");
+        const sen = el("p", "", tx.sentence); sen.dataset.sentence = ""; slab.append(sen);
+        go = button(slab, "Sign and send", false, send); go.dataset.go = ""; go.disabled = true;
+        button(slab, "Not now", true, closeSlab).dataset.no = "";
+      } catch (e) { closeSlab(); return no("a panel bug: " + e.message); }
+      $("#cbox").classList.add("on");
+      open = { resolve, tx, epoch: epoch === null ? BigInt(S.epoch || 0) : epoch };
+      /* the estimate runs before the wallet is ever asked; a revert keeps Sign disabled */
+      (async () => {
+        try {
+          const g = BigInt(await rpc("eth_estimateGas", [{ from: account, to: tx.to, data: cd, value: hexQ(value) }]));
+          gasRow.textContent = g + " units"; gas = hexQ(g * 125n / 100n); go.disabled = false;
+        } catch (e) { const d = revertData(e), s = d == null ? "" : errorSentence(d); gasRow.textContent = "would revert" + (s && ": " + s); gasRow.classList.add("bad"); }
+      })();
+      /* one press: the epoch is re-read here and nowhere else a panel could forget; a disabled
+         button is inert in every browser, and this line makes it inert in every shim too */
+      async function send() {
+        if (!open || open.tx !== tx || go.disabled) return;
+        go.disabled = true; go.textContent = "waiting for the wallet";
+        try {
+          if (ID) { const e = L.decUint(await hub("hub.custodyEpoch", [ID])); if (e !== open.epoch) return setEpoch(e), closeSlab(), say("ownership or epoch changed — review again", "err"); }
+          const r = tx.recheck && await tx.recheck(); if (typeof r === "string" && r) return closeSlab(), say(r, "err");
+          const p = { from: account, to: tx.to, data: cd }; if (value) p.value = hexQ(value); if (gas) p.gas = gas;
+          const hash = await rpc("eth_sendTransaction", [p]);
+          closeSlab(); say("sent " + hash.slice(0, 12) + "… — waiting for it to land", "ok");
+          watch(hash, tx);
+        } catch (e) { go.disabled = false; go.textContent = "Sign and send"; say(declined(e, "you declined the signature"), "err"); }
+      }
+    });
+  }
+  /* a reverted send is learned from the receipt, never from eth_sendTransaction throwing */
+  async function watch(hash, tx) {
+    let r = null;
+    for (let i = 0; i < 90 && !r; i++) { await nap(2e3); try { r = await rpc("eth_getTransactionReceipt", [hash]); } catch {} }
+    if (!r) return say("still not mined after three minutes; it may yet land");
+    const ok = BigInt(r.status || 0) === 1n, n = BigInt(r.blockNumber || 0);
+    say(ok ? "landed in block " + n : "reverted in block " + n + "; nothing changed", ok ? "ok" : "err");
+    const b0 = bits, e0 = epoch;
+    await facts(); await rights();
+    if (bits !== b0 || epoch !== e0) { say("ownership or epoch changed — review again", "err"); closeSlab(); }
+    if (tx.then) try { await tx.then(r); } catch (e) { say("after the receipt: " + em(e), "err"); }
+  }
+  /* the exact-approval step: never unlimited, the word appears only as that refusal */
+  async function approveExactThen(steps, fin) {
+    for (const st of steps || []) {
+      const reach = st.via === "reach", owner = reach ? S.reach : st.owner || account;
+      if (L.decUint(await call(st.token, buildData("erc20.allowance", [owner, st.spender]))) >= st.amount) continue;
+      const amt = L.fmtUnits(st.amount, st.decimals == null ? 18 : st.decimals) + " " + (st.symbol || ""), data = buildData("erc20.approve", [st.spender, st.amount]);
+      return propose({ to: reach ? S.reach : st.token, data: reach ? buildData("reach.execute", [st.token, 0, data, 0]) : data, sig: reach ? EXEC : APPROVE, spend: true, need: reach ? R.HOLD : 0,
+        lines: [["Lets", "the market pull exactly " + amt], ["Never", "unlimited"], ["Then", "press the same button again"]],
+        sentence: "lets " + short(st.spender) + " pull exactly " + amt + " from " + (reach ? "the Reach" : short(account)) + ", and nothing more" });
+    }
+    return fin();
+  }
+
+  /*── Home: the baked facts first, live ones after receipts; a clear bit has two spellings ──*/
+  function home() {
+    $("#ident").textContent = ID ? "INTACT #" + ID : "INTACT";
+    $("#c-chain-v").textContent = nameOf(CHAIN);
+    const f = $("#facts"); f.replaceChildren();
+    const fact = (k, v, label) => { kv(f, label || k, v).lastChild.dataset.fact = k; };
+    if (ID) fact("id", ID, "intact");
+    fact("chain", CHAIN);
+    const M = S.ownedMarket, C = S.clocks || {}, status = F.status ? "Paused" : "Active";
+    if (ID) {
+      fact("holder", L.checksum(F.holder)); fact("epoch", epoch, "custody epoch"); fact("status", status); fact("locked", F.locked ? "yes" : "no");
+      fact("reach", L.checksum(S.reach)); fact("grip", L.checksum(S.grip));
+      fact("seal", C.sealedUntil ? "sealed until " + date(C.sealedUntil) : "none", "reach seal");
+      fact("market", M == null ? "not reported" : !M.open ? "closed" : M.sealUntil > S.time ? "open · sealed until " + date(M.sealUntil) : "open");
+      fact("fingerprint", S.fingerprint); fact("name", S.name || "—");
+    } else { fact("minted", S.minted); fact("price", L.fmtUnits(BigInt(S.price || 0)) + " ETH"); }
+    fact("engine", S.engineHash); fact("catalog", S.catalogHash); fact("block", S.block, "read at block");
+    const ch = $("#chips"); ch.replaceChildren();
+    if (ID) for (const name in S.bits) {
+      const bit = S.bits[name], state = S.reported & bit ? "reported" : S.absent & bit ? "absent" : "unread";
+      chip(ch, name + ": " + (state === "reported" ? state : state === "absent" ? "not deployed on this chain" : "could not be read at block " + S.block), state).dataset.bit = name;
+    }
+    const vw = $("#viewer"); vw.hidden = !ID;
+    if (ID) {
+      $("#viewer-note").textContent = viewer ? VIEWER : "";
+      const a = $("#link-web3"); a.textContent = WEB3; a.href = WEB3;
+      /* a TEMPLATE twin in the viewer, the placeholder visible; the real origin on a real origin */
+      $("#link-https").textContent = opaque ? "https://<gateway>/" + PREM + ":" + CHAIN + TOKEN : location.origin + PATH;
+      const q = $("#qr"); if (!q.firstChild) try { q.append(qr(WEB3)); } catch {}
+    }
+    $("#collection").hidden = !!ID;
+    if (!ID) {
+      const m = $("#mint"); m.replaceChildren(); m.append(el("h3", "", "mint"));
+      act(m, "mint", "mint one for " + L.fmtUnits(BigInt(S.price || 0)) + " ETH", 0, mintFlow, { spend: true });
+      const list = (id, title, items, cls, text, href) => {
+        const d = $(id); d.replaceChildren(); d.append(el("h3", "", title));
+        if (items == null) note(d, "could not be read at block " + S.block); else if (!items.length) note(d, "none yet");
+        else for (const x of items) { const r = el(href ? "a" : "div", cls + " v", text(x)); if (href && !opaque) r.href = href(x); d.append(r); }
+      };
+      list("#directory", "open markets", S.open, "market", id => "#" + id, id => BASE + "/token/" + id + "/live");
+      list("#recent", "recent coins", S.recent, "coin", L.checksum);
+      list("#commons", "the commons", S.commons && [S.commons], "room", c => c.count + " said · last at block " + c.last);
+    }
+  }
+  async function mintFlow() {
+    let price;
+    try { price = L.decUint(await hub("hub.price")); } catch { return say("the price could not be read; nothing is guessed", "err"); }
+    const eth = L.fmtUnits(price) + " ETH";
+    return propose({ to: S.hub, key: "hub.mint", args: [account], value: price, spend: true,
+      lines: [["Mints", "one INTACT to " + short(account)], ["Price", eth + ", exactly"]],
+      sentence: "mints one INTACT to " + account + " for exactly " + eth,
+      then: r => { const lg = (r.logs || []).find(l => lower(l.address) === lower(S.hub) && l.topics && lower(l.topics[0]) === lower(S.topics.transfer) && !BigInt(l.topics[1]));
+        if (lg) location.href = BASE + "/token/" + BigInt(lg.topics[3]) + "/live"; } });
+  }
+  /* the live facts after a receipt: one coreOf read carries status (word 0), the lock count
+     (word 2), the epoch (word 3) and the guardian hold (word 7) — static words, read as such */
+  async function facts() {
+    if (!ID || chain !== "ok") return;
+    try {
+      const h = (await hub("hub.coreOf", [ID])).slice(2), w = i => W(h, i * 32);
+      F.status = Number(w(0)); F.locked = w(2) !== 0n || w(7) !== 0n; setEpoch(w(3));
+    } catch {}
+  }
+
+  /*── session mode (D13): the key's own Home; every holder control hidden ──*/
+  async function session() {
+    const s = $("#session"); s.hidden = !sess; if (!sess) return;
+    s.replaceChildren(); s.append(el("h3", "", "session"));
+    note(s, KEYED + " for #" + ID);
+    if (account && account !== KEY) note(s, KEYED + "; the connected wallet is " + account + " — connect the key's wallet", "bad");
+    if (chain !== "ok") return note(s, gateSentence());
+    try {
+      /* sessionOf is fourteen static words (kind, expires, epoch, native cap, spent, uses left,
+         interval, …, active at 13); sessionExposure is (native, (address,uint128)[]) — read as
+         words, no type list to carry */
+      const h = (await call(S.reach, buildData("reach.sessionOf", [KEY]))).slice(2), v = i => W(h, i * 32);
+      note(s, (v(0) ? "recipe" : "allowlist") + " · expires " + date(v(1)) + " · granted at epoch " + v(2) + " · native cap " + L.fmtUnits(v(3)) + " ETH, spent " + L.fmtUnits(v(4)) + " · uses left " + (v(5) || "not capped") + " · interval " + v(6) + " s · " + (v(13) ? "active" : "inactive"));
+      const x = (await call(S.reach, buildData("reach.sessionExposure", [KEY]))).slice(2);
+      note(s, "worst-case exposure " + L.fmtUnits(W(x, 0)) + " ETH native, " + W(x, Number(W(x, 32))) + " asset cap(s)");
+    } catch (e) { note(s, "grant not read: " + em(e), "bad"); }
+    note(s, "SESSION right: " + (bits === null ? "not read" : bits & R.SESSION ? "yes" : "no"));
+  }
+
+  /*── the QR (D9, CONSOLE §13): byte mode, version 5-L, mask 0, built as SVG rects ──*/
+  function qr(text) {
+    const data = L.utf8(text); if (data.length > 106) throw RangeError("payload over 106 bytes");
+    /* GF(2^8) over 0x11d; the generator ∏(x − α^i) for 26 EC codewords */
+    const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+    for (let i = 0, x = 1; i < 255; i++) { EXP[i] = EXP[i + 255] = x; LOG[x] = i; x <<= 1; if (x & 256) x ^= 0x11d; }
+    const mul = (a, b) => a && b ? EXP[LOG[a] + LOG[b]] : 0;
+    let gen = [1]; for (let i = 0; i < 26; i++) { const g = Array(gen.length + 1).fill(0); gen.forEach((c, j) => { g[j] ^= c; g[j + 1] ^= mul(c, EXP[i]); }); gen = g; }
+    /* mode 0100, count 8 bits, the bytes, terminator, pad to 108 codewords with 0xec 0x11 */
+    const bits = [], put = (v, n) => { for (let i = n - 1; i >= 0; i--) bits.push((v >> i) & 1); };
+    put(4, 4); put(data.length, 8); for (const b of data) put(b, 8); put(0, Math.min(4, 864 - bits.length)); while (bits.length % 8) bits.push(0);
+    const cw = []; for (let i = 0; i < bits.length; i += 8) cw.push(parseInt(bits.slice(i, i + 8).join(""), 2));
+    for (let p = 0xec; cw.length < 108; p ^= 0xfd) cw.push(p);
+    const ec = Array(26).fill(0);
+    for (const c of cw) { const f = c ^ ec.shift(); ec.push(0); if (f) for (let j = 0; j < 26; j++) ec[j] ^= mul(gen[j + 1], f); }
+    const all = cw.concat(ec);
+    /* the 37 × 37 matrix: function patterns first, then the zigzag, then mask 0 */
+    const N = 37, M = new Uint8Array(N * N), FX = new Uint8Array(N * N);
+    const setF = (x, y, v) => { if (x >= 0 && y >= 0 && x < N && y < N) { M[y * N + x] = v; FX[y * N + x] = 1; } };
+    const square = (cx, cy, r, f) => { for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) setF(cx + dx, cy + dy, f(Math.max(Math.abs(dx), Math.abs(dy)))); };
+    for (const [x, y] of [[3, 3], [N - 4, 3], [3, N - 4]]) square(x, y, 4, d => d <= 1 || d === 3 ? 1 : 0);
+    /* format regions: nine around the top-left finder on each axis; eight on row 8 by the
+       top-right finder, seven on column 8 above the bottom-left one (the dark module is the eighth) */
+    for (let i = 0; i < 9; i++) { setF(i, 8, 0); setF(8, i, 0); if (i < 8) setF(N - 1 - i, 8, 0); if (i < 7) setF(8, N - 1 - i, 0); }
+    for (let i = 8; i < N - 8; i++) { setF(i, 6, 1 - i % 2); setF(6, i, 1 - i % 2); }
+    square(N - 7, N - 7, 2, d => d === 1 ? 0 : 1);
+    setF(8, N - 8, 1);
+    let bi = 0;
+    for (let right = N - 1, k = 0; right >= 1; right -= 2, k++) {
+      if (right === 6) right = 5;
+      for (let i = 0; i < N; i++) { const y = k & 1 ? i : N - 1 - i; for (const x of [right, right - 1]) { const p = y * N + x; if (!FX[p]) { let b = bi < 1072 ? (all[bi >> 3] >> (7 - (bi & 7))) & 1 : 0; bi++; if (!((x + y) & 1)) b ^= 1; M[p] = b; } } }
+    }
+    /* format: L (01) ‖ mask 0 (000), BCH(15,5) over 0x537, masked with 0x5412 — 0x77c4 */
+    let rem = 8; for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+    const fm = (8 << 10 | rem) ^ 0x5412, bit = i => (fm >> i) & 1;
+    for (let i = 0; i < 6; i++) setF(8, i, bit(i)); setF(8, 7, bit(6)); setF(8, 8, bit(7)); setF(7, 8, bit(8)); for (let i = 9; i < 15; i++) setF(14 - i, 8, bit(i));
+    for (let i = 0; i < 8; i++) setF(N - 1 - i, 8, bit(i)); for (let i = 8; i < 15; i++) setF(8, N - 15 + i, bit(i));
+    const NS = "http://www.w3.org/2000/svg", svg = D.createElementNS(NS, "svg"), attrs = (e, o) => { for (const k in o) e.setAttribute(k, o[k]); return e; };
+    /* sized by #qr svg in app.css; every rect carries its own shape-rendering (CONSOLE §13) */
+    attrs(svg, { viewBox: "0 0 45 45", role: "img", "aria-label": text });
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (M[y * N + x]) svg.append(attrs(D.createElementNS(NS, "rect"), { x: x + 4, y: y + 4, width: 1, height: 1, "shape-rendering": "crispEdges" }));
+    return svg;
+  }
+
+  /*── the panel loader: bytes from the origin or from engine.panel(i), keccak'd against the pin,
+       injected as a Blob script only then; a mismatch is a sentence, never a fallback ──*/
+  const PANELS = Object.keys(S.panels || {}), LANES = ["home", ...PANELS], loading = new Set();
+  /* one section per pinned panel (CONSOLE §6.1 #lane-<name>), derived from the same object as the
+     nav rather than written six times in the markup — 17 B of gzip, paid towards the fix round */
+  for (const n of PANELS) $("#lane").appendChild(el("section")).id = "lane-" + n;
+  const canLoad = () => !opaque || !!PV;
+  function paintNav() {
+    const nav = $("#lanes"); nav.replaceChildren();
+    for (const n of PANELS) {
+      if (n === "agent" && S.absent & S.bits.agentcard) continue;
+      const a = el("a", "", n); a.href = "#" + n; a.dataset.lane = n; if (!canLoad()) a.setAttribute("aria-disabled", "true"); nav.append(a);
+    }
+  }
+  function show(name) {
+    if (!LANES.includes(name)) name = "home";
+    for (const n of LANES) { const s = $("#lane-" + n); if (s) s.classList.toggle("on", n === name); }
+    for (const a of $$("#lanes a")) a.classList.toggle("on", a.dataset.lane === name);
+    $("#lane").classList.toggle("on", name !== "home");
+    if (name === "home") return;
+    fire("intact:lane", { name });
+    const lane = $("#lane-" + name);
+    if (!lane.dataset.loaded && canLoad()) load(name, lane);
+  }
+  async function load(name, lane) {
+    if (loading.has(name)) return; loading.add(name);
+    const bad = t => lane.replaceChildren(el("p", "blurb bad", t));
+    try {
+      let bytes;
+      if (!opaque) { const r = await fetch(BASE + "/panel/" + name + ".js"); if (!r.ok) throw Error("the origin answered " + r.status); bytes = new Uint8Array(await r.arrayBuffer()); }
+      else bytes = L.fromHex(decode(["bytes"], await call(S.engine, buildData("engine.panel", [PANELS.indexOf(name)])))[0]);
+      if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+      const h = L.toHex(L.keccak256(bytes)), want = lower(S.panels[name]);
+      if (h !== want) return bad("panel refused: the chain pinned hash " + want + ", these bytes hash to " + h);
+      lane.dataset.loaded = "1";
+      const t = el("script"); t.src = URL.createObjectURL(new Blob([bytes], { type: "text/javascript" })); B.append(t);
+    } catch (e) { bad("this lane could not be read: " + em(e)); }
+    finally { loading.delete(name); }
+  }
+
+  /*── the self-hash footer (D3, CONSOLE §8): the bytes running here against the bytes the chain pins ──*/
+  async function footer() {
+    const v = $("#verified"), doc = S.$doc; delete S.$doc;
+    const bad = t => { v.textContent = t; v.classList.add("bad"); }, self = t => { v.textContent = "self-consistent; " + t; };
+    /* a loader that kept no bytes was altered — the one line the footer relies on is gone — and
+       that is told in red, not as a shrug */
+    const MIS = "does not match the engine hash";
+    if (doc == null) return bad(MIS + "; the loader kept no bytes");
+    const h = L.toHex(L.keccak256(L.utf8(doc))), DIFF = "this document names a different Premises than the address you opened";
+    if (h !== lower(S.engineHash)) return bad(MIS);
+    if (chain === "wrong") return self("wallet on " + nameOf(walletChain) + ", not this token's chain");
+    if (chain !== "ok") return self("chain not reachable to verify");
+    try {
+      if (!viewer) {
+        /* the one anchor the reader chose: the address in the URL must be this document's Premises,
+           and that Premises must name this document's Engine, before the live hash counts */
+        const m = (location.hostname + PATH).match(/0x[0-9a-f]{40}/i);
+        if (m && (lower(m[0]) !== PREM || lower(L.decAddr(await call(S.premises, SEL("ENGINE()")))) !== lower(S.engine))) return bad(DIFF);
+      }
+      const live = lower(await call(S.engine, buildData("engine.engineHash"))), n = BigInt(await rpc("eth_blockNumber"));
+      if (live.slice(0, 66) !== h) return bad(MIS);
+      v.textContent = "engine " + short(L.checksum(S.engine)) + " pins these bytes at block " + n;
+    } catch { self("chain not reachable to verify"); }
+  }
+
+  /*── INTACT.ui — the whole surface a panel may call (CONSOLE §5) ──*/
+  const ALLOW = /^eth_(call|getLogs|getBalance|getBlockByNumber|blockNumber|getCode|getTransactionReceipt|chainId|accounts)$/;
+  const view = raw => {
+    const h = String(raw).replace(/^0x/, ""), at = i => Number(W(h, i * 32)), fits = i => at(i) % 32 === 0 && at(i) + 32 <= h.length / 2;
+    return { raw, words: h.match(/.{64}/g) || [], w: i => W(h, i * 32), a: i => L.checksum("0x" + h.substr(i * 64 + 24, 40)), b: i => W(h, i * 32) !== 0n,
+      s: i => fits(i) ? decVal("string", h, at(i)) : new TextDecoder().decode(L.fromHex(h.substr(i * 64, 64)).filter(x => x)),
+      bytes: i => decVal("bytes", h, at(i)), arr: (i, t = "uint256") => decVal(t + "[]", h, at(i)), tuple: (i, types) => decSeq(types, h, isDyn("(" + types + ")") ? at(i) : i * 32) };
+  };
+  let readyRes; const ready = new Promise(r => { readyRes = r; });
+  const ui = {
+    ready, mode: () => mode, rights: () => bits, account: () => account, epoch: () => epoch, host: name => $("#lane-" + name),
+    rows, data: buildData,
+    read: async (to, key, args) => view(await call(to, buildData(key, args))),
+    readAs: async (to, key, args, from) => view(await call(to, buildData(key, args), from)),
+    request: (m, p) => ALLOW.test(m) ? rpc(m, p) : Promise.reject(Error("a panel cannot send; propose it")),
+    sealSignature: async () => {
+      const w = why(0); if (w || mode !== "console") throw Error(w || SESSION + "; " + KEYED);
+      return rpc("personal_sign", [L.toHex(L.utf8("INTACT seal v1 · chain " + CHAIN + " · hub " + lower(S.hub))), account]);
+    },
+    simulate: async (to, data, o = {}) => {
+      try { const p = { to, data }; if (o.from) p.from = o.from; if (o.value) p.value = hexQ(o.value); return { ok: true, data: await rpc("eth_call", [p, "latest"]), sentence: "" }; }
+      catch (e) { const d = revertData(e); if (d == null) throw e; return { ok: false, data: d, sentence: errorSentence(d) }; }
+    },
+    errorSentence, propose, approveExactThen, act, gate,
+    delegate: () => delegate, ackDelegate: () => { if (delegate) { delegate.acked = true; for (const b of $$("[data-spend]")) b.hidden = false; fire("intact:rights", { bits, account, epoch }); } },
+    qr, el, kv, button, field, note, chip,
+    /* every bytesN is left-aligned (B4 and B32 are one function); bytes and str are the length
+       word and the padded body WITHOUT the offset word, so a panel laying a tuple or a nested
+       array by hand places them at its own offset (CONSOLE §5) */
+    enc: { W: v => pad(typeof v === "string" && v.startsWith("0x") ? v.slice(2) : BigInt(v).toString(16)), A: a => pad(lower(a).slice(2)), B4: padR, B32: padR,
+           bytes: h => L.encodeParams(["bytes"], [h]).slice(64), str: s => L.encodeParams(["string"], [s]).slice(64), params: L.encodeParams },
+    fmt: (v, d, p) => L.fmtUnits(v, d == null ? 18 : d, p == null ? 6 : p), parse: (s, d) => L.toUnits(s, d == null ? 18 : d), short, checksum: L.checksum, isAddr: L.isAddr, khex: L.khex, kbytes: L.kbytes,
+    /* the chain's clock, or a rejection; never INTACT.time, never Date.now() */
+    clock: async () => { try { return BigInt((await rpc("eth_getBlockByNumber", ["latest", false])).timestamp); } catch { throw Error("the chain's clock could not be read"); } },
+    now: Date.now, say, walkLogs: filter => rpc("eth_getLogs", [filter])
+  };
+  S.ui = ui; S.loaded = S.loaded || {};
+
+  /*── arrival ──*/
+  /* the gesture: two or more announcers and nothing remembered → the picker first, then
+     eth_requestAccounts on the wallet the person picked, and nothing on the others */
+  const connect = async () => {
+    if (P.size > 1 && !saved()) { const d = await ask(); if (!d) return; take(d); await checkChain(); if (chain !== "ok") return; }
+    await learn(true); if (account && CHO) keep(CHO.info.rdns); await rights();
+  };
+  const c = $("#connect"), sw = $("#switch");
+  if (c) c.addEventListener("click", connect);
+  /* a switch that succeeds is heard as chainChanged, and that event already refreshed (the gate moved
+     on it, CONSOLE §2); the resolved request refreshes only for a wallet that switched without saying so */
+  if (sw) sw.addEventListener("click", () => PV && PV.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hexQ(CHAIN) }] })
+    .then(() => chain === "ok" || refresh(), e => say(e && e.code === 4902 ? "your wallet does not know " + nameOf(CHAIN) : "the switch was declined", "err")));
+  /* clicking your own address drops the remembered choice and asks again (CONSOLE §2). With two or
+     more announcers the page enters the dismissed state first — no provider, chain "none", rights
+     null, the crest read-only, #connect shown, intact:rights fired with null bits — and stays there
+     until the picker is answered, so no read reaches the wallet just dropped; with one announcer
+     there is no picker: the page is disconnected first — rights() with no account writes body "",
+     the crest read-only, #connect shown, intact:rights fired with null bits — and that wallet is
+     asked again; it reconnects when the wallet answers, and a decline leaves it disconnected, which
+     is what the page then says. The guard is the provider, not the account: once dropped there is
+     no address to click, and a wallet on the wrong chain can still be exchanged. (Review, round two:
+     nulling the account alone left rights at 1, #connect hidden, the crest naming the dropped wallet
+     and every read still going to it. Round three: with one announcer the same shape held for the
+     length of the wallet prompt — account null under a crest that named it and a rights of 1.) */
+  $("#c-wallet-v").addEventListener("click", () => { if (viewer || !PV) return; store(s => s.removeItem("intact.wallet")); account = null; if (P.size > 1) { CHO = PV = null; refresh(); } else rights(); connect(); });
+  addEventListener("hashchange", () => show(location.hash.slice(1)));
+  addEventListener("keydown", e => { if (e.key === "Escape") closeSlab(); });
+  (async () => {
+    /* the shell's own rows, verified like a panel's: a baked selector this keccak disagrees with is a refusal */
+    rows({ "hub.rightsOf": "rightsOf(uint256,address)", "hub.custodyEpoch": "custodyEpoch(uint256)", "hub.coreOf": "coreOf(uint256)", "hub.price": "price()", "hub.mint": "mint(address)",
+           "engine.panel": "panel(uint256)", "engine.engineHash": "engineHash()", "catalog.knownDelegates": "knownDelegates()", "erc20.allowance": "allowance(address,address)",
+           "erc20.approve": APPROVE, "reach.execute": EXEC, "reach.sessionOf": "sessionOf(address)", "reach.sessionExposure": "sessionExposure(address)" });
+    home();
+    if (viewer) { await instant(); PV = pv(); } else PV = await choose();
+    wire(PV);
+    await checkChain();
+    paintNav();
+    if (chain === "ok") await learn(false);
+    await rights();
+    readyRes();
+    show(location.hash.slice(1));
+    setTimeout(footer);
+  })().catch(e => { say("the shell could not boot: " + em(e), "err"); readyRes(); });
+})();
+</script>
+</body>
+</html>

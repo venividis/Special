@@ -2,6 +2,20 @@
   A small harness around @ethereumjs/vm: deploy, call, read, and account for
   the gas. Enough to run the whole collection end to end in this process,
   with no node, no network and no fork.
+
+  Two additions for the DOM shim (U9, D15), both additive — `call`, `read`,
+  `exec` and `deploy` behave exactly as before:
+
+    · `send()` returns `hash`, the keccak of the signed transaction bytes,
+      because a page learns of a landed or reverted send from the RECEIPT
+      it fetches by hash, never from `eth_sendTransaction` throwing;
+    · `simulate(to, data, {from, value})` runs a call under a journal
+      checkpoint that is always reverted and returns `{ok, data, gas}` with
+      the FULL revert data. `call()` throws on a revert and cuts the data at
+      138 hex characters — enough to name an error, not enough to carry
+      `Slippage(uint256,uint256)` (68 bytes) or the Router's
+      `QuoteResult(uint256,uint256,uint160)` (100 bytes) whole to the page
+      that decodes them.
 ───────────────────────────────────────────────────────────────────────────*/
 import { createVM, runTx } from "@ethereumjs/vm";
 import { Common, Mainnet, Hardfork, createCustomCommon } from "@ethereumjs/common";
@@ -349,8 +363,47 @@ export class Chain {
       gas: res.totalGasSpent,
       address: res.createdAddress ? res.createdAddress.toString() : null,
       ret: bytesToHex(res.execResult.returnValue || new Uint8Array()),
-      logs: res.execResult.logs || []
+      logs: res.execResult.logs || [],
+      hash: bytesToHex(tx.hash())
     };
+  }
+
+  /// @notice An `eth_call` / `eth_estimateGas` as a wallet shim needs it:
+  ///         never throws on a revert, never commits, carries the whole
+  ///         revert data. `{ok, data, gas, error}` — `data` is the return
+  ///         value on success and the revert data on failure (the custom
+  ///         error's selector and arguments, uncut); `error` names the
+  ///         exception kind when `ok` is false; `gas` is the execution gas.
+  /// @dev    `runCall` on its own commits a successful call's writes into
+  ///         the state manager (`call()` has always done that — a quote that
+  ///         wrote storage would persist). Here the call runs between
+  ///         `journal.checkpoint()` and `journal.revert()`, so the state
+  ///         after is the state before whatever the call did; a `view` and
+  ///         a would-be write simulate identically, as on a node.
+  async simulate(to, data, { from, value = 0n, gasLimit = 3_000_000_000n } = {}) {
+    const journal = this.vm.evm.journal;
+    const caller = createAddressFromString(from || this.from.toString());
+    await journal.checkpoint();
+    try {
+      const res = await this.vm.evm.runCall({
+        to: createAddressFromString(to),
+        caller,
+        origin: caller,
+        data: hexToBytes(data.startsWith("0x") ? data : "0x" + data),
+        gasLimit: BigInt(gasLimit),
+        value: BigInt(value),
+        block: BLOCK
+      });
+      const err = res.execResult.exceptionError;
+      return {
+        ok: !err,
+        data: bytesToHex(res.execResult.returnValue || new Uint8Array()),
+        gas: res.execResult.executionGasUsed,
+        error: err ? err.error : null
+      };
+    } finally {
+      await journal.revert();
+    }
   }
 
   /*  A log ledger.
@@ -408,6 +461,13 @@ export class Chain {
   }
 
   /// @dev A read. Runs as a call so state is untouched and gas is free.
+  ///      `skipNonceIncrement`: ethereumjs's `runCall` at depth 0 bumps
+  ///      the caller's nonce as if a transaction had been sent, which an
+  ///      `eth_call` never does. INTACT U10 found it when two reads of the
+  ///      factory's gate between the factory and the Engine moved the
+  ///      Engine from CREATE(burner, 2) to CREATE(burner, 4) in-process
+  ///      while a real node would have left it at 2 — the one place the
+  ///      harness and the wire would have disagreed about an address.
   async call(to, data, from) {
     const res = await this.vm.evm.runCall({
       to: createAddressFromString(to),
@@ -416,7 +476,8 @@ export class Chain {
       data: hexToBytes(data.startsWith("0x") ? data : "0x" + data),
       gasLimit: 3_000_000_000n,
       value: 0n,
-      block: BLOCK
+      block: BLOCK,
+      skipNonceIncrement: true
     });
     if (res.execResult.exceptionError) {
       const ret = bytesToHex(res.execResult.returnValue || new Uint8Array());
