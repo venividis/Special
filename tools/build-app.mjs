@@ -18,8 +18,32 @@
   The build refuses what the site refuses (DESIGN §5.5): an external
   `src="https://`, `eval(`, `new Function`, the `(1n<<256n)-1n` mask, an
   `innerHTML` assignment, `window.INTACT=` baked into the head, a loader
-  (src/Renderer.sol INFLATE) that declares a global, a shell over 18,000
+  (src/Renderer.sol INFLATE) that declares a global, a shell over 15,000
   bytes of gzip, a panel over 8,192.
+
+  The shell ceiling was 18,000 (DESIGN §5.5) and is 15,000 since U9 (D16),
+  because the gas sweep measured the slope: `tokenURI` ≈ 3.44 M + 262 gas
+  per gzip byte (271 above 14 KB), crossing the 8 M cap at ≈ 17.4 KB, and
+  `/token/<id>/hash` — which shares `/live`'s 2.5 M cap — crosses it COLD
+  at ≈ 16.5 KB. A ceiling the gas gate would already have failed is not a
+  ceiling. The shell's budget is ≤ 14,000 B gzip (tokenURI ≈ 7.09 M cold,
+  `/hash` ≈ 2.34 M cold); 15,000 is the hard stop (≈ 7.35 M / ≈ 2.40 M).
+
+  Two inlinings happen before the minifier and before the refusals (U9,
+  D18), so the checks see what ships:
+
+      engine/app.css      replaces the single `<link rel="stylesheet"
+                          href="app.css">` in the real shell with
+                          `<style>…</style>` — a `<link>` would be a fetch
+      engine/whispers.mjs replaces the one-line `@inline engine/whispers.mjs`
+                          block comment (WHISPERS_MARKER below) in a panel
+                          with the module's text, every `export ` keyword
+                          stripped (a Blob script is not a module)
+
+  Each is a hard error when the real source is missing its marker, when the
+  marker appears twice, when the file it names is absent, or when the
+  stripped module no longer parses. The placeholder fixtures carry no
+  marker and are left alone.
 
   Sources: `engine/app.html` and `engine/panels/<name>.js` (U9). Until
   those land this builds from `tools/fixtures/` — a placeholder shell and
@@ -47,7 +71,7 @@ const arg = (f, d) => { const i = ARGV.indexOf(f); return i < 0 ? d : ARGV[i + 1
 const MINIFY = !has("--no-min");
 const CHUNK = Number(arg("--chunk", 24000));
 const MAX_SHARD = 24575;                       // EIP-170 minus the STOP prefix
-export const SHELL_GZIP_CEILING = 18_000;      // DESIGN §5.5
+export const SHELL_GZIP_CEILING = 15_000;      // DESIGN §5.5 said 18,000; see the header (U9, D16)
 export const PANEL_GZIP_CEILING = 8_192;       // DESIGN §5.1
 export const PANELS = ["swap", "social", "launch", "vault", "identity", "agent"];
 
@@ -106,6 +130,44 @@ export function checkLoader() {
   }
   if (!loader.includes("self.$INTACT")) throw new Error("the loader does not read self.$INTACT");
   return loader;
+}
+
+/*──────────────── the inlinings ────────────────*/
+
+export const CSS_MARKER = '<link rel="stylesheet" href="app.css">';
+export const WHISPERS_MARKER = "/*@inline engine/whispers.mjs*/";
+
+/// `engine/app.css` into the shell at its single marker. A fixture (no
+/// marker) passes through untouched; the real shell must carry exactly one.
+export function inlineCss(html, { fixture, cssPath = path.join(ROOT, "engine/app.css") } = {}) {
+  const n = html.split(CSS_MARKER).length - 1;
+  if (n === 0) {
+    if (fixture) return html;
+    throw new Error(`the shell has no ${CSS_MARKER} marker — engine/app.css has no way in`);
+  }
+  if (n > 1) throw new Error(`the shell carries the app.css marker ${n} times; exactly one`);
+  if (!fs.existsSync(cssPath)) throw new Error(`the shell asks for app.css and ${path.relative(ROOT, cssPath)} does not exist`);
+  const css = fs.readFileSync(cssPath, "utf8");
+  if (/<\/style/i.test(css)) throw new Error("engine/app.css contains </style> and would end its own block");
+  return html.replace(CSS_MARKER, () => "<style>" + css + "</style>");
+}
+
+/// `engine/whispers.mjs` into a panel at its marker line, `export ` stripped
+/// so the text is a script, not a module. Only the social panel carries the
+/// marker today; any panel may. A fixture passes through.
+export function inlineWhispers(js, name, { fixture, modPath = path.join(ROOT, "engine/whispers.mjs") } = {}) {
+  const n = js.split(WHISPERS_MARKER).length - 1;
+  if (n === 0) {
+    if (fixture || name !== "social") return js;
+    throw new Error(`panel social has no ${WHISPERS_MARKER} marker — the sealing module has no way in`);
+  }
+  if (n > 1) throw new Error(`panel ${name} carries the whispers marker ${n} times; exactly one`);
+  if (!fs.existsSync(modPath)) throw new Error(`panel ${name} asks for whispers.mjs and ${path.relative(ROOT, modPath)} does not exist`);
+  const stripped = fs.readFileSync(modPath, "utf8").replace(/^(\s*)export\s+/gm, "$1");
+  if (/\bexport\b/.test(stripped)) throw new Error("whispers.mjs still says `export` after stripping — an inline form the build does not handle");
+  try { new vm.Script(stripped, { filename: "whispers.inlined.js" }); }
+  catch (e) { throw new Error(`whispers.mjs does not parse once its exports are stripped: ${e.message}`); }
+  return js.replace(WHISPERS_MARKER, () => stripped);
 }
 
 /*──────────────── minification ────────────────*/
@@ -169,14 +231,14 @@ export function sources() {
     return { name, path: fs.existsSync(real) ? real : path.join(ROOT, "tools/fixtures/panels", name + ".js") };
   });
   const placeholder = shellPath.includes("fixtures") || panels.some((p) => p.path.includes("fixtures"));
-  return { shellPath, panels, placeholder };
+  return { shellPath, panels, placeholder, shellIsFixture: shellPath.includes("fixtures") };
 }
 
 /*──────────────── build ────────────────*/
 
 export async function build() {
-  const { shellPath, panels, placeholder } = sources();
-  const source = fs.readFileSync(shellPath, "utf8");
+  const { shellPath, panels, placeholder, shellIsFixture } = sources();
+  const source = inlineCss(fs.readFileSync(shellPath, "utf8"), { fixture: shellIsFixture });
 
   if (/window\.INTACT\s*=/.test(source.slice(0, source.indexOf("</head>"))))
     throw new Error("state must be injected by the contract, not baked into the head");
@@ -199,7 +261,7 @@ export async function build() {
 
   const builtPanels = [];
   for (const p of panels) {
-    const js = fs.readFileSync(p.path, "utf8");
+    const js = inlineWhispers(fs.readFileSync(p.path, "utf8"), p.name, { fixture: p.path.includes("fixtures") });
     refuse(js, `panel ${p.name}`);
     if (!/window\.INTACT/.test(js)) throw new Error(`panel ${p.name} never reads window.INTACT`);
     const min = MINIFY ? await shrinkPanel(js, p.name) : js;

@@ -310,7 +310,7 @@ contract PremisesTest is SiteFixture {
         assertTrue(s.reported & 4096 == 0, "no AgentCard until U17");
         bytes memory st = catalog_.state(id);
         assertTrue(has(st, bytes('"home":null')), "the block says null for the home room, never a number");
-        assertTrue(has(st, bytes('"locks":0,')), "and a reported zero is the number zero, unquoted");
+        assertTrue(has(st, bytes('"reachLocks":0,')), "and a reported zero is the number zero, unquoted");
         assertTrue(has(st, abi.encodePacked('"reported":', bytes(LibNum.str(s.reported)), ',"absent":', bytes(LibNum.str(s.absent)), ',')), "both words are in the block");
 
         // give the chain a Parley: the same read now sets the bit
@@ -486,7 +486,16 @@ contract PremisesTest is SiteFixture {
         assertTrue(has(st, abi.encodePacked('"hub.mint":"', hex4(IIntact.mint.selector), '"')), "hub.mint");
         assertTrue(has(st, abi.encodePacked('"pool.swapExactIn":"', hex4(bytes4(keccak256("swapExactIn(uint256,bool,uint256,uint256,address,uint64)"))), '"')), "pool.swapExactIn");
         assertTrue(has(st, abi.encodePacked('"reach.executeAsSession":"', hex4(bytes4(keccak256("executeAsSession(address,uint256,bytes)"))), '"')), "reach.executeAsSession");
-        assertTrue(has(st, abi.encodePacked('"', hex4(bytes4(keccak256("NotHolder()"))), '":"NotHolder"')), "err");
+        assertTrue(has(st, abi.encodePacked('"', hex4(bytes4(keccak256("NotHolder()"))), '":"NotHolder()"')), "err carries the whole signature");
+        assertTrue(has(st, abi.encodePacked('"', hex4(bytes4(keccak256("Slippage(uint256,uint256)"))), '":"Slippage(uint256,uint256)"')), "err carries the argument list a slab decodes with");
+        assertTrue(has(st, abi.encodePacked('"engine.engineHash":"', hex4(bytes4(keccak256("engineHash()"))), '"')), "engine.engineHash");
+        assertTrue(has(st, abi.encodePacked('"catalog.knownDelegates":"', hex4(bytes4(keccak256("knownDelegates()"))), '"')), "catalog.knownDelegates");
+        assertTrue(has(st, bytes('"ownedMarket":')), "the token's market object is ownedMarket");
+        assertTrue(has(st, bytes('"reachLocks":')), "the lock count is reachLocks");
+        assertTrue(has(st, bytes('"stewardStatus":')), "wouldPass is stewardStatus");
+        assertTrue(has(st, bytes('"roleCount":')), "the role count is roleCount");
+        assertTrue(has(st, abi.encodePacked('"locks":"', bytes(LibNum.hexAddr(address(locksReal))), '"')), "locks is the Locks ADDRESS, no longer shadowed");
+        assertTrue(has(st, abi.encodePacked('"steward":"', bytes(LibNum.hexAddr(address(steward))), '"')), "steward is the Steward ADDRESS, no longer shadowed");
         assertTrue(has(st, abi.encodePacked('"said":"', bytes(LibNum.hex32(keccak256("Said(uint256,uint256,uint64,uint64,uint64,uint8,uint64,uint64,bytes)"))), '"')), "topics.said");
         assertTrue(has(st, abi.encodePacked('"engineHash":"', bytes(LibNum.hex32(keccak256(bytes(DOC)))), '"')), "engineHash");
         assertTrue(has(st, abi.encodePacked('"catalogHash":"', bytes(LibNum.hex32(catalog_.catalogHash())), '"')), "catalogHash");
