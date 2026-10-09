@@ -26,8 +26,15 @@
   per gzip byte (271 above 14 KB), crossing the 8 M cap at ≈ 17.4 KB, and
   `/token/<id>/hash` — which shares `/live`'s 2.5 M cap — crosses it COLD
   at ≈ 16.5 KB. A ceiling the gas gate would already have failed is not a
-  ceiling. The shell's budget is ≤ 14,000 B gzip (tokenURI ≈ 7.09 M cold,
-  `/hash` ≈ 2.34 M cold); 15,000 is the hard stop (≈ 7.35 M / ≈ 2.40 M).
+  ceiling. Re-measured cold on the real shell (U9, the shell's fix round —
+  this is U7's file and the edit is a wording one): the placeholder shell
+  of 3,015 B cost tokenURI 4.34 M and /token/1/hash 1.62 M; the real shell
+  of 14,976 B cost 7.64 M and 2.43 M — slopes of ≈ 276 and ≈ 68 gas per
+  gzip byte — so /hash crosses its 2.5 M cap at ≈ 16,000 B and tokenURI its
+  8 M at ≈ 16,300 B. 15,000 therefore leaves ≈ 1,000 B of margin to the
+  first cap and is the gate. The earlier "budget ≤ 14,000 B" line was a
+  target, not a gate, and is retired; the measured number is recorded in
+  docs/INVARIANTS.md F2 and printed by this file and by verify-site.
 
   Two inlinings happen before the minifier and before the refusals (U9,
   D18), so the checks see what ships:
@@ -66,11 +73,15 @@
         options and is dropped with it). The panels are IIFEs and lose
         nothing; selftest reads the source, not the build.
 
-  Sources: `engine/app.html` and `engine/panels/<name>.js` (U9). Until
-  those land this builds from `tools/fixtures/` — a placeholder shell and
-  six placeholder panels that read `window.INTACT` and render through
-  `textContent` — and says so loudly, so a `dist/` built from the
-  placeholder is never mistaken for the console.
+  Sources: `engine/app.html` and `engine/panels/<name>.js` (U9). Whichever
+  of those is missing is taken from `tools/fixtures/` — a placeholder shell,
+  placeholder panels that read `window.INTACT` and render through
+  `textContent` — and the summary names which, so a `dist/` with a fixture
+  in it is never mistaken for the finished console. On this branch the
+  shell is `engine/app.html` and the agent stub is real; the five lane
+  panels are still fixtures, and the label says so ("the shell is the
+  console; those lanes are not yet") rather than calling the whole plan
+  "not the console", which it stopped being when the shell landed.
 
     node tools/build-app.mjs                 build into dist/
     node tools/build-app.mjs --no-min        skip minification
@@ -369,12 +380,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const totalGas = all.reduce((a, x) => a + x.gas, 0) + plan.panels.reduce((a, p) => a + gasFor(Buffer.from(p.data.slice(2), "hex")), 0);
   const pct = (a, b) => ((a / b) * 100).toFixed(1) + "%";
   console.log(`
-  INTACT · shard plan${plan.placeholder ? "   \x1b[33m(PLACEHOLDER shell/panels from tools/fixtures/ — not the console)\x1b[0m" : ""}
+  INTACT · shard plan${plan.placeholder ? `   \x1b[33m(PLACEHOLDER from tools/fixtures/: ${plan.shellIsFixture ? "the shell itself — this is not the console" : "panels " + plan.fixturePanels.join(" ") + " — the shell is the console; those lanes are not yet"})\x1b[0m` : ""}
   ───────────────────────────────────────────────────────────────
   shell               ${plan.shell}
   source              ${plan.sourceBytes.toLocaleString()} bytes
   after minifying     ${plan.documentBytes.toLocaleString()} bytes   ${pct(plan.documentBytes, plan.sourceBytes)} of source
-  shell gzip          ${plan.body.reduce((a, s) => a + s.bytes, 0).toLocaleString()} bytes   (ceiling ${SHELL_GZIP_CEILING.toLocaleString()}; budget 14,000)
+  shell gzip          ${plan.body.reduce((a, s) => a + s.bytes, 0).toLocaleString()} bytes   (ceiling ${SHELL_GZIP_CEILING.toLocaleString()})
   stored on chain     ${plan.storedBytes.toLocaleString()} bytes   ${pct(plan.storedBytes, plan.sourceBytes)} of source  (the plain prologue + the shell gzip)
   engine hash         ${plan.engineHash}
   ───────────────────────────────────────────────────────────────

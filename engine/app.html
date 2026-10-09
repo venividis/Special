@@ -7,12 +7,12 @@
 <title>INTACT</title>
 <link rel="stylesheet" href="app.css">
 </head>
-<body data-mode="" data-rights="" data-chain="">
+<body>
 <header id="crest">
   <div class="cell" id="c-chain"><span class="k">chain</span><span class="v" id="c-chain-v"></span></div>
   <div class="cell" id="c-wallet"><span class="led"></span><span class="v" id="c-wallet-v">read only</span>
-    <button class="b g" id="connect" type="button" hidden>connect</button>
-    <button class="b" id="switch" type="button" hidden>switch chain</button></div>
+    <button class="b g" id="connect" hidden>connect</button>
+    <button class="b" id="switch" hidden>switch chain</button></div>
 </header>
 <div id="body">
   <aside id="col">
@@ -38,17 +38,11 @@
   </aside>
   <main id="lane">
     <nav id="lanes"></nav>
-    <section id="lane-swap"></section>
-    <section id="lane-social"></section>
-    <section id="lane-launch"></section>
-    <section id="lane-vault"></section>
-    <section id="lane-identity"></section>
-    <section id="lane-agent"></section>
   </main>
 </div>
 <p id="tick"></p>
 <p id="verified" class="s"></p>
-<div id="cbox"><div id="cslab" class="slab"></div></div>
+<div id="cbox"><div id="cslab"></div></div>
 <div id="picker" hidden></div>
 <script>
 /*═══════════════════════════════════════════════════════════════════════════
@@ -395,8 +389,9 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
 (() => {
   const S = window.INTACT, L = S.$lib; delete S.$lib;
   const D = document, B = D.body, $ = s => D.querySelector(s), $$ = s => [...D.querySelectorAll(s)];
-  /* names only — no endpoint, no explorer, no gateway host, anywhere (D14) */
-  const NAMES = { 1: "Ethereum", 10: "OP Mainnet", 8453: "Base", 84532: "Base Sepolia", 11155111: "Sepolia", 31337: "local" };
+  /* names only — no endpoint, no explorer, no gateway host, anywhere (D14). Id 0 is not a chain: it
+     is what a failed eth_chainId leaves behind, and the crest says so instead of printing "chain 0" */
+  const NAMES = { 0: "an unreachable chain", 1: "Ethereum", 10: "OP Mainnet", 8453: "Base", 84532: "Base Sepolia", 11155111: "Sepolia", 31337: "local" };
   const nameOf = id => NAMES[id] || "chain " + id;
   const CHAIN = Number(S.chainId), ID = Number(S.id || 0), R = S.rights || {};
   /*  Paths resolve from a base, never from the root (CONSOLE §10): on a
@@ -416,7 +411,7 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   const nap = ms => new Promise(r => setTimeout(r, ms));
   const fire = (name, detail) => dispatchEvent(new CustomEvent(name, { detail }));
   const date = t => Number(t) ? new Date(Number(t) * 1e3).toISOString().replace("T", " ").slice(0, 16) + " UTC" : "none";
-  const lower = s => String(s).toLowerCase();
+  const lower = s => String(s).toLowerCase(), em = e => String(e && e.message).slice(0, 160);
 
   /*── mode: decided before anything is read, written on the body (CONSOLE §1) ──*/
   let opaque = false;
@@ -521,14 +516,17 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   const ask = () => new Promise(res => {
     const o = $("#picker"); o.replaceChildren(); o.hidden = false;
     const c = el("div", "card"); c.append(el("p", "k", "which wallet speaks for you?"));
-    const done = d => { o.hidden = true; res(d); };
+    /* a click inside the card bubbles to the backdrop: a { once } listener was spent by it and the
+       backdrop never dismissed again (review, round two) — so the handler is named and removed here */
+    const done = d => { o.hidden = true; o.removeEventListener("click", dis); res(d); };
+    const dis = e => { if (e.target === o) done(null); };
     for (const d of P.values()) {
-      const b = el("button", "b g"); b.type = "button"; b.dataset.rdns = d.info.rdns;
+      const b = el("button", "b g"); b.dataset.rdns = d.info.rdns;
       const ic = String(d.info.icon || ""); if (ic.startsWith("data:image/")) { const i = el("img"); i.src = ic; i.alt = ""; b.append(i); }
       b.append(el("span", "", d.info.name || d.info.rdns));
       b.addEventListener("click", () => done(d)); c.append(b);
     }
-    o.append(c); o.addEventListener("click", e => { if (e.target === o) done(null); }, { once: true });
+    o.append(c); o.addEventListener("click", dis);
   });
   /*  The instant the rule is decided: extensions inject at different times, so the choice
       waits for `load` or 150 ms after the request, whichever is later (CONSOLE §2). */
@@ -547,7 +545,7 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   }
 
   /*── the provider, the chain gate, the account, the rights ──*/
-  let PV = null, chain = "", walletChain = 0, account = null, bits = null, delegate = null;
+  let PV = null, chain = "", walletChain = 0, account = null, bits = null, delegate = null, seq = 0;
   let epoch = S.epoch != null ? BigInt(S.epoch) : null;
   const F = { status: S.status, locked: S.locked, holder: S.owner };
   const wrong = () => "your wallet is on " + nameOf(walletChain) + "; this token lives on " + nameOf(CHAIN);
@@ -601,13 +599,17 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     } catch {}
   }
   const setEpoch = e => { if (epoch !== null && e !== epoch) { epoch = e; fire("intact:epoch", { epoch }); } else epoch = e; };
-  /* one read is the whole authority model; zero and no answer stay different facts */
+  /* one read is the whole authority model; zero and no answer stay different facts. Only the latest
+     read may write: a real provider does not serialise, so an older read — for an account since
+     dropped, or sent before the chain went wrong — can land after the newer one; the sequence
+     number throws it away (the shim's one-at-a-time queue hid this; the suite overtakes it by hand) */
   async function rights() {
-    const actor = sess ? (account && account !== KEY ? null : KEY) : account;
+    const actor = sess ? (account && account !== KEY ? null : KEY) : account, n = ++seq;
     bits = null;
     if (actor && chain === "ok" && ID) {
       try {
         const r = await hub("hub.rightsOf", [ID, actor]);
+        if (n < seq) return;
         let b = Number(L.decUint(r)); if (sess) b &= R.SESSION; bits = b;
         setEpoch(L.decUint(r, 1)); F.holder = L.decAddr(r, 2);
       } catch { say("your rights could not be read at block " + S.block, "err"); }
@@ -745,7 +747,7 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     const b0 = bits, e0 = epoch;
     await facts(); await rights();
     if (bits !== b0 || epoch !== e0) { say("ownership or epoch changed — review again", "err"); closeSlab(); }
-    if (tx.then) try { await tx.then(r); } catch (e) { say("after the receipt: " + String(e && e.message).slice(0, 120), "err"); }
+    if (tx.then) try { await tx.then(r); } catch (e) { say("after the receipt: " + em(e), "err"); }
   }
   /* the exact-approval step: never unlimited, the word appears only as that refusal */
   async function approveExactThen(steps, fin) {
@@ -839,7 +841,7 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
       note(s, (v(0) ? "recipe" : "allowlist") + " · expires " + date(v(1)) + " · granted at epoch " + v(2) + " · native cap " + L.fmtUnits(v(3)) + " ETH, spent " + L.fmtUnits(v(4)) + " · uses left " + (v(5) || "not capped") + " · interval " + v(6) + " s · " + (v(13) ? "active" : "inactive"));
       const x = (await call(S.reach, buildData("reach.sessionExposure", [KEY]))).slice(2);
       note(s, "worst-case exposure " + L.fmtUnits(W(x, 0)) + " ETH native, " + W(x, Number(W(x, 32))) + " asset cap(s)");
-    } catch (e) { note(s, "grant not read: " + String(e && e.message).slice(0, 120), "bad"); }
+    } catch (e) { note(s, "grant not read: " + em(e), "bad"); }
     note(s, "SESSION right: " + (bits === null ? "not read" : bits & R.SESSION ? "yes" : "no"));
   }
 
@@ -890,6 +892,9 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   /*── the panel loader: bytes from the origin or from engine.panel(i), keccak'd against the pin,
        injected as a Blob script only then; a mismatch is a sentence, never a fallback ──*/
   const PANELS = Object.keys(S.panels || {}), LANES = ["home", ...PANELS], loading = new Set();
+  /* one section per pinned panel (CONSOLE §6.1 #lane-<name>), derived from the same object as the
+     nav rather than written six times in the markup — 17 B of gzip, paid towards the fix round */
+  for (const n of PANELS) $("#lane").appendChild(el("section")).id = "lane-" + n;
   const canLoad = () => !opaque || !!PV;
   function paintNav() {
     const nav = $("#lanes"); nav.replaceChildren();
@@ -917,10 +922,10 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
       else bytes = L.fromHex(decode(["bytes"], await call(S.engine, buildData("engine.panel", [PANELS.indexOf(name)])))[0]);
       if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
       const h = L.toHex(L.keccak256(bytes)), want = lower(S.panels[name]);
-      if (h !== want) return bad("panel refused: its hash is not the one the chain pinned — pinned " + want + ", computed " + h);
+      if (h !== want) return bad("panel refused: the chain pinned hash " + want + ", these bytes hash to " + h);
       lane.dataset.loaded = "1";
       const t = el("script"); t.src = URL.createObjectURL(new Blob([bytes], { type: "text/javascript" })); B.append(t);
-    } catch (e) { bad("this lane could not be read: " + String(e && e.message).slice(0, 160)); }
+    } catch (e) { bad("this lane could not be read: " + em(e)); }
     finally { loading.delete(name); }
   }
 
@@ -996,10 +1001,19 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   };
   const c = $("#connect"), sw = $("#switch");
   if (c) c.addEventListener("click", connect);
+  /* a switch that succeeds is heard as chainChanged, and that event already refreshed (the gate moved
+     on it, CONSOLE §2); the resolved request refreshes only for a wallet that switched without saying so */
   if (sw) sw.addEventListener("click", () => PV && PV.request({ method: "wallet_switchEthereumChain", params: [{ chainId: hexQ(CHAIN) }] })
-    .then(refresh, e => say(e && e.code === 4902 ? "your wallet does not know " + nameOf(CHAIN) : "the switch was declined", "err")));
-  /* clicking your own address drops the remembered choice and asks again */
-  $("#c-wallet-v").addEventListener("click", () => { if (!viewer && account) { store(s => s.removeItem("intact.wallet")); CHO = null; account = null; connect(); } });
+    .then(() => chain === "ok" || refresh(), e => say(e && e.code === 4902 ? "your wallet does not know " + nameOf(CHAIN) : "the switch was declined", "err")));
+  /* clicking your own address drops the remembered choice and asks again (CONSOLE §2). With two or
+     more announcers the page enters the dismissed state first — no provider, chain "none", rights
+     null, the crest read-only, #connect shown, intact:rights fired with null bits — and stays there
+     until the picker is answered, so no read reaches the wallet just dropped; with one announcer
+     there is no picker and that wallet is simply asked again. The guard is the provider, not the
+     account: once dropped there is no address to click, and a wallet on the wrong chain can still
+     be exchanged. (Review, round two: nulling the account alone left rights at 1, #connect hidden,
+     the crest naming the dropped wallet and every read still going to it.) */
+  $("#c-wallet-v").addEventListener("click", () => { if (viewer || !PV) return; store(s => s.removeItem("intact.wallet")); account = null; if (P.size > 1) { CHO = PV = null; refresh(); } connect(); });
   addEventListener("hashchange", () => show(location.hash.slice(1)));
   addEventListener("keydown", e => { if (e.key === "Escape") closeSlab(); });
   (async () => {
@@ -1017,7 +1031,7 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     readyRes();
     show(location.hash.slice(1));
     setTimeout(footer);
-  })().catch(e => { say("the shell could not boot: " + String(e && e.message).slice(0, 160), "err"); readyRes(); });
+  })().catch(e => { say("the shell could not boot: " + em(e), "err"); readyRes(); });
 })();
 </script>
 </body>

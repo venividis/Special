@@ -257,8 +257,13 @@ class Node {
     if (ev.bubbles && !ev.cancelBubble) this.ownerDocument._page?.win._invoke(ev);
     return !ev.defaultPrevented;
   }
-  /* a disabled button or input is inert in every browser: no event, no handler */
-  click() { if (this.disabled) return false; const ev = new this.ownerDocument._page.ctx.Event("click", { bubbles: true, cancelable: true }); return this.dispatchEvent(ev); }
+  /*  A person's click, not the API's: a disabled control is inert in every browser (no event,
+      no handler), and so is anything a person cannot see — an element carrying `hidden`, or
+      one inside an ancestor that does. A browser's own el.click() would still dispatch on a
+      hidden node, which is exactly the lie this once told: the boot group clicked a hidden
+      #connect and the shell prompted, where no finger could have reached it (U9 review,
+      round two). Returns false, dispatches nothing. */
+  click() { if (this.disabled || this.closest("[hidden]")) return false; const ev = new this.ownerDocument._page.ctx.Event("click", { bubbles: true, cancelable: true }); return this.dispatchEvent(ev); }
 }
 
 function mkStyle() {

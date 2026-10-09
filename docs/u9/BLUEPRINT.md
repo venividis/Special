@@ -510,6 +510,11 @@ source → ≈ 2.2 KB gzip.
 
 ## 3. The byte budget (gzip, after terser; budget 14,000 B, build fails at 15,000 B)
 
+*Superseded (the shell's fix round, 2026-10-09): the table below is the forecast the shell was
+built against; the measured whole-document number, the gas slopes it was checked against and
+the margin under the 15,000 B ceiling are recorded in `docs/INVARIANTS.md` F2, and the 14,000 B
+"budget" line is retired as a target — the build-failing ceiling is the gate.*
+
 A measured 5,310 B for the whole verbatim library (1858–2394 → terser
 13,101 B → gzip 5,310 B) and forecast "near 6 KB gzip after U9's edits";
 B's ≈ 2.5 KB for the CSS; the rest are estimates from the placeholder's
