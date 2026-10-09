@@ -77,7 +77,15 @@ const M = (n) => (Number(n) / 1e6).toFixed(2) + "M";
 t.head("build");
 const plan = await build();
 const gzipBytes = plan.body.reduce((a, s) => a + s.bytes, 0);
-t.ok(!plan.placeholder || true, `shard plan built: ${plan.shell}${plan.placeholder ? " (some PLACEHOLDER panels from tools/fixtures/)" : ""}`);
+/*  H §7.1 A1 in a form that can fail before every panel has landed: the shell must be the
+    console; a panel whose group file exists must be the real panel, not its fixture; and
+    once every group file exists the plan must carry no fixture at all. */
+const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "verify-site");
+const landedGroups = GROUPS.filter((g) => fs.existsSync(path.join(dir, g + ".mjs")));
+const fixturesWithGroup = (plan.fixturePanels || []).filter((p) => landedGroups.includes(p));
+t.ok(!plan.shellIsFixture && fixturesWithGroup.length === 0 && (landedGroups.length < GROUPS.length || !plan.placeholder),
+  `shard plan built: ${plan.shell}${plan.placeholder ? ` (PLACEHOLDER panels from tools/fixtures/: ${plan.fixturePanels.join(" ")} — none has a group file yet)` : ""}`,
+  `shellIsFixture ${plan.shellIsFixture} fixtures ${plan.fixturePanels} with a group file: ${fixturesWithGroup}`);
 const out = compile({ quiet: true, dirs: ["src", "test/mocks"] });
 t.ok(true, "contracts compile");
 
@@ -139,7 +147,6 @@ async function fresh(opts = {}) {
 }
 
 /*──────────────── the groups ────────────────*/
-const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), "verify-site");
 let present = 0;
 for (const g of GROUPS) {
   if (ONLY && g !== ONLY) continue;

@@ -50,7 +50,7 @@ head("build");
 const plan = readPlan();
 const DOC = fs.readFileSync(path.join(ROOT, "dist/app.html"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "dist/manifest.json"), "utf8"));
-ok(`shard plan is ${plan.mode}${plan.placeholder ? " (PLACEHOLDER shell from tools/fixtures/)" : ""}`, plan.mode === "packed");
+ok(`shard plan is ${plan.mode}${plan.shellIsFixture ? " (PLACEHOLDER shell from tools/fixtures/)" : plan.placeholder ? ` (PLACEHOLDER panels from tools/fixtures/: ${(plan.fixturePanels || []).join(" ")})` : ""}`, plan.mode === "packed");
 eq("the plan's engine hash is the keccak of dist/app.html", plan.engineHash, kec(Buffer.from(DOC, "utf8")));
 console.log(`      ${plan.storedBytes.toLocaleString()} bytes on chain across ${plan.head.length + plan.body.length} shard(s), ${plan.panels.length} panels`);
 

@@ -67,9 +67,22 @@ paints after `ready` therefore always finds `body.dataset.chain` set.
 ## 2. Wallet discovery and the picker rule
 
 Every announcer is kept, keyed by `info.rdns`, from the first
-`eip6963:announceProvider` that arrives; the shell dispatches
-`eip6963:requestProvider` once at load. A late announcer joins the set. The
-same `rdns` announced twice is one wallet.
+`eip6963:announceProvider` that arrives. **Discovery happens in the loader,
+before this document exists**: `document.open()` keeps the Window's
+properties but erases every event listener on it (HTML "document open
+steps" 9–10; measured in Chromium 141 — a wallet's `requestProvider`
+listener registered at injection never fires after the rewrite, and a
+request the inflated shell dispatches is heard by nobody), so
+`src/Renderer.sol` `INFLATE` dispatches `eip6963:requestProvider` and
+collects every announcement while the wallets' listeners are alive, and
+leaves the list on `window.INTACT.$wallets` beside `$doc`. The shell seeds
+its map from it, deletes it before `ready` resolves, and keeps its own
+listener for a wallet injected later (which announces unsolicited). A late
+announcer joins the set. The same `rdns` announced twice is one wallet. The
+suite proves the capture is load-bearing: the same two wallets against a
+served document with the capture lines cut find no wallet at all (*"the
+loader captures the announcements before document.open(), and a loader
+without the capture finds no wallet"*).
 
 **The rule (D8).**
 
@@ -85,7 +98,14 @@ same `rdns` announced twice is one wallet.
   Every read and every send then uses the chosen provider. The picker is
   page UI, not a wallet prompt; it costs no permission and the viewer
   never shows it (the viewer reads through the first announcer and never
-  chooses).
+  chooses). **Dismissing the picker chooses nothing**: `window.ethereum` is
+  one of the announcers in a real browser, so the shell does not fall back
+  to it (that would be the choice the person declined to make);
+  `body.dataset.chain = "none"`, no wallet is asked anything, `#connect`
+  stays visible, Home's `#rights-sentence` reads *"no wallet chosen;
+  connect asks again"*, and the next `#connect` gesture opens the picker
+  again (*"a dismissed picker chooses nothing, and the gesture asks
+  again"*). `window.ethereum` is used only when **nothing** announced.
 
 **The instant the rule is decided.** Extensions inject their content
 scripts at different times, so `choose()` does not decide at the first
@@ -133,7 +153,13 @@ goes wrong"*).
 `accountsChanged` and `chainChanged` both run the same path again from the
 chain check, so rights are recomputed on both; the chain check comes first
 on `chainChanged` so a wrong chain clears rights rather than reading with
-them.
+them. **The gate moves on the event itself**: `chainChanged` carries the new
+id, and the shell writes `body.dataset.chain` from it synchronously before
+it re-reads `eth_chainId` to confirm — so a read a panel sends between the
+event and the answer is refused by the gate, not answered by the new chain
+(a real EIP-1193 provider does not serialise requests; the suite holds
+`eth_chainId` open and reads: *"a read parked between chainChanged and the
+re-read is refused by the gate, not answered by the new chain"*).
 
 ## 3. The rights gate
 
@@ -148,7 +174,9 @@ a successful read. Zero and no answer are different facts here as
 everywhere: a `rightsOf` that rejects (a provider error after the chain
 check) leaves `body.dataset.rights = ""`, prints *"your rights could not be
 read at block <n>"* in the ticker, and `gate()` prints that sentence rather
-than the stranger's; no `[data-act]` renders until a read succeeds.
+than the stranger's; no `[data-act]` that needs a bit renders until a read
+succeeds (a control with `needBits === 0` — the mint — renders for any
+connected account, §5 `act`).
 
 | Bits | What renders |
 |---|---|
@@ -203,14 +231,23 @@ panel never reads it — a build and a suite rule). The slab is built with
 inside the `#cbox` backdrop, which takes class `on` while open.
 `propose(tx)` returns a `Promise<void>` that resolves when the slab closes
 for any reason; outcomes reach the panel through `then(receipt)` and the
-ticker, never through the promise rejecting.
+ticker, never through the promise rejecting — a `to` that is not an
+address, a `value` that is not a number or `lines` that are not a list are
+refused as *"a panel bug: <reason>"* in the ticker, the promise resolves,
+and `#cslab` is left empty, so the next slab's first row is its own
+(*"a bad destination resolves without a slab, leaves nothing behind, and a
+disabled Sign sends nothing"*). Closing the slab always clears `#cslab`,
+whether or not one was open.
 
 What happens, in order:
 
 1. **Refusals before a slab exists.** Wrong chain (`body.dataset.chain !==
    "ok"`): *"your wallet is on <name>; this token lives on <name> — the
    crest offers the move"* (in the viewer: *"… — open the console to
-   move"*). Viewer or session mode: the §1 sentence. A write without a
+   move"*). Viewer or session mode: the §1 sentence — `propose` checks the
+   mode itself, before the rights, so a session key whose grant carries the
+   `SESSION` bit a `tx.need` names is still refused (*"propose refuses in
+   session mode even for the SESSION bit the key holds"*). A write without a
    clear-signing `sentence`: refused (a panel bug, printed as one). A key
    the panel did not declare through `rows`: refused. A raw `data` whose
    first four bytes are not `selector(sig)`: *"a panel bug: the signature
@@ -279,10 +316,13 @@ What happens, in order:
    times — three minutes. `status 0x1` → *"landed in block <n>"*; `0x0` →
    *"reverted in block <n>; nothing changed"*; after three minutes →
    *"still not mined after three minutes; it may yet land"*.
-7. **After the receipt**: `rightsOf(id, account)` and `custodyEpoch(id)`
-   are re-read. The body's rights are rewritten, `intact:rights` and
-   `intact:epoch` fire, and if either moved the ticker says *"ownership or
-   epoch changed — review again"* and any open slab is discarded. Then the
+7. **After the receipt**: `hub.coreOf(id)` (status, lock count, epoch,
+   guardian hold — the live facts) and `rightsOf(id, account)` are re-read;
+   the epoch comes back in both, so no separate `custodyEpoch(id)` call is
+   made here (the slab's go handler is where that call lives). The body's
+   rights are rewritten, `intact:rights` and `intact:epoch` fire, and if
+   either moved the ticker says *"ownership or epoch changed — review
+   again"* and any open slab is discarded. Then the
    panel's `then(receipt)` runs (its errors are swallowed into the
    ticker).
 
@@ -357,7 +397,7 @@ string; `T[]` is an array.
 | `delegate()`, `ackDelegate()` | `{ code, name, known, acked } \| null` (§3); `ackDelegate()` sets `acked`, unhides `[data-spend]`, fires `intact:rights` |
 | `qr(text) → SVGElement` | the §13 code; throws `RangeError("payload over 106 bytes")` and the caller prints the link alone |
 | `el(tag, cls, text)`, `kv(parent, k, v)`, `button(parent, label, grey, fn)`, `field(parent, label, placeholder) → the <input>`, `note(parent, text, cls)`, `chip(parent, label, state)` | the furniture, every text node through `textContent`; `kv` returns the row so `row.lastChild.textContent` can move from *reading…* to the value |
-| `enc.W(v)` word of a BigInt/hex · `enc.A(addr)` · `enc.B4(sel)` · `enc.B32(hex)` · `enc.bytes(hex)` (length word + padded body) · `enc.str(s)` · `enc.params(types, values)` | the low-level coder, for the nested shapes `data()` cannot build (`executeBatch`, `executeTyped`, `grantSession`'s `(address,uint128)[]`, `SwapRequest`, the launchpad's 14-field params) |
+| `enc.W(v)` word of a BigInt/hex · `enc.A(addr)` · `enc.B4(sel)` · `enc.B32(hex)` (every `bytesN` left-aligned) · `enc.bytes(hex)` (length word + padded body, **no offset word** — the panel places it at its own offset) · `enc.str(s)` (likewise) · `enc.params(types, values)` (a whole head + tail, offsets included) | the low-level coder, for the nested shapes `data()` cannot build (`executeBatch`, `executeTyped`, `grantSession`'s `(address,uint128)[]`, `SwapRequest`, the launchpad's 14-field params) |
 | `fmt(v, decimals, prec)`, `parse(s, decimals)`, `short(addr)`, `checksum(addr)`, `isAddr(s)` | amounts are BigInt in, BigInt out; `parse` throws on anything but `^\d*\.?\d*$`; dust prints `<0.000001`, never `0` |
 | `khex(string)`, `kbytes(hex)` | the shell's proven keccak — for the two trait keys `khex("curve")`, `khex("name")`, the social lane's `pairKey`, and nothing else |
 | `clock() → Promise<BigInt>` | the chain's clock (§12): `eth_getBlockByNumber("latest", false).timestamp`; **rejects** when the read fails or the chain is not `ok` — it never falls back to `INTACT.time` or `Date.now()`; `now()` is `Date.now()` for animation only |
@@ -396,14 +436,14 @@ different lanes, and the two that would have collided outright are renamed
 | `body[data-rights]` | the decimal bits; `""` before connect and when the read failed |
 | `body[data-chain]` | `ok` \| `wrong` \| `none` |
 | `#crest` | the wallet cell: *read only — connect* / *<wallet> · 0x12… 3456*; on a wrong chain *your wallet is on <name>; this token lives on <name>*; clicking an address drops the remembered choice |
-| `#connect`, `#switch` | the gesture controls; neither exists in the viewer (`#switch` is rendered only when `mode !== "viewer"`) |
+| `#connect`, `#switch` | the gesture controls; neither exists in the viewer (`#switch` is rendered only when `mode !== "viewer"`). `#connect` is visible while the chain is `ok` and nobody is connected, and also after a dismissed picker (§2), so it can ask again |
 | `#picker button[data-rdns]` | the EIP-6963 picker |
 | `#lanes a[data-lane=<name>]` | the nav; absent or `aria-disabled="true"` in the viewer **without a provider** (with one, the viewer loads panels through `engine.panel(i)`); no `agent` link until the AgentCard has code |
 | `#lane-home`, `#lane-<name>` | one section per lane; `.on` on the visible one; `dataset.loaded="1"` once a panel was injected |
 | `#tick` | the ticker (`.ok`, `.err`, `.fade`) |
 | `#facts [data-fact=<key>]` | Home facts: `id chain holder epoch status locked reach grip seal market fingerprint name engine catalog block` (`locked` reads *yes*/*no* from `INTACT.locked`, refreshed from `hub.locked(id)` after receipts); on the collection page `minted price` |
 | `#chips .chip[data-bit=<name>][data-state=…]` | §6.3 |
-| `#rights-sentence` | the sentence for `USE`, `CUSTODY`, `GUARDIAN`, `SESSION` |
+| `#rights-sentence` | Home's one sentence about who is reading: with no provider at all, the §2 sentence *no wallet in this browser; everything above is still true* (every mode) — or, when wallets announced and the picker was dismissed, *no wallet chosen; connect asks again*; else, after a successful `rightsOf`, the sentence for the bit that is not `HOLD` — `USE` *you are the user until <date>*, `CUSTODY` *an operator may move the token, not speak*, `GUARDIAN`, `SESSION` *a session speaks only through the Reach* (§3); `""` for the holder, a stranger, and while the read has no answer |
 | `#verified` | the self-hash footer (§8) |
 | `#qr` | the SVG QR (`svg[role=img][aria-label=<payload>]`, only `rect` children) |
 | `#link-web3`, `#link-https` | the two links (§10) |
@@ -556,6 +596,7 @@ chain.
 | equal to the baked hash; a provider on the wrong chain | **self-consistent; wallet on <name>, not this token's chain** |
 | equal to the baked hash only (no provider, or the read failed) | **self-consistent; chain not reachable to verify** |
 | different from either | **does not match the engine hash** — in red (`.bad`) |
+| the loader kept no bytes (`INTACT.$doc` absent: the one loader line was altered) | **does not match the engine hash; the loader kept no bytes** — in red (`.bad`); never a neutral *nothing to verify* |
 | the opened address names another Premises (below) | **this document names a different Premises than the address you opened** — in red (`.bad`) |
 
 The live read proves the bytes running here are the bytes the chain pins
@@ -636,9 +677,11 @@ shell itself prints puts the document at `/<premises>:<chainId>/token/<id>/live`
 on a path-based gateway, where a root-relative `/panel/swap.js` would hit
 the gateway's root (whatever answered would be hash-refused — safe, and
 every lane dead) and a root-relative `/token/<id>/live` after a mint would
-leave this Premises. So `BASE = location.pathname.slice(0,
-location.pathname.indexOf("/token/"))` (`""` when the page is `/` or the
-index is `-1`), the panel loader fetches `BASE + "/panel/" + name + ".js"`,
+leave this Premises. So `BASE` is the pathname up to `/token/` when the
+path has one, and otherwise the pathname less its trailing slash — `""` on
+`/`, `"/<premises>:<chainId>"` on a path-based gateway's collection page,
+so a mint from `/<premises>:<chainId>/` stays on that Premises (boot R11
+asserts both) — the panel loader fetches `BASE + "/panel/" + name + ".js"`,
 the mint flow navigates to `BASE + "/token/" + id + "/live"`, and the
 directory's links are `BASE + "/token/" + id + "/live"`. (`Premises._moved`
 emits root-relative `Location` headers for `/k` and `/c`; that is U8's

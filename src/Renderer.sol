@@ -88,12 +88,32 @@ contract Renderer {
     ///      the shell keccaks it once after first paint, compares with the
     ///      baked `engineHash` and with a LIVE `engine.engineHash()`, then
     ///      deletes it.
+    ///
+    ///      `$wallets` rides the same way, for the same reason turned
+    ///      around: `document.open()` keeps the Window's properties but
+    ///      ERASES its event listeners (HTML "document open steps" 9–10;
+    ///      measured in Chromium 141 — a wallet's `eip6963:requestProvider`
+    ///      listener registered at injection never fires after the rewrite,
+    ///      and a request the inflated shell dispatches is heard by nobody).
+    ///      Wallets announce once at injection and again on request, both
+    ///      BEFORE this loader runs; a shell that only listens after it has
+    ///      written itself sees zero announcers, falls to `window.ethereum`
+    ///      and the picker rule (CONSOLE §2) can never fire. So the request
+    ///      is dispatched here, while the listeners are alive, and every
+    ///      announcement is collected into a local list that the state
+    ///      object carries across the rewrite; the shell seeds its map from
+    ///      it, deletes it, and keeps its own listener for a wallet injected
+    ///      later (which announces unsolicited). Still a property, still no
+    ///      global binding: `W` lives inside the arrow.
     string internal constant INFLATE =
         '<script>(async()=>{try{'
         'const D=self.$INTACT;delete self.$INTACT;'
+        'const W=[];addEventListener("eip6963:announceProvider",e=>W.push(e.detail));'
+        'dispatchEvent(new Event("eip6963:requestProvider"));'
         'const b=Uint8Array.from(atob(D),c=>c.charCodeAt(0));'
         'const t=await new Response(new Blob([b]).stream()'
         '.pipeThrough(new DecompressionStream("gzip"))).text();'
+        'window.INTACT.$wallets=W;'
         'window.INTACT.$doc=t;document.open();document.write(t);document.close();'
         '}catch(e){document.body.textContent='
         '"INTACT could not inflate itself in this browser.\\n\\n"+e;}})()</script>';

@@ -318,8 +318,12 @@ export async function build() {
   const B = chunk(bodyBuf);
   const engineHash = kec(Buffer.from(doc, "utf8"));
 
+  /*  `placeholder` is true while ANY source is a fixture; `shellIsFixture` and `fixturePanels`
+      say which, so a runner can hold a fixture panel against its landed group file and a
+      label can say "shell" only when it means the shell (U9, additive). */
   const plan = {
-    mode: "packed", minified: MINIFY, placeholder, chunkBytes: CHUNK,
+    mode: "packed", minified: MINIFY, placeholder, shellIsFixture, chunkBytes: CHUNK,
+    fixturePanels: panels.filter((p) => p.path.includes("fixtures")).map((p) => p.name),
     shell: path.relative(ROOT, shellPath),
     sourceBytes: Buffer.byteLength(source, "utf8"),
     documentBytes: Buffer.byteLength(doc, "utf8"),
@@ -370,7 +374,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   shell               ${plan.shell}
   source              ${plan.sourceBytes.toLocaleString()} bytes
   after minifying     ${plan.documentBytes.toLocaleString()} bytes   ${pct(plan.documentBytes, plan.sourceBytes)} of source
-  stored on chain     ${plan.storedBytes.toLocaleString()} bytes   ${pct(plan.storedBytes, plan.sourceBytes)} of source  (ceiling ${SHELL_GZIP_CEILING.toLocaleString()} gzip)
+  shell gzip          ${plan.body.reduce((a, s) => a + s.bytes, 0).toLocaleString()} bytes   (ceiling ${SHELL_GZIP_CEILING.toLocaleString()}; budget 14,000)
+  stored on chain     ${plan.storedBytes.toLocaleString()} bytes   ${pct(plan.storedBytes, plan.sourceBytes)} of source  (the plain prologue + the shell gzip)
   engine hash         ${plan.engineHash}
   ───────────────────────────────────────────────────────────────
   head                ${plan.head.reduce((a, s) => a + s.bytes, 0).toLocaleString()} bytes -> ${plan.head.length} shard(s)

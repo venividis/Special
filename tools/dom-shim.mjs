@@ -29,9 +29,15 @@
       events         a bubbling dispatcher with target/currentTarget, Node's
                      own Event/CustomEvent classes as the objects; the window
                      is an EventTarget too (EIP-6963, hashchange, load)
-      innerHTML      a setter that COUNTS and THROWS. The build refuses the
-                     assignment in shipped text; this refuses it at run time,
-                     and the whole suite asserts the count stayed 0 (O4)
+      innerHTML      a setter that COUNTS and THROWS — and so do outerHTML's
+                     setter and insertAdjacentHTML, the other two markup-string
+                     sinks. The build refuses the assignment in shipped text;
+                     this refuses it at run time, and the whole suite asserts
+                     the count stayed 0 (O4)
+      open()         empties the tree, keeps the Window's properties and
+                     ERASES every event listener, as the HTML spec says and
+                     Chromium does; the loader's EIP-6963 capture exists
+                     because of this, and the shim would have hidden it
       scripts        inline scripts run in order inside close(); a <script>
                      whose src is a blob: URL resolves through node:buffer's
                      resolveObjectURL, runs in the same context, and is
@@ -63,8 +69,10 @@
   (and as window.ethereum with `legacy`), answering from the in-process
   chain: eth_call and eth_estimateGas through Chain.simulate, so a revert
   reaches the page with its FULL data (D15); eth_sendTransaction through the
-  actor's own `send`, a revert becoming a receipt with status 0x0 and never a
-  throw (F §1.9); personal_sign as a real secp256k1 signature over the
+  actor's own `send` — and only with `from` = the actor, since that is the one
+  key the shim holds (a `from` that setAccounts named is refused with 4100
+  rather than signed by the wrong key) — a revert becoming a receipt with
+  status 0x0 and never a throw (F §1.9); personal_sign as a real secp256k1 signature over the
   prefixed message; eth_getLogs from the chain's ledger. Every call is kept
   in order (W.calls), every prompting method in W.promptsLog, and three
   override hooks stage what a node might say: W.answer(to, selector, fn) for
@@ -120,14 +128,18 @@ class Node {
   }
   get innerText() { return this.textContent; }
   set innerText(v) { this.textContent = v; }
-  /*── the tripwire: counted and refused ──*/
-  get innerHTML() { return this.childNodes.map(serialize).join(""); }
-  set innerHTML(v) {
+  /*── the tripwire: every markup-string sink — innerHTML, outerHTML, insertAdjacentHTML —
+       counted on the page and refused with one sentence ──*/
+  _markup(sink, v) {
     const page = this.ownerDocument._page;
     if (page) page.innerHTMLWrites++;
-    throw new Error("innerHTML assignment refused by the shim (chain strings reach the DOM through textContent only): " + String(v).slice(0, 60));
+    throw new Error(sink + " refused by the shim (chain strings reach the DOM through textContent only): " + String(v).slice(0, 60));
   }
+  get innerHTML() { return this.childNodes.map(serialize).join(""); }
+  set innerHTML(v) { this._markup("innerHTML assignment", v); }
   get outerHTML() { return serialize(this); }
+  set outerHTML(v) { this._markup("outerHTML assignment", v); }
+  insertAdjacentHTML(where, v) { this._markup("insertAdjacentHTML", v); }
   /*── structure ──*/
   get children() { return this.childNodes.filter((c) => c.nodeType === 1); }
   get firstChild() { return this.childNodes[0] || null; }
@@ -245,7 +257,8 @@ class Node {
     if (ev.bubbles && !ev.cancelBubble) this.ownerDocument._page?.win._invoke(ev);
     return !ev.defaultPrevented;
   }
-  click() { const ev = new this.ownerDocument._page.ctx.Event("click", { bubbles: true, cancelable: true }); return this.dispatchEvent(ev); }
+  /* a disabled button or input is inert in every browser: no event, no handler */
+  click() { if (this.disabled) return false; const ev = new this.ownerDocument._page.ctx.Event("click", { bubbles: true, cancelable: true }); return this.dispatchEvent(ev); }
 }
 
 function mkStyle() {
@@ -452,11 +465,21 @@ function mkDocument(page) {
     page.pending.push(run());
   };
   /*  document.open/write/close — the loader's three calls. open() empties
-      the tree and keeps the Window (the browser fact src/Renderer.sol
-      relies on); write() buffers; close() parses, mounts, runs the
+      the tree and keeps the Window's PROPERTIES (the browser fact
+      src/Renderer.sol relies on for INTACT and window.ethereum) but ERASES
+      every event listener on the window and on every node (HTML "document
+      open steps" 9–10; measured in Chromium 141) — which is why a wallet's
+      eip6963:requestProvider listener is gone by the time the inflated
+      shell runs, and why the loader captures the announcements before it
+      opens. A shim that kept the listeners made N1–N6 green for behaviour
+      no browser has. write() buffers; close() parses, mounts, runs the
       scripts in order, then fires DOMContentLoaded and load.           */
   let buffer = null;
-  doc.open = () => { for (const c of doc.childNodes) c.parentNode = null; doc.childNodes = []; buffer = ""; doc.readyState = "loading"; return doc; };
+  doc.open = () => {
+    walk(doc, (n) => { n._ls = new Map(); });
+    page.win._ls = new Map();
+    for (const c of doc.childNodes) c.parentNode = null; doc.childNodes = []; buffer = ""; doc.readyState = "loading"; return doc;
+  };
   doc.write = (t) => { if (buffer === null) buffer = ""; buffer += String(t); page.written = (page.written || "") + String(t); };
   doc.writeln = (t) => doc.write(String(t) + "\n");
   doc.close = () => {
@@ -638,8 +661,11 @@ export const prompts = (W) => W.prompts();
 
 /*═══════════════════ the wallet ═══════════════════*/
 
-const PROMPTING = new Set(["eth_requestAccounts", "eth_sendTransaction", "personal_sign", "eth_sign", "eth_signTypedData", "eth_signTypedData_v3", "eth_signTypedData_v4",
-                           "wallet_switchEthereumChain", "wallet_addEthereumChain", "wallet_requestPermissions", "wallet_watchAsset"]);
+/* every method a wallet would put a prompt in front of — counted in W.prompts() whether the
+   shim answers it or refuses it as unexpected, so a page that reaches for one is seen */
+const PROMPTING = new Set(["eth_requestAccounts", "eth_sendTransaction", "eth_signTransaction", "eth_sendRawTransaction", "personal_sign", "eth_sign",
+                           "eth_signTypedData", "eth_signTypedData_v3", "eth_signTypedData_v4", "eth_decrypt", "eth_getEncryptionPublicKey",
+                           "wallet_switchEthereumChain", "wallet_addEthereumChain", "wallet_requestPermissions", "wallet_grantPermissions", "wallet_watchAsset", "wallet_sendCalls"]);
 const hexN = (n) => "0x" + BigInt(n).toString(16);
 
 /**
@@ -686,6 +712,11 @@ export function walletFor(chain, actor, opts = {}) {
       }
       case "eth_sendTransaction": {
         if (!accounts.map((x) => x.toLowerCase()).includes(String(p.from || me).toLowerCase())) throw Object.assign(new Error("unknown account"), { code: 4100 });
+        /* the shim holds one key — the actor's. A `from` that setAccounts named but the actor
+           does not own would be signed by the wrong key and land as the wrong sender; it is
+           refused, so a group that "connects as" another actor and sends sees the refusal
+           rather than a receipt it did not mean */
+        if (String(p.from || me).toLowerCase() !== me.toLowerCase()) throw Object.assign(new Error("the shim signs only as its actor " + me + "; make a wallet for " + p.from), { code: 4100 });
         const n = EVM.BLOCK.header.number;
         let hash, receipt;
         try {
@@ -737,7 +768,11 @@ export function walletFor(chain, actor, opts = {}) {
   const provider = {
     isMetaMask: false, isIntactShim: true,
     request: ({ method, params }) => {
-      /* one request at a time: two interleaved runCalls corrupt each other's checkpoints */
+      /* one request at a time: two interleaved runCalls corrupt each other's checkpoints.
+         This serialisation also HIDES one race a real provider has: a read sent while an
+         eth_chainId is pending waits here, where a browser wallet would answer it from the
+         new chain at once — so the chain gate is asserted on the event (the N block holds
+         eth_chainId open and reads), never on the queue */
       const run = async () => {
         const rec = { method, params, frame: new Error().stack.split("\n").find((l) => /shell#|blob:|served#/.test(l)) || "" };
         W.calls.push(rec);

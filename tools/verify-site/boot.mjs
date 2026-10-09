@@ -1,5 +1,5 @@
 /*───────────────────────────────────────────────────────────────────────────
-  INTACT · verify-site group "boot" — the shell itself (H §7.1, 103 sentences)
+  INTACT · verify-site group "boot" — the shell itself (H §7.1 planned 103 sentences; 119 run, the rest split or added by review)
 
   Twelve blocks, each on the runner's fresh chain: A build and boot, B the
   viewer ("the opaque origin boots the viewer and never offers connect"),
@@ -58,9 +58,9 @@ export async function run(t, ctx) {
   {
     const W = walletFor(c, me);
     const { page, ctx: vctx, S } = await bootToken(1, { wallet: W });
-    t.ok(plan.shell === "engine/app.html" && !/fixtures/.test(plan.shell), "the shell that shipped is the console, not the placeholder" + (plan.placeholder ? " (some panels are still fixtures)" : ""));
+    t.ok(plan.shell === "engine/app.html" && plan.shellIsFixture === false, "the shell that shipped is the console, not the placeholder" + (plan.placeholder ? ` (panels still fixtures: ${plan.fixturePanels.join(" ")} — the runner holds each against its group file)` : ""));
     t.ok(page.written === DIST, "the loader inflated the shell the build wrote, byte for byte", `written ${page.written.length} vs dist ${DIST.length}`);
-    t.ok(vctx.INTACT.id === 1 && vctx.INTACT.__pin === 1, "window.INTACT survived document.open()");
+    t.ok(vctx.INTACT.id === 1 && vctx.INTACT.__pin === 1 && !("$wallets" in vctx.INTACT), "window.INTACT survived document.open(), and the shell took the captured wallets off it");
     t.ok(page.errors.length === 0, "no script threw on the way in", page.errors.map((e) => e.stack || e.message).join("\n"));
     t.eq(page.$("body").dataset.mode, "console", "the body names its boot mode");
     const csp = (page.$("meta[http-equiv]") || { getAttribute: () => "" }).getAttribute("content") || "";
@@ -143,8 +143,9 @@ export async function run(t, ctx) {
     q(/panel refused/.test(text) && /hash/.test(text), "a flipped byte is refused with a sentence", text.slice(0, 120));
     q(page.appended.length === 0, "nothing was injected");
     q(!(vctx.INTACT.loaded && vctx.INTACT.loaded.swap === true) && page.$("#lane-swap").dataset.loaded === undefined, "the lane never marked itself loaded");
-    q(!/function/.test(text) && (text.match(/0x[0-9a-f]{64}/g) || []).every((h) => h === S1.panels.swap || h !== S1.panels.swap) && (text.match(/0x[0-9a-f]{64}/g) || []).length === 2,
-      "the refusal leaks no code", text.slice(0, 160));
+    const hs = text.match(/0x[0-9a-f]{64}/g) || [];
+    q(!/function/.test(text) && hs.length === 2 && hs.includes(S1.panels.swap) && hs.some((h) => h !== S1.panels.swap),
+      "the refusal leaks no code (the only 32-byte words are the pin and the computed hash)", text.slice(0, 160));
     page.close();
   }
   {
@@ -246,6 +247,34 @@ export async function run(t, ctx) {
     page.close();
   }
   {
+    /* D8's hard case: two announcers, the picker dismissed. window.ethereum is one of the two in a
+       real browser; reading through it would be a choice the person declined to make */
+    const WA = walletFor(c, me, { rdns: "io.a", name: "Wallet A", legacy: true }), WB = walletFor(c, me, { rdns: "io.b", name: "Wallet B" });
+    const { page, ctx: vctx } = await bootToken(1, { wallets: [WA, WB], awaitReady: false });
+    await page.settle(); await page.settle();
+    page.click(page.$("#picker")); await page.settle();
+    await vctx.INTACT.ui.ready; await page.settle();
+    const quiet = WA.calls.length + WB.calls.length === 0 && page.$("body").dataset.chain === "none" && page.$("body").dataset.rights === "";
+    const asksAgain = page.$("#connect") && !page.$("#connect").hidden && page.text("#rights-sentence") === "no wallet chosen; connect asks again";
+    page.click(page.$("#connect")); await page.settle();
+    t.ok(quiet && asksAgain && page.$$("#picker button[data-rdns]").length === 2 && !page.$("#picker").hidden,
+      "a dismissed picker chooses nothing, and the gesture asks again", `calls A ${WA.calls.length} B ${WB.calls.length} chain ${page.$("body").dataset.chain} connect ${page.$("#connect") && page.$("#connect").hidden} "${page.text("#rights-sentence")}" picker ${page.$$("#picker button[data-rdns]").length}`);
+    page.close();
+  }
+  {
+    /* discovery happened before this document existed: document.open() erases the wallets' listeners,
+       so a loader that did not capture the announcements finds no wallet at all. The same two wallets,
+       the capture lines cut from the served document — the shim's open() erases exactly as a browser's */
+    const CAPTURE = 'const W=[];addEventListener("eip6963:announceProvider",e=>W.push(e.detail));dispatchEvent(new Event("eip6963:requestProvider"));';
+    const stripped = live1.body.replace(CAPTURE, "").replace("window.INTACT.$wallets=W;", "");
+    const WA = walletFor(c, me, { rdns: "io.a", name: "Wallet A" }), WB = walletFor(c, me, { rdns: "io.b", name: "Wallet B" });
+    const { boot } = await import("../dom-shim.mjs");
+    const pg = await boot(stripped, { wallets: [WA, WB], url: "/token/1/live", GET });
+    t.ok(live1.body.includes(CAPTURE) && stripped.length < live1.body.length && pg.$$("#picker button[data-rdns]").length === 0 && pg.$("body").dataset.chain === "none" && WA.calls.length + WB.calls.length === 0,
+      "the loader captures the announcements before document.open(), and a loader without the capture finds no wallet", `picker ${pg.$$("#picker button[data-rdns]").length} chain ${pg.$("body").dataset.chain} calls ${WA.calls.length + WB.calls.length}`);
+    pg.close();
+  }
+  {
     const WL = walletFor(c, me, { legacy: true, noAnnounce: true });
     const { page } = await bootToken(1, { wallet: WL });
     const legacyUsed = WL.count("eth_chainId") >= 1 && page.$("body").dataset.chain === "ok";
@@ -271,6 +300,8 @@ export async function run(t, ctx) {
     const rc = callsWith(W, hub, sel("rightsOf(uint256,address)"));
     const lastArg = rc.length ? "0x" + rc[rc.length - 1].params[0].data.slice(10 + 64 + 24, 10 + 128) : "";
     t.ok(r0 === "1" && page.$("body").dataset.rights === "4" && lastArg === renter.from.toString().toLowerCase(), "accountsChanged recomputes", `${r0} → ${page.$("body").dataset.rights} actor ${lastArg}`);
+    /* CONSOLE §3, §6.1: the bit that is not HOLD gets its sentence on Home — the renter's is the user's, with the date */
+    t.ok(/^you are the user until \d{4}-\d\d-\d\d \d\d:\d\d UTC$/.test(page.text("#rights-sentence")), "the renter reads 'you are the user until <date>' on Home", page.text("#rights-sentence"));
     void vctx;
     page.close();
   }
@@ -284,6 +315,23 @@ export async function run(t, ctx) {
     const msg = await t.refuses(() => vctx.INTACT.ui.read(hub, "hub.custodyEpoch", [1n]), /this token lives on Ethereum/, "a lane already open stops reading when the chain goes wrong (every read rejects with the chain sentence)");
     t.ok(ethCalls(W).length === n && page.$("body").dataset.chain === "wrong" && page.$("body").dataset.rights === "" && /this token lives on Ethereum/.test(msg || ""),
       "a lane already open stops reading when the chain goes wrong", `calls ${n} → ${ethCalls(W).length} chain ${page.$("body").dataset.chain} rights "${page.$("body").dataset.rights}"`);
+    page.close();
+  }
+  {
+    /* the gate is a property of the primitive, not of a pending promise: between chainChanged and the
+       answer to the re-read, a read must already be refused. The shim's one-at-a-time queue would park
+       the read behind the held eth_chainId and hide this; so the read is made while the hold is open
+       and must reject on its own, before any queue is reached */
+    const W = walletFor(c, me);
+    const { page, ctx: vctx } = await bootToken(1, { wallet: W });
+    let release = null;
+    W.override("eth_chainId", () => new Promise((r) => { release = r; }));
+    const n = ethCalls(W).length;
+    W.setChain(0x2105);
+    const atOnce = page.$("body").dataset.chain === "wrong";
+    const msg = await t.refuses(() => vctx.INTACT.ui.read(hub, "hub.custodyEpoch", [1n]), /your wallet is on Base; this token lives on Ethereum/, "a read parked between chainChanged and the re-read is refused by the gate, not answered by the new chain");
+    if (release) release("0x2105"); await page.settle(); await page.settle();
+    t.ok(atOnce && ethCalls(W).length === n && page.$("body").dataset.chain === "wrong" && /Base/.test(msg || ""), "the gate moved on the event itself, and the re-read only confirmed it", `atOnce ${atOnce} calls ${n} → ${ethCalls(W).length} chain ${page.$("body").dataset.chain}`);
     page.close();
   }
   {
@@ -356,13 +404,18 @@ export async function run(t, ctx) {
     t.eq(page.$("body").dataset.rights, "128", "the SESSION bit is the key's");
     for (const n of Object.keys(vctx.INTACT.panels)) await lane(page, n);
     t.ok(page.$$("[data-act]").length === 0 && page.$$("[data-go]").length === 0, "every holder control is hidden");
-    t.ok(/until U17/.test(page.text("#lane-agent")), "the agent lane says what is missing (part 1)", page.text("#lane-agent").slice(0, 120));
+    t.ok(/no executeAsSession composer until U17/.test(page.text("#lane-agent")), "the agent lane says what is missing (part 1: the §11 sentence, verbatim)", page.text("#lane-agent").slice(0, 160));
     page.close();
     const { page: p6 } = await bootToken(1, { query: "?as=" + KEY, wallet: walletFor(c, me) });
     t.ok(/connected wallet is 0x/.test(p6.text("#session")) && p6.$("body").dataset.rights === "", "a wallet that is not the key is refused", `${p6.text("#session").slice(0, 160)} rights "${p6.$("body").dataset.rights}"`);
     p6.close();
-    const { page: p7 } = await bootToken(1, { query: "?as=" + KEY, wallet: walletFor(c, agentW) });
+    const W7 = walletFor(c, agentW);
+    const { page: p7, ctx: v7 } = await bootToken(1, { query: "?as=" + KEY, wallet: W7 });
     t.ok(!/connected wallet is 0x/.test(p7.text("#session")) && p7.$("body").dataset.rights === "128", "the key's wallet is accepted", p7.$("body").dataset.rights);
+    /* CONSOLE §1, §11: session mode never writes — not even a propose whose need is the SESSION bit the key holds */
+    await v7.INTACT.ui.propose({ to: site.pool, data: enc(SWAP_IN, [1n, true, 1n, 0n, KEY, 0n]), sig: SWAP_IN, need: 128, lines: [], sentence: "x" }); await p7.settle();
+    t.ok(!p7.$("#cbox").classList.contains("on") && p7.$$("[data-go]").length === 0 && W7.count("eth_estimateGas") === 0 && W7.sent() === 0 && /a session speaks only through the Reach; this page acts as key 0x/.test(p7.text("#tick")),
+      "propose refuses in session mode even for the SESSION bit the key holds", `slab ${p7.$("#cbox").classList.contains("on")} estimates ${W7.count("eth_estimateGas")} tick "${p7.text("#tick")}"`);
     p7.close();
     const { page: p8 } = await bootToken(1, { query: "?as=xyz", wallet: walletFor(c, me) });
     t.eq(p8.$("body").dataset.mode, "console", "the agent lane says what is missing (part 2: a malformed ?as= boots as the console)");
@@ -464,6 +517,12 @@ export async function run(t, ctx) {
     const { page: p5 } = await bootToken(1, { wallet: W5 });
     t.ok(/does not match the engine hash/.test(p5.text("#verified")) && p5.$("#verified").classList.contains("bad"), "a chain that names another hash is told so in red", p5.text("#verified"));
     p5.close();
+    /* a loader altered to keep no bytes is a tampered loader: red, the §8 sentence, not a shrug */
+    const { boot } = await import("../dom-shim.mjs");
+    const noDoc = await boot(live1.body.replace("window.INTACT.$doc=t;", ""), { opaque: true });
+    t.ok(/does not match the engine hash/.test(noDoc.text("#verified")) && noDoc.$("#verified").classList.contains("bad") && /kept no bytes/.test(noDoc.text("#verified")),
+      "a loader that kept no bytes to verify is told so in red", noDoc.text("#verified"));
+    noDoc.close();
     const prefix = "/0x" + PREM.slice(2) + ":1";
     const W6 = walletFor(c, me);
     const { page: p6 } = await bootPage(prefix + "/token/1/live", { wallet: W6 });
@@ -535,7 +594,7 @@ export async function run(t, ctx) {
     t.ok(vctx.$INTACT === undefined && !("$INTACT" in vctx), "the payload property was deleted");
     const first = (DIST.match(/<script>const (\w+)=/) || [])[1];
     let threw = null; try { vm.runInContext("const " + first + "=0", vctx); } catch (e) { threw = e; }
-    t.ok(!!first && threw instanceof SyntaxError || (threw && threw.name === "SyntaxError"), "the shim reproduces the collision the loader rule guards against", first + " → " + (threw && threw.message));
+    t.ok(!!first && !!threw && threw.name === "SyntaxError", "the shim reproduces the collision the loader rule guards against", first + " → " + (threw && threw.message));
     page.close();
     const { boot } = await import("../dom-shim.mjs");
     const m = live1.body.match(/self\.\$INTACT="([A-Za-z0-9+/=]+)";/);
@@ -555,6 +614,36 @@ export async function run(t, ctx) {
     const ui = vctx.INTACT.ui;
     const tick = () => page.text("#tick");
     const slabOpen = () => page.$("#cbox").classList.contains("on");
+    /* CONSOLE §5: the low-level coder's shapes — a bytes/string without the offset word (the panel
+       places it), every bytesN left-aligned, a word from a BigInt or hex */
+    t.ok(ui.enc.bytes("0x0102") === "0".repeat(63) + "2" + "0102".padEnd(64, "0") && ui.enc.str("ab") === "0".repeat(63) + "2" + "6162".padEnd(64, "0") &&
+      ui.enc.B32("0xab") === "ab".padEnd(64, "0") && ui.enc.B4("0xa9059cbb") === "a9059cbb".padEnd(64, "0") && ui.enc.W(255n) === ui.enc.W("0xff") && ui.enc.W(255n).endsWith("00ff"),
+      "enc.bytes and enc.str carry no offset word, and every bytesN is left-aligned", `${ui.enc.bytes("0x0102").slice(0, 80)}… ${ui.enc.B32("0xab").slice(0, 8)}`);
+    /* CONSOLE §2: with no provider at all, Home says so — in words, on #rights-sentence */
+    {
+      const { page: pn } = await bootToken(1, {});
+      t.ok(pn.$("body").dataset.chain === "none" && pn.text("#rights-sentence") === "no wallet in this browser; everything above is still true" && pn.$$("[data-act]").length === 0,
+        "no wallet in this browser: Home says so and offers nothing", `${pn.$("body").dataset.chain} "${pn.text("#rights-sentence")}"`);
+      pn.close();
+    }
+    /* CONSOLE §4: the promise never rejects, and a slab that failed half-built leaves nothing under the next one */
+    {
+      let rejected = false;
+      await ui.propose({ to: "nope", key: "erc20.approve", args: [site.pool, 1n], lines: [["Lets", "STALE"]], sentence: "x" }).catch(() => { rejected = true; }); await page.settle();
+      const clean = !rejected && !slabOpen() && page.$("#cslab").childNodes.length === 0 && /a panel bug/.test(tick());
+      await Promise.race([ui.propose({ to: weth, key: "erc20.approve", args: [site.pool, 1n], sentence: "x" }), page.until(() => slabOpen(), 50)]);
+      const firstRow = page.$("#cslab .kv .k");
+      const own = slabOpen() && firstRow && firstRow.textContent === "To" && !/STALE/.test(page.text("#cslab"));
+      /* the belt on Sign: a disabled button is inert in the shim (a browser fires nothing) and in the shell
+         (send() returns before the wallet is asked), so a click event on it sends nothing */
+      await page.until(() => !page.$("[data-go]").disabled, 50);
+      page.$("[data-go]").disabled = true;
+      const pressed = page.click(page.$("[data-go]"));
+      page.$("[data-go]").dispatchEvent(new vctx.Event("click", { bubbles: true })); await page.settle();
+      page.click(page.$("[data-no]")); await page.settle();
+      t.ok(clean && own && pressed === false && W.sent() === 0 && !slabOpen(), "a bad destination resolves without a slab, leaves nothing behind, and a disabled Sign sends nothing",
+        `rejected ${rejected} slab ${slabOpen()} rows ${page.$("#cslab").childNodes.length} first "${firstRow && firstRow.textContent}" pressed ${pressed} sent ${W.sent()} tick "${tick()}"`);
+    }
     await ui.propose({ to: weth, key: "erc20.approve", args: [site.pool, 1n << 255n], sentence: "x" }); await page.settle();
     t.ok(!slabOpen() && /unlimited approvals are never built here/.test(tick()), "an approve of 2^255 or more never becomes a slab", tick());
     await ui.propose({ to: weth, key: "erc20.approve", args: [site.pool, 1n] }); await page.settle();

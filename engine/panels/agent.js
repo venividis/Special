@@ -22,7 +22,7 @@
       host.replaceChildren();
       var p = ui.el("p", "blurb");
       p.id = "agent-stub";
-      p.textContent = "the agent lane arrives with U17; until then: the catalogue is /services.json, sessions are granted in the Vault, and a key opens /k/<id>/<key>. No executeAsSession composer until U17.";
+      p.textContent = "the agent lane arrives with U17; until then: the catalogue is /services.json, sessions are granted in the Vault, and a key opens /k/<id>/<key>; no executeAsSession composer until U17.";
       host.appendChild(p);
       if (ui.mode() === "session") {
         var key = new URLSearchParams(location.search).get("as");

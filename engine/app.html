@@ -76,7 +76,8 @@
                     file and holds it against published vectors; its
                     keccak is recorded in docs/INVARIANTS.md F3. It touches
                     no DOM, no provider and no location, and ends by
-                    publishing 24 names onto a one-shot INTACT.$lib.
+                    publishing the names block 2 reads (15 today; the
+                    slice defines 24) onto a one-shot INTACT.$lib.
     2 · THE SHELL   one IIFE: the first statement copies $lib into its
                     closure and deletes it. Mode, the chooser, the chain
                     gate, rights, the slab, Home, the QR, the loader, the
@@ -408,7 +409,7 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   const PREM = String(S.premises).toLowerCase(), TOKEN = "/token/" + ID + "/live";
   const WEB3 = "web3://" + PREM + ":" + CHAIN + TOKEN;
   const hexQ = n => "0x" + BigInt(n).toString(16);
-  const pad = h => String(h).replace(/^0x/, "").padStart(64, "0");
+  const pad = h => String(h).replace(/^0x/, "").padStart(64, "0"), padR = h => String(h).replace(/^0x/, "").padEnd(64, "0");
   /* always with the spaces around the ellipsis: an address printed without
      them reads as one word and gets copied wrong */
   const short = a => a && !/^0x0{40}$/i.test(a) ? a.slice(0, 6) + " … " + a.slice(-4) : "nobody";
@@ -493,10 +494,20 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   const buildData = (key, args) => L.encodeCall(sigOf(key), args || []).data;
 
   /*── the chooser (Chrome.sol WALLET_JS, D8): every announcer kept by rdns; one is used silently,
-       two or more ask before the first eth_call; window.ethereum only when none announce ──*/
+       two or more ask before the first eth_call; window.ethereum only when none announce ──
+
+       Discovery happened BEFORE this document existed. document.open() erases every event
+       listener on the window (HTML "document open steps" 9–10; measured in Chromium 141: a
+       wallet's eip6963:requestProvider listener registered at injection never fires after the
+       loader's open/write/close, and a requestProvider dispatched from here is heard by nobody),
+       so the loader in src/Renderer.sol INFLATE dispatches the request and collects every
+       announcement while the wallets' listeners are still alive, and leaves the list on
+       INTACT.$wallets beside $doc. This block seeds the map from it, takes it away, and keeps
+       a live listener for a wallet injected later, which announces unsolicited. */
   const P = new Map(); let CHO = null;
-  addEventListener("eip6963:announceProvider", e => { const d = e.detail; if (d && d.info && d.info.rdns && d.provider) P.set(d.info.rdns, d); });
-  dispatchEvent(new Event("eip6963:requestProvider"));
+  const announce = d => { if (d && d.info && d.info.rdns && d.provider) P.set(d.info.rdns, d); };
+  for (const d of S.$wallets || []) announce(d); delete S.$wallets;
+  addEventListener("eip6963:announceProvider", e => announce(e.detail));
   /* storage only on a real origin, only inside try/catch; the viewer never touches it again */
   const store = (fn) => { try { return opaque ? null : fn(localStorage); } catch { return null; } };
   const saved = () => store(s => s.getItem("intact.wallet"));
@@ -517,7 +528,6 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
       b.append(el("span", "", d.info.name || d.info.rdns));
       b.addEventListener("click", () => done(d)); c.append(b);
     }
-    c.append(el("p", "s", "remembered; click your address to switch"));
     o.append(c); o.addEventListener("click", e => { if (e.target === o) done(null); }, { once: true });
   });
   /*  The instant the rule is decided: extensions inject at different times, so the choice
@@ -525,12 +535,15 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   const loaded = new Promise(r => D.readyState === "complete" ? r() : addEventListener("load", r, { once: true }));
   const instant = () => Promise.all([loaded, nap(150)]);
   const take = d => { CHO = d; keep(d.info.rdns); PV = d.provider; wire(PV); };
+  /* a dismissed picker chooses nothing: with two announcers window.ethereum IS one of them,
+     and reading through it would be the choice the person declined to make (D8). The page
+     stays read-only with no provider, and #connect asks again. */
   async function choose() {
     await instant();
     let d = pick();
     if (!d && P.size > 1) { d = await ask(); if (d) keep(d.info.rdns); }
     if (d) return CHO = d, d.provider;
-    return window.ethereum || null;
+    return P.size ? null : window.ethereum || null;
   }
 
   /*── the provider, the chain gate, the account, the rights ──*/
@@ -539,10 +552,12 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   const F = { status: S.status, locked: S.locked, holder: S.owner };
   const wrong = () => "your wallet is on " + nameOf(walletChain) + "; this token lives on " + nameOf(CHAIN);
   const chainSentence = () => wrong() + (viewer ? " — open the console to move" : " — the crest offers the move");
-  const gateSentence = () => chain === "wrong" ? chainSentence() : NONE;
+  /* no provider has two spellings: none announced, or two did and none was chosen */
+  const none = () => P.size ? "no wallet chosen; connect asks again" : NONE;
+  const gateSentence = () => chain === "wrong" ? chainSentence() : none();
   /* the one path to the provider; eth_chainId is the single method that may pass the gate */
   async function rpc(method, params = []) {
-    if (!PV) throw Error(NONE);
+    if (!PV) throw Error(none());
     if (method !== "eth_chainId" && chain !== "ok") throw Error(gateSentence());
     return PV.request({ method, params });
   }
@@ -552,11 +567,15 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   };
   const hub = (key, args) => call(S.hub, buildData(key, args));
   const wired = new WeakSet();
-  const wire = p => { if (p && p.on && !wired.has(p)) { wired.add(p); p.on("accountsChanged", refresh); p.on("chainChanged", refresh); } };
+  /* chainChanged carries the new id: the gate moves on the event itself, synchronously, and
+     the re-read only confirms it — a read parked between the event and eth_chainId's answer
+     must already be refused, or the new chain answers it (CONSOLE §2) */
+  const setChain = n => { walletChain = n; B.dataset.chain = chain = n === CHAIN ? "ok" : "wrong"; };
+  const wire = p => { if (p && p.on && !wired.has(p)) { wired.add(p); p.on("accountsChanged", refresh); p.on("chainChanged", n => { setChain(Number(n)); refresh(); }); } };
   async function checkChain() {
-    if (!PV) chain = "none";
-    else { try { walletChain = Number(await PV.request({ method: "eth_chainId" })); } catch { walletChain = 0; } chain = walletChain === CHAIN ? "ok" : "wrong"; }
-    B.dataset.chain = chain; crest();
+    if (!PV) B.dataset.chain = chain = "none";
+    else { let n = 0; try { n = Number(await PV.request({ method: "eth_chainId" })); } catch {} setChain(n); }
+    crest();
     fire("intact:chain", { ok: chain === "ok", chainId: walletChain, name: nameOf(walletChain) });
   }
   /* the account: quietly at boot and on every change, loudly only from a gesture */
@@ -594,15 +613,25 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
       } catch { say("your rights could not be read at block " + S.block, "err"); }
     }
     B.dataset.rights = bits === null ? "" : String(bits);
-    crest(); home(); session();
+    crest(); home(); session(); sentence();
     fire("intact:rights", { bits, account, epoch });
+  }
+  /* Home's one sentence about who is reading (CONSOLE §2, §3): no provider at all; else the
+     bit that is not HOLD — the user until a date, the operator, the guardian, the session.
+     The holder, a stranger and an unread wallet get no sentence; the chips carry the rest. */
+  function sentence() {
+    const C = S.clocks || {}, b = bits || 0;
+    $("#rights-sentence").textContent = !PV ? none() : b & R.HOLD || bits === null ? "" : b & R.USE ? "you are the user until " + date(C.userExpires)
+      : b & R.CUSTODY ? OPER : b & R.GUARDIAN ? GUARD : b & R.SESSION ? SESSION : "";
   }
   async function refresh() { await checkChain(); if (chain === "ok") await learn(false); await rights(); }
   function crest() {
     const c = $("#connect"), sw = $("#switch");
     $("#c-wallet .led").className = "led" + (chain === "wrong" ? " bad" : account ? " live" : PV ? " ro" : "");
     $("#c-wallet-v").textContent = chain === "wrong" ? wrong() : account ? ((CHO && CHO.info.name) || "wallet") + " · " + short(account) : PV && !viewer ? "read only — connect" : "read only";
-    if (c) c.hidden = chain !== "ok" || !!account;
+    /* the gesture shows when the chain is right and nobody is connected — and when two wallets
+       announced and the picker was dismissed, so it can be asked again */
+    if (c) c.hidden = !!account || chain !== "ok" && !!(PV || P.size < 2);
     if (sw) sw.hidden = chain !== "wrong";
   }
   /* the sentence for the actual state, or null when the control may render */
@@ -640,13 +669,18 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   /* argument rows are decoded from the bytes only when every type is one data() can build */
   const simple = ts => !/[()]|\]\[|\[\d|(bytes|string)\[/.test(ts.join());
   let open = null;
-  function closeSlab() { if (!open) return; $("#cbox").classList.remove("on"); $("#cslab").replaceChildren(); const o = open; open = null; o.resolve(); }
+  /* always clears the body, even with nothing open: a slab that threw half-built must not
+     leave its rows under the next one's */
+  function closeSlab() { $("#cbox").classList.remove("on"); $("#cslab").replaceChildren(); const o = open; open = null; if (o) o.resolve(); }
   function propose(tx) {
     return new Promise(resolve => {
       const no = m => { say(m, "err"); resolve(); };
+      /* the console is the only mode that writes; why() alone would let a session key whose
+         grant carries the SESSION bit through (CONSOLE §1, §11) */
+      if (mode !== "console") return no(viewer ? VIEWER : SESSION + "; " + KEYED);
       const w = why(tx && tx.need || 0); if (w) return no(w);
       if (!tx || !tx.sentence) return no("a panel bug: this write has no clear-signing sentence");
-      let sig, cd;
+      let sig, cd, gasRow, go, gas = null;
       try {
         if (tx.key != null) { sig = sigOf(tx.key); cd = L.encodeCall(sig, tx.args || []).data; }
         else { sig = canon(tx.sig || ""); cd = lower(tx.data || ""); if (!sig || SEL(sig) !== cd.slice(0, 10)) return no("a panel bug: the signature does not name these bytes"); }
@@ -654,24 +688,30 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
       if (unlimited(cd)) return no("unlimited approvals are never built here");
       if (tx.spend && delegate && !delegate.known && !delegate.acked) return no("an unknown delegate holds this account; acknowledge it on Identity first");
       closeSlab();
-      const slab = $("#cslab"), ts = sigTypes(sig), value = BigInt(tx.value || 0);
+      const slab = $("#cslab"), ts = sigTypes(sig);
       const row = (k, v, seam) => { const r = kv(slab, k, v).lastChild; r.dataset[seam] = ""; return r; };
-      slab.append(el("h3", "", "confirm"));
-      for (const [k, v] of tx.lines || []) kv(slab, k, v);
-      row("To", L.checksum(tx.to), "to");
-      if (value) row("Value", L.fmtUnits(value) + " ETH", "value").dataset.wei = value;
-      row("Function", sig, "function"); row("Selector", cd.slice(0, 10), "selector");
-      if (simple(ts)) try { decode(ts, cd.slice(10)).forEach((v, i) => { row("arg " + i + " · " + ts[i], words(v, ts[i]), "arg").dataset.arg = i; }); } catch {}
-      const code = el("pre", "code", cd); code.dataset.calldata = ""; slab.append(code);
-      row("Digest", L.kbytes(cd), "digest"); row("Engine", String(S.engineHash), "engine");
-      const gasRow = row("Gas", "estimating…", "gas");
-      if (tx.note) note(slab, tx.note, "warn");
-      const sen = el("p", "", tx.sentence); sen.dataset.sentence = ""; slab.append(sen);
-      const go = button(slab, "Sign and send", false, send); go.dataset.go = ""; go.disabled = true;
-      button(slab, "Not now", true, closeSlab).dataset.no = "";
+      let value;
+      /* the rows are built from what the panel passed; a destination that is not an address, a
+         value that is not a number or lines that are not a list are panel bugs, said as such,
+         and the promise still resolves (CONSOLE §4: it never rejects) */
+      try {
+        value = BigInt(tx.value || 0);
+        slab.append(el("h3", "", "confirm"));
+        for (const [k, v] of tx.lines || []) kv(slab, k, v);
+        row("To", L.checksum(tx.to), "to");
+        if (value) row("Value", L.fmtUnits(value) + " ETH", "value").dataset.wei = value;
+        row("Function", sig, "function"); row("Selector", cd.slice(0, 10), "selector");
+        if (simple(ts)) try { decode(ts, cd.slice(10)).forEach((v, i) => { row("arg " + i + " · " + ts[i], words(v, ts[i]), "arg").dataset.arg = i; }); } catch {}
+        const code = el("pre", "code", cd); code.dataset.calldata = ""; slab.append(code);
+        row("Digest", L.kbytes(cd), "digest"); row("Engine", String(S.engineHash), "engine");
+        gasRow = row("Gas", "estimating…", "gas");
+        if (tx.note) note(slab, tx.note, "warn");
+        const sen = el("p", "", tx.sentence); sen.dataset.sentence = ""; slab.append(sen);
+        go = button(slab, "Sign and send", false, send); go.dataset.go = ""; go.disabled = true;
+        button(slab, "Not now", true, closeSlab).dataset.no = "";
+      } catch (e) { closeSlab(); return no("a panel bug: " + e.message); }
       $("#cbox").classList.add("on");
       open = { resolve, tx, epoch: epoch === null ? BigInt(S.epoch || 0) : epoch };
-      let gas = null;
       /* the estimate runs before the wallet is ever asked; a revert keeps Sign disabled */
       (async () => {
         try {
@@ -679,9 +719,10 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
           gasRow.textContent = g + " units"; gas = hexQ(g * 125n / 100n); go.disabled = false;
         } catch (e) { const d = revertData(e), s = d == null ? "" : errorSentence(d); gasRow.textContent = "would revert" + (s && ": " + s); gasRow.classList.add("bad"); }
       })();
-      /* one press: the epoch is re-read here and nowhere else a panel could forget */
+      /* one press: the epoch is re-read here and nowhere else a panel could forget; a disabled
+         button is inert in every browser, and this line makes it inert in every shim too */
       async function send() {
-        if (!open || open.tx !== tx) return;
+        if (!open || open.tx !== tx || go.disabled) return;
         go.disabled = true; go.textContent = "waiting for the wallet";
         try {
           if (ID) { const e = L.decUint(await hub("hub.custodyEpoch", [ID])); if (e !== open.epoch) return setEpoch(e), closeSlab(), say("ownership or epoch changed — review again", "err"); }
@@ -765,20 +806,21 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   }
   async function mintFlow() {
     let price;
-    try { price = L.decUint(await hub("hub.price")); } catch { return say("the price could not be read; the console will not guess a payable value", "err"); }
+    try { price = L.decUint(await hub("hub.price")); } catch { return say("the price could not be read; nothing is guessed", "err"); }
     const eth = L.fmtUnits(price) + " ETH";
     return propose({ to: S.hub, key: "hub.mint", args: [account], value: price, spend: true,
       lines: [["Mints", "one INTACT to " + short(account)], ["Price", eth + ", exactly"]],
-      sentence: "mints one INTACT to " + account + " for exactly " + eth + "; the id is the chain's to give",
+      sentence: "mints one INTACT to " + account + " for exactly " + eth,
       then: r => { const lg = (r.logs || []).find(l => lower(l.address) === lower(S.hub) && l.topics && lower(l.topics[0]) === lower(S.topics.transfer) && !BigInt(l.topics[1]));
         if (lg) location.href = BASE + "/token/" + BigInt(lg.topics[3]) + "/live"; } });
   }
-  /* the live facts after a receipt: one coreOf read carries status, epoch and the two lock words */
+  /* the live facts after a receipt: one coreOf read carries status (word 0), the lock count
+     (word 2), the epoch (word 3) and the guardian hold (word 7) — static words, read as such */
   async function facts() {
     if (!ID || chain !== "ok") return;
     try {
-      const c = decode(["uint8", "uint8", "uint32", "uint64", "uint64", "uint64", "address", "bool", "bool"], await hub("hub.coreOf", [ID]));
-      F.status = Number(c[0]); F.locked = c[2] !== 0n || c[7]; setEpoch(c[3]);
+      const h = (await hub("hub.coreOf", [ID])).slice(2), w = i => W(h, i * 32);
+      F.status = Number(w(0)); F.locked = w(2) !== 0n || w(7) !== 0n; setEpoch(w(3));
     } catch {}
   }
 
@@ -790,10 +832,13 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     if (account && account !== KEY) note(s, KEYED + "; the connected wallet is " + account + " — connect the key's wallet", "bad");
     if (chain !== "ok") return note(s, gateSentence());
     try {
-      const v = decode(["uint8", "uint64", "uint64", "uint128", "uint128", "uint32", "uint32", "uint64", "bytes32", "bytes32", "address", "uint256", "uint32", "bool"], await call(S.reach, buildData("reach.sessionOf", [KEY])));
-      note(s, (v[0] ? "recipe" : "allowlist") + " · expires " + date(v[1]) + " · granted at epoch " + v[2] + " · native cap " + L.fmtUnits(v[3]) + " ETH, spent " + L.fmtUnits(v[4]) + " · uses left " + (v[5] || "unlimited") + " · interval " + v[6] + " s · " + (v[13] ? "active" : "inactive"));
-      const x = decode(["uint256", "(address,uint128)[]"], await call(S.reach, buildData("reach.sessionExposure", [KEY])));
-      note(s, "worst-case exposure " + L.fmtUnits(x[0]) + " ETH native, " + x[1].length + " asset cap(s)");
+      /* sessionOf is fourteen static words (kind, expires, epoch, native cap, spent, uses left,
+         interval, …, active at 13); sessionExposure is (native, (address,uint128)[]) — read as
+         words, no type list to carry */
+      const h = (await call(S.reach, buildData("reach.sessionOf", [KEY]))).slice(2), v = i => W(h, i * 32);
+      note(s, (v(0) ? "recipe" : "allowlist") + " · expires " + date(v(1)) + " · granted at epoch " + v(2) + " · native cap " + L.fmtUnits(v(3)) + " ETH, spent " + L.fmtUnits(v(4)) + " · uses left " + (v(5) || "not capped") + " · interval " + v(6) + " s · " + (v(13) ? "active" : "inactive"));
+      const x = (await call(S.reach, buildData("reach.sessionExposure", [KEY]))).slice(2);
+      note(s, "worst-case exposure " + L.fmtUnits(W(x, 0)) + " ETH native, " + W(x, Number(W(x, 32))) + " asset cap(s)");
     } catch (e) { note(s, "grant not read: " + String(e && e.message).slice(0, 120), "bad"); }
     note(s, "SESSION right: " + (bits === null ? "not read" : bits & R.SESSION ? "yes" : "no"));
   }
@@ -836,7 +881,8 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     for (let i = 0; i < 6; i++) setF(8, i, bit(i)); setF(8, 7, bit(6)); setF(8, 8, bit(7)); setF(7, 8, bit(8)); for (let i = 9; i < 15; i++) setF(14 - i, 8, bit(i));
     for (let i = 0; i < 8; i++) setF(N - 1 - i, 8, bit(i)); for (let i = 8; i < 15; i++) setF(8, N - 15 + i, bit(i));
     const NS = "http://www.w3.org/2000/svg", svg = D.createElementNS(NS, "svg"), attrs = (e, o) => { for (const k in o) e.setAttribute(k, o[k]); return e; };
-    attrs(svg, { viewBox: "0 0 45 45", width: "100%", height: "100%", "shape-rendering": "crispEdges", role: "img", "aria-label": text });
+    /* sized by #qr svg in app.css; every rect carries its own shape-rendering (CONSOLE §13) */
+    attrs(svg, { viewBox: "0 0 45 45", role: "img", "aria-label": text });
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (M[y * N + x]) svg.append(attrs(D.createElementNS(NS, "rect"), { x: x + 4, y: y + 4, width: 1, height: 1, "shape-rendering": "crispEdges" }));
     return svg;
   }
@@ -882,9 +928,12 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   async function footer() {
     const v = $("#verified"), doc = S.$doc; delete S.$doc;
     const bad = t => { v.textContent = t; v.classList.add("bad"); }, self = t => { v.textContent = "self-consistent; " + t; };
-    if (doc == null) return v.textContent = "nothing to verify";
+    /* a loader that kept no bytes was altered — the one line the footer relies on is gone — and
+       that is told in red, not as a shrug */
+    const MIS = "does not match the engine hash";
+    if (doc == null) return bad(MIS + "; the loader kept no bytes");
     const h = L.toHex(L.keccak256(L.utf8(doc))), DIFF = "this document names a different Premises than the address you opened";
-    if (h !== lower(S.engineHash)) return bad("does not match the engine hash");
+    if (h !== lower(S.engineHash)) return bad(MIS);
     if (chain === "wrong") return self("wallet on " + nameOf(walletChain) + ", not this token's chain");
     if (chain !== "ok") return self("chain not reachable to verify");
     try {
@@ -895,7 +944,7 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
         if (m && (lower(m[0]) !== PREM || lower(L.decAddr(await call(S.premises, SEL("ENGINE()")))) !== lower(S.engine))) return bad(DIFF);
       }
       const live = lower(await call(S.engine, buildData("engine.engineHash"))), n = BigInt(await rpc("eth_blockNumber"));
-      if (live.slice(0, 66) !== h) return bad("does not match the engine hash");
+      if (live.slice(0, 66) !== h) return bad(MIS);
       v.textContent = "engine " + short(L.checksum(S.engine)) + " pins these bytes at block " + n;
     } catch { self("chain not reachable to verify"); }
   }
@@ -926,8 +975,11 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     errorSentence, propose, approveExactThen, act, gate,
     delegate: () => delegate, ackDelegate: () => { if (delegate) { delegate.acked = true; for (const b of $$("[data-spend]")) b.hidden = false; fire("intact:rights", { bits, account, epoch }); } },
     qr, el, kv, button, field, note, chip,
-    enc: { W: v => pad(typeof v === "string" && v.startsWith("0x") ? v.slice(2) : BigInt(v).toString(16)), A: a => pad(lower(a).slice(2)), B4: s => String(s).replace(/^0x/, "").padEnd(64, "0"), B32: pad,
-           bytes: h => L.encodeParams(["bytes"], [h]), str: s => L.encodeParams(["string"], [s]), params: L.encodeParams },
+    /* every bytesN is left-aligned (B4 and B32 are one function); bytes and str are the length
+       word and the padded body WITHOUT the offset word, so a panel laying a tuple or a nested
+       array by hand places them at its own offset (CONSOLE §5) */
+    enc: { W: v => pad(typeof v === "string" && v.startsWith("0x") ? v.slice(2) : BigInt(v).toString(16)), A: a => pad(lower(a).slice(2)), B4: padR, B32: padR,
+           bytes: h => L.encodeParams(["bytes"], [h]).slice(64), str: s => L.encodeParams(["string"], [s]).slice(64), params: L.encodeParams },
     fmt: (v, d, p) => L.fmtUnits(v, d == null ? 18 : d, p == null ? 6 : p), parse: (s, d) => L.toUnits(s, d == null ? 18 : d), short, checksum: L.checksum, isAddr: L.isAddr, khex: L.khex, kbytes: L.kbytes,
     /* the chain's clock, or a rejection; never INTACT.time, never Date.now() */
     clock: async () => { try { return BigInt((await rpc("eth_getBlockByNumber", ["latest", false])).timestamp); } catch { throw Error("the chain's clock could not be read"); } },
