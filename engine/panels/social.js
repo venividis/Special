@@ -34,10 +34,34 @@
     once inside the slab's go handler through `recheck` — and a key that
     moved, a key that is not P-256, or a missing crypto.subtle is a sentence
     that closes the slab; nothing is ever downgraded to plain text (PR #27
-    failed open to plaintext; INTACT does not). The key versions in the AAD
-    are the two key ids exactly as Parley handed them back — read, never
-    recomputed here. A plain whisper is offered only where the room cannot
-    be sealed, and the control says "in the clear".
+    failed open to plaintext; INTACT does not). Either read of a moved key
+    re-arms the room to the key it found: the go-handler read once refused
+    and left the status naming the key that had moved (found by review).
+    The scalar is the wallet's, so paint() drops it when another account
+    connects: wallet B, in the page where wallet A had derived, was once
+    told that the key "this wallet derives" is not the one bound, and was
+    offered no derivation of its own (found by review). The key versions in
+    the AAD are the two key ids exactly as Parley handed them back — read,
+    never recomputed here. A plain whisper is offered only where the room
+    cannot be sealed, and the control says "in the clear".
+
+    A reply that lands after a newer ask paints nothing. walk() keeps a
+    generation on its feed (feed.g) and checks it before every row and every
+    status; arm()'s keys, and the stamp row its receipts paint, check a
+    lane-wide count of asks (lane-wide because `armed` is). A refused
+    receipts read still prints its note under whatever recipient is showing:
+    a line beside the status, never the status, and guarding it measured
+    +4 B of gzip against a 5 B margin. A second recipient typed before the
+    first one's reads answered once got the first pair's row and its count,
+    a second composer, and `armed` still holding the first pair's key, so a
+    room with no key at all was labelled sealed (found by review; the press
+    re-reads keyOf(to) and refused, so nothing was ever sealed to the wrong
+    key). Two walks on one feed had already painted 6 rows for 3 on a
+    receipt before this lane landed. The stamp a pair remembers once
+    pendingOf has forgotten it (expire deletes the pointer; the refund is
+    still to claim) is that pair's, lastStamp[room]: a single slot once
+    followed the lane into every other pair, expire control and all (found
+    by review).
 
     Two room keys are computed here with the shell's proven keccak, exactly
     as Parley derives them, because no row serves either: the pair room
@@ -100,8 +124,11 @@
       "postage.expire": "expire(uint256)", "postage.claimRefund": "claimRefund(uint256)", "postage.claimSettled": "claimSettled(uint256,address)",
       "postage.owed": "owed(address,address)", "postage.pendingOf": "pendingOf(uint256)", "postage.stampOf": "stampOf(uint256)",
       "reach.execute": "execute(address,uint256,bytes,uint8)", "hub.custodyEpoch": "custodyEpoch(uint256)",
-      "erc20.approve": "approve(address,uint256)", "erc20.allowance": "allowance(address,address)", "erc20.symbol": "symbol()", "erc20.decimals": "decimals()"
+      "erc20.symbol": "symbol()", "erc20.decimals": "decimals()"
     });
+    /* rows name only what this panel calls: the exact approve and the allowance it checks are the
+       shell's (approveExactThen declares and calls its own); declared here as well, they were 24 B
+       of gzip that paid for nothing (found by review) */
 
     /*── helpers: hex both ways (the module's bytes()/text() do UTF-8), the two room keys, dates ──*/
     var hex = function (u) { return Array.from(u, function (b) { return b.toString(16).padStart(2, "0"); }).join(""); };
@@ -133,7 +160,7 @@
     var NOPOINT = "decimals did not answer; the point is not guessed";
 
     /*── state the lane keeps between paints ──*/
-    var MY = null, MYPK = null, other = 0n, armed = null, lastStamp = 0n, seenBits, seenAcct, dmTo = "", dmText = "", refreshers = [];
+    var MY = null, MYPK = null, other = 0n, armed = null, asks = 0, lastStamp = {}, seenBits, seenAcct, dmTo = "", dmText = "", refreshers = [];
 
     /*═══════════ the walk: one stateOf, then one single-block eth_getLogs per hop, oldest first on screen ═══════════
          The pointer onward is the OLDEST message's prev — messages that share a block point within it,
@@ -151,37 +178,54 @@
       else { try { b.textContent = text(unhex(m.hex)); } catch (e) { b.textContent = "— not text —"; b.classList.add("s"); } }
       feed.insertBefore(r, feed.firstChild);
     }
+    /* a walk owns its feed until the next walk on it starts: `g` is this walk's generation, and every
+       write — a row, the status, a refusal — goes through a check of it. Without one, a pair room typed
+       over before its walk answered kept the first pair's rows and "all 1 message" under the second
+       recipient (found by review) */
     function walk(feed, status, room, silent, opener) {
-      feed.replaceChildren(); status.textContent = "reading…";
+      var g = feed.g = {}, put = function (s) { if (feed.g === g) status.textContent = s; };
+      feed.replaceChildren(); put("reading…");
       return ui.read(S.parley, "parley.stateOf", [room]).then(function (r) {
+        if (feed.g !== g) return;
         var last = r.w(0), count = r.w(1), hops = 0;
-        if (!last) { status.textContent = silent; return; }
+        if (!last) return put(silent);
         var step = function (blk) {
-          if (!blk) { status.textContent = "all " + count + (count === 1n ? " message" : " messages"); return; }
-          if (hops++ >= 12) { status.textContent = "…older messages past block " + blk + "; " + count + " ever said here"; return; }
+          if (!blk) return put("all " + count + (count === 1n ? " message" : " messages"));
+          if (hops++ >= 12) return put("…older messages past block " + blk + "; " + count + " ever said here");
           var b = "0x" + blk.toString(16);
           return ui.walkLogs({ address: S.parley, fromBlock: b, toBlock: b, topics: [S.topics.said, topicOf(room)] }).then(function (logs) {
-            if (!logs || !logs.length) { status.textContent = "no logs at block " + blk; return; }
+            if (feed.g !== g) return;
+            if (!logs || !logs.length) return put("no logs at block " + blk);
             var oldest; for (var i = logs.length - 1; i >= 0; i--) { oldest = said(logs[i]); row(feed, oldest, opener); }
             return step(oldest.prev);
-          }, function (e) { status.textContent = "eth_getLogs refused; the walk cannot start: " + (e && e.message); });
+          }, function (e) { put("eth_getLogs refused; the walk cannot start: " + (e && e.message)); });
         };
         return step(last);
-      }, function (e) { status.textContent = "the room " + unread(e); });
+      }, function (e) { put("the room " + unread(e)); });
     }
 
-    /*═══════════ who may speak: the composer for HOLD|ACCOUNT, the sentence for everyone else ═══════════*/
+    /*═══════════ who may speak: the composer for HOLD|ACCOUNT, the sentence for everyone else ═══════════
+         #social-why says what the shell's gate does not: the user's sentence names the Reach as the
+         token's other hand, the guardian's and the stranger's say who speaks, and a session key's wallet
+         connected in the console (no ?as) gets CONSOLE §3's session sentence — the shell's why() has no
+         SESSION branch outside session mode, and this lane printed the stranger's sentence to a wallet
+         Home was calling a session (found by review; the shell's own gap is reported, not fixed here).
+         The operator's sentence is the shell's OPER byte for byte, for exactly the bits that reach that
+         branch, so ui.gate prints it: one copy of it, and 17 B of gzip toward the guards above. */
     var SPEAK = "only the holder — or the token's own Reach — may speak as it";
     function whyNot(p, withId) {
       var b = ui.rights(), s = ui.mode() !== "console" || !ui.account() || b === null ? null
         : b & R.USE ? "you are the user; " + SPEAK
-        : b & R.CUSTODY ? "an operator may move the token, not speak"
+        : b & R.CUSTODY ? null
         : b & R.GUARDIAN ? "a guardian does not speak as the token"
+        : b & R.SESSION ? "a session speaks only through the Reach"
         : "no right on " + tok(ID) + "; " + SPEAK;
       if (s) p.append(ui.el("p", "blurb gate", s)); else ui.gate(p, NEED);
       var g = p.querySelector(".gate"); if (g && withId) g.id = "social-why";
     }
-    var speaks = function () { return ui.mode() === "console" && ui.rights() !== null && (ui.rights() & NEED) !== 0; };
+    /* rights() is null or a number, and null & NEED is already 0: the null test this once spelled out
+       bought nothing and cost bytes the guards needed */
+    var speaks = function () { return ui.mode() === "console" && ui.rights() & NEED; };
     /* `where` is a function: a room's name arrives from the Founded log after the composer is built */
     function composer(p, room, where, withId) {
       var box = ui.el("div"); if (withId) box.id = "social-composer"; p.append(box);
@@ -353,18 +397,24 @@
       var ctl = ui.el("div"); box.append(ctl);
       var rc = ui.el("div"); rc.id = "social-receipts"; box.append(rc);
       var say = function (s, cls) { status.textContent = s; status.className = "blurb s" + (cls ? " " + cls : ""); };
-      /* arm: your own key first, then theirs; a mismatch of the derived key is a bind problem, said as one */
+      /* arm: your own key first, then theirs; a mismatch of the derived key is a bind problem, said as one.
+         `a` is this ask; the keys and the receipts write only while it is still the newest one. The status
+         is cleared with everything else: it once kept the last recipient's sentence while that one's
+         controls were already gone — for a round trip when the keys were asked, and for good when they
+         were not (a renter's "a token cannot whisper to itself" outlived the next number typed; found
+         by review) */
       function arm() {
-        armed = null; ctl.replaceChildren(); rc.replaceChildren(); feed.replaceChildren(); fs.textContent = "";
+        var a = ++asks; armed = null; ctl.replaceChildren(); rc.replaceChildren(); feed.replaceChildren(); fs.textContent = ""; say("");
         var n = /^\d+$/.test(to.value.trim()) ? BigInt(to.value.trim()) : null;
         other = n || 0n; dmTo = to.value;
-        if (!n) return say("");
+        if (!n) return;
         if (n === ID) return say("a token cannot whisper to itself");
         var room = pairKey(ID, n);
         walk(feed, fs, room, "nothing whispered yet", opener);
-        receipts(room);
+        receipts(room, a);
         if (!speaks()) return whyNot(ctl, false);
         Promise.all([keyOf(ID), keyOf(n)]).then(function (k) {
+          if (a !== asks) return;
           var mine = k[0], theirs = k[1], plain = false;
           if (theirs.pk === "0x") { say(tok(n) + " has no key — this room cannot be sealed; whispers go " + CLEAR); plain = true; }
           else if (theirs.type !== 3) say(notP256(n), "warn");
@@ -373,7 +423,7 @@
           else if (!same(MYPK, mine.pk)) say("the key this wallet derives is not the one " + tok(ID) + " bound — bind again on Identity", "bad");
           else { armed = { pk: theirs.pk, id: theirs.id, mine: mine.id }; say("sealed · both bound under their current holders · key " + theirs.id.slice(0, 10) + "…"); }
           sender(ctl, n, room, plain);
-        }, function (e) { say("the keys " + unread(e), "warn"); });
+        }, function (e) { if (a === asks) say("the keys " + unread(e), "warn"); });
       }
       to.addEventListener("input", arm);
       if (dmTo) arm();
@@ -382,7 +432,11 @@
         var ta = ui.el("textarea"); ta.value = dmText; c.append(ta);
         ta.placeholder = armed ? "sealed to " + tok(n) + "'s key" : CLEAR;
         ta.addEventListener("input", function () { dmText = ta.value; });
-        if (!armed && !plain) return ui.note(c, "derive or bind the key; a sealable room is never sent " + CLEAR, "warn");
+        /* a room that has a key and is not armed: the status already says why — derive yours, bind again,
+           or a key this page cannot seal to — so the note says only what holds in all three. It once
+           began "derive or bind the key", which sent the holder of a room whose recipient key is not
+           P-256 to Identity for nothing (found by review). */
+        if (!armed && !plain) return ui.note(c, "a sealable room is never sent " + CLEAR, "warn");
         ui.act(c, "whisper", armed ? "review the sealed whisper" : "review the whisper, " + CLEAR, NEED, function () {
           var s = ta.value; if (!s.trim()) return ui.say("something to say", "err");
           var A = armed;
@@ -396,7 +450,8 @@
               return encryptWhisper(ctx, s, hexPublic(th.pk), MY.publicKey).then(function (env) {
                 var body = "0x" + hex(bytes(JSON.stringify(env)));
                 return send(n, room, 1, th.id, body, "a sealed envelope of " + ((body.length - 2) / 2) + " bytes", function () {
-                  return keyOf(n).then(function (now) { return !same(now.id, th.id) || !same(now.pk, th.pk) ? moved(n) : now.type !== 3 ? notP256(n) : null; },
+                  /* the press-time read refuses as the review-time one does, and re-arms as it does */
+                  return keyOf(n).then(function (now) { return !same(now.id, th.id) || !same(now.pk, th.pk) ? (arm(), moved(n)) : now.type !== 3 ? notP256(n) : null; },
                     function () { return tok(n) + "'s key could not be re-read at the press" + AGAIN; });
                 }, ta);
               });
@@ -432,13 +487,15 @@
           });
         }).catch(function (e) { ui.say(e && e.message || e, "err"); });
       }
-      /* receipts: the pending stamp of this pair (or the last one seen), expire, the refund to the sender's Reach */
-      function receipts(room) {
+      /* receipts: the pending stamp of this pair (or the last one this pair showed), expire, the refund to
+         the sender's Reach; written only while `a` is still the newest ask */
+      function receipts(room, a) {
         ui.read(S.postage, "postage.pendingOf", [room]).then(function (r) {
-          var id = r.w(0) || lastStamp; if (!id) return; lastStamp = id;
+          var id = r.w(0) || lastStamp[room]; if (!id) return; lastStamp[room] = id;
           ui.read(S.postage, "postage.stampOf", [id]).then(function (st) {
             var from = st.w(1), by = st.w(7), settled = st.b(8), refunded = st.b(9);
             coin(st.a(4)).then(function (cs) {
+              if (a !== asks) return;
               ui.kv(rc, "stamp " + id, tok(from) + " → " + tok(st.w(2)) + " · " + amt(st.w(5), cs) + " · reply by " + date(by) + " · " + (settled ? "settled" : refunded ? "refunded" : "pending"));
               if (!settled && !refunded) ui.act(rc, "expire", "expire the stamp", 0, function () {
                 return ui.propose({ to: S.postage, key: "postage.expire", args: [id], need: 0, lines: [["Stamp", String(id)], ["After", date(by)]], sentence: "expires stamp " + id + ": the postage is the sender's again, to be claimed", then: arm });
@@ -452,7 +509,13 @@
       }
     }
 
-    /*═══════════ the inbox: live facts, the holder's price list, what it earned ═══════════*/
+    /*═══════════ the inbox: live facts, the holder's price list, what it earned ═══════════
+         The ledger is per coin — owed(feeSink, coin) answers for the coin asked — and the row asks
+         for the coin the price list names, so the row names it: "earned in ETH". Unscoped, it once
+         read "earned 0 ETH" over the 5 WETH a price list that had moved on from WETH still held
+         (found by review). What another coin holds is not shown: a field to ask for it measured
+         +74 B of gzip and the ceiling refused it. Naming that coin in the price list again shows
+         its balance and the claim, and claimSettled(id, coin) is open to anyone from any tool. */
     function inbox(p) {
       var box = ui.el("div"); box.id = "social-inbox"; p.append(box);
       box.append(ui.el("h3", "", "its inbox"));
@@ -466,11 +529,11 @@
             ui.kv(facts, "postage", post ? amt(post, cs) + " per first contact · " + ib.w(2) / 60n + "-minute window" : "free");
             ui.read(S.postage, "postage.owed", [S.feeSink, ft]).then(function (o) {
               var owed = o.w(0);
-              ui.kv(facts, "earned", amt(owed, cs));
+              ui.kv(facts, "earned in " + cs[0], amt(owed, cs));
               if (owed) ui.act(facts, "claimSettled", "pay the fee sink what it earned", 0, function () {
                 return ui.propose({ to: S.postage, key: "postage.claimSettled", args: [ID, ft], need: 0, lines: [["Pays", amt(owed, cs)]], sentence: "pays " + tok(ID) + "'s fee sink " + ui.short(S.feeSink) + " the " + amt(owed, cs) + " its inbox earned" });
               });
-            }, function (e) { ui.kv(facts, "earned", unread(e)); });
+            }, function (e) { ui.kv(facts, "earned in " + cs[0], unread(e)); });
           });
         }, function (e) { ui.note(facts, "the inbox " + unread(e), "warn"); });
       };
@@ -498,6 +561,9 @@
     /*═══════════ paint ═══════════*/
     function paint() {
       host.replaceChildren(); refreshers = [];
+      /* the scalar is the wallet's (D7): another account derives its own. Here and not in the rights
+         handler: rights() fires intact:epoch first, and the paint it causes has already moved seenAcct */
+      if (seenAcct !== ui.account()) MY = MYPK = null;
       seenBits = ui.rights(); seenAcct = ui.account();
       if (!(S.reported & S.bits.parley)) ui.note(host, "parley: " + (S.absent & S.bits.parley ? "not deployed on this chain" : "could not be read at block " + S.block) + " — not the same as this token having nothing to say, and the console will not print one as the other", "warn");
       else { commons(host); home(host); rooms(host); dm(host); inbox(host); }

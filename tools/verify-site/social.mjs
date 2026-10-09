@@ -20,6 +20,21 @@
   is text) is counted once, inside I. The two BUILD-PLAN sentences this
   file owns end their blocks as `t.ok(..., "<sentence>")`, verbatim.
 
+  Added by the fix round, one sentence per finding of the review, each
+  reproduced through the shim against the panel before its fix and failing
+  there (the run is in the commit that added it): in D, the DM status
+  cleared with everything else when a renter types a number after its own;
+  in I, a session key's wallet in the console gets the session's sentence,
+  a recipient typed before the last one's reads answered gets only its own
+  room, the read inside the press refuses a key that moved under the open
+  slab and re-arms, and a recipient key that is not P-256 sends nobody to
+  derive or bind; in K′, the stamp a pair remembers is that pair's; in P′,
+  the inbox's ledger row names the coin it read, over a settled stamp's 5
+  WETH; and a last block before the viewer, the derived key is the
+  wallet's. Where a sentence moves a key or a recipient, the block puts the
+  room back as it found it, so a regression fails the sentence that names
+  it rather than every block after it.
+
   Origin: IPSEITY tools/verify-site.mjs (branch claude/claude-md-docs-8vvyc8),
   "driving the commons" and "driving a direct message" — the hostile body
   typed all the way through the client, oldest first, the sender named by
@@ -54,9 +69,11 @@
   #social-home, #social-home-feed, #social-followers .token, #social-follow,
   #social-rooms .room (its input, its button.chip), #social-found-name,
   #social-dm, #social-dm-to, #social-dm-status, #social-dm-derive,
-  #social-dm-feed .row .body, #social-receipts, #social-inbox (its inputs),
-  [data-act=speak|speakAsReach|whisper|found|invite|join|leave|configureInbox|
-  expire|claimRefund]. From the shell:
+  #social-dm-feed .row .body and the note right after #social-dm-feed (the
+  pair walk's status, which carries no id), #social-dm textarea,
+  #social-dm .gate, #social-receipts, #social-inbox (its inputs, and its
+  .kv rows' .k and .v), [data-act=speak|speakAsReach|whisper|found|invite|
+  join|leave|configureInbox|expire|claimRefund|claimSettled]. From the shell:
   the slab (#cbox.on, #cslab, [data-go], [data-no], [data-to], [data-value],
   [data-function], [data-calldata], [data-gas]), #tick, #rights-sentence,
   body[data-rights].
@@ -97,7 +114,7 @@ async function sealKey(actor, chainId, hub) {
 }
 
 export async function run(t, ctx) {
-  const { c, site, actors, weth, sel, decUint, decAddr, kec, fs, path, ROOT, ZERO, walletFor, bootToken, lane, mint, EVM } = ctx;
+  const { c, site, actors, weth, sel, enc, decUint, decAddr, kec, fs, path, ROOT, ZERO, walletFor, bootToken, lane, mint, EVM } = ctx;
   const { me, renter, buyer, stranger, guardianW, agentW } = actors;
   const ME = me.from.toString(), BUYER = buyer.from.toString(), hub = site.hub, parley = site.parley, postage = site.postage, keys = site.keys, roster = site.roster;
   const now = () => EVM.BLOCK.header.timestamp;
@@ -121,6 +138,13 @@ export async function run(t, ctx) {
   const count = async (room) => decUint(await c.read(parley, "stateOf(uint256)", [room]), 1);
   const keyIdOf = async (id) => "0x" + (await c.read(parley, "keyOf(uint256)", [id])).slice(66, 130);
   const speakCount = (page) => LL(page, "[data-act=speak]").length;
+  /// settle until the wallet has been asked nothing new for three settles in a row: every read a
+  /// race started has answered (a fixed count of settles is a guess about the EVM's speed)
+  const quiet = async (page, W) => { for (let n = W.calls.length, k = 0, j = 0; k < 3 && j < 80; j++) { await page.settle(); if (W.calls.length === n) k++; else { n = W.calls.length; k = 0; } } };
+  /// the DM feed's status line, which carries no id: the note right after #social-dm-feed
+  const dmFeedStatus = (page) => { const f = L(page, "#social-dm-feed"); return f && f.nextSibling ? f.nextSibling.textContent : ""; };
+  /// the inbox's ledger row as [key, value], or null before it is painted
+  const earned = (page) => { const r = LL(page, "#social-inbox .kv").find((x) => /^earned/.test(x.querySelector(".k").textContent)); return r ? [r.querySelector(".k").textContent, r.querySelector(".v").textContent] : null; };
 
   /* the cast */
   await mint(c, site, ME); await mint(c, site, ME); await mint(c, site, ME);
@@ -158,6 +182,16 @@ export async function run(t, ctx) {
       "the walk is: two messages, oldest first, and the count from stateOf word 1", `${cr.length} rows; status "${page.text("#lane-social #social-commons-status")}"`);
     const why = page.text("#lane-social #social-why");
     d(/user|renter/.test(why) && /holder/.test(why) && /Reach/.test(why), "and the sentence says why: the user is not the holder, nor the token's own Reach", why);
+    /* a number typed after the renter's own: the DM status is the new pair's (found by review: arm() cleared
+       everything but the status, and "a token cannot whisper to itself" outlived the next number typed) */
+    page.type(L(page, "#social-dm-to"), "1");
+    const self = page.text("#lane-social #social-dm-status");
+    page.type(L(page, "#social-dm-to"), "3");
+    await page.until(() => dmFeedStatus(page) === "nothing whispered yet", 40); await quiet(page, W);
+    d(self === "a token cannot whisper to itself" && page.text("#lane-social #social-dm-status") === "" && /^you are the user/.test(page.text("#lane-social #social-dm .gate")) && rows(page, "#social-dm-feed").length === 0,
+      "a number typed after the renter's own leaves nothing behind: the DM status drops a token cannot whisper to itself, and the pair's walk and the user's sentence stand alone",
+      `before "${self}" after "${page.text("#lane-social #social-dm-status")}" gate "${page.text("#lane-social #social-dm .gate")}" feed "${dmFeedStatus(page)}"`);
+    page.type(L(page, "#social-dm-to"), ""); await quiet(page, W);
     /* the other lanes, read in the form that holds against the fixture standing in for a panel on this branch */
     await lane(page, "swap");
     d(page.$$("#lane-swap [data-act]").every((b) => b.dataset.act === "swap") && ["openMarket", "deposit", "withdraw", "setFee", "sealMarket", "closeMarket"].every((a) => page.$$("#lane-swap [data-act=" + a + "]").length === 0),
@@ -203,6 +237,22 @@ export async function run(t, ctx) {
   await none(walletFor(c, renter), {}, "renter (4): no composer, the user's sentence", /you are the user/);
   await none(walletFor(c, stranger), {}, "stranger with the single approval (8): no composer; an operator may move the token, not speak", /an operator may move the token, not speak/);
   await none(walletFor(c, agentW), { query: "?as=" + agentW.from.toString() }, "session key (128): no composer; a session speaks only through the Reach", /a session speaks only through the Reach/);
+  {
+    /* the same key's wallet connected in the console, without ?as: its bits are SESSION alone (found by review:
+       the lane printed the stranger's sentence while Home printed the session's). D's warp outlived the cast's
+       one-day grant, so the session is granted again for this block; the ?as line above holds either way,
+       because session mode says the session's sentence whatever the bits */
+    await c.exec(reach1, GRANT, [agentW.from.toString(), now() + 86400n, 0n, [], [weth], [sel("transfer(address,uint256)")], 0, 0], { label: "grantSession" });
+    const W = walletFor(c, agentW);
+    const { page } = await bootToken(1, { wallet: W });
+    await lane(page, "social");
+    await page.until(() => !!L(page, "#social-why"), 40);
+    const why = page.text("#lane-social #social-why");
+    i(page.$("body").dataset.mode === "console" && page.$("body").dataset.rights === "128" && speakCount(page) === 0 && LL(page, "#social-composer textarea").length === 0 && why === "a session speaks only through the Reach" && page.text("#rights-sentence") === why,
+      "a session key's wallet in the console, without ?as (128): no composer, and the lane says what Home says — a session speaks only through the Reach — not the stranger's sentence",
+      `mode ${page.$("body").dataset.mode} rights ${page.$("body").dataset.rights} why "${why}" home "${page.text("#rights-sentence")}"`);
+    page.close();
+  }
   await none(walletFor(c, guardianW), {}, "guardian (64): no composer; a guardian does not speak as the token", /guardian/);
   await none(walletFor(c, me, { accounts: [] }), {}, "nobody (0): no composer; connect the holding wallet", /connect the holding wallet/);
   {
@@ -324,6 +374,16 @@ export async function run(t, ctx) {
   const kindWord = sealedLog && BigInt("0x" + sealedLog.data.slice(2 + 64 * 3, 2 + 64 * 4));
   i(rows(p2, "#social-dm-feed").length === 1 && bodyOf(rows(p2, "#social-dm-feed")[0]).textContent === "hello, sealed" && kindWord === 1n && !Buffer.from(sealedLog.data.slice(2), "hex").toString("latin1").includes("hello, sealed"),
     "the sealed row opens on the page under the sender's own copy; on the chain the body is kind 1 and does not carry the words", `kind ${kindWord} rows ${rows(p2, "#social-dm-feed").length}`);
+  /* two recipients inside one round trip: #3's walk, keys and receipts are still in flight when 2 is typed
+     (found by review: #3's row and its count, a second composer, and the sealed label stayed under #2, who has no key) */
+  p2.type(L(p2, "#social-dm-to"), "3"); p2.type(L(p2, "#social-dm-to"), "2");
+  await p2.until(() => /^#2 has no key/.test(status()), 60); await quiet(p2, W2);
+  const raced = rows(p2, "#social-dm-feed"), racedWh = LL(p2, "[data-act=whisper]");
+  i(L(p2, "#social-dm-to").value === "2" && raced.length === 0 && dmFeedStatus(p2) === "nothing whispered yet" && LL(p2, "#social-dm textarea").length === 1 && racedWh.length === 1 && racedWh[0].textContent === "review the whisper, in the clear",
+    "a recipient typed before the last one's reads answered gets only its own room: no row of #3's, nothing whispered yet, one composer, and it is in the clear",
+    `rows ${raced.length} [${raced.map((r) => bodyOf(r).textContent).join(" | ")}] feed "${dmFeedStatus(p2)}" textareas ${LL(p2, "#social-dm textarea").length} whisper [${racedWh.map((b) => b.textContent).join(" | ")}]`);
+  p2.type(L(p2, "#social-dm-to"), "3");
+  await p2.until(() => /^sealed/.test(status()) && rows(p2, "#social-dm-feed").length === 1, 60); await quiet(p2, W2);
   /* #3 changes hands and the buyer binds a key of its own: the next send is refused, nothing is sent, nothing in the clear */
   await c.exec(hub, "transferFrom(address,address,uint256)", [ME, BUYER, 3], { label: "transferFrom" });
   const theirs = await sealKey(buyer, 1, hub);
@@ -340,6 +400,39 @@ export async function run(t, ctx) {
   await p2.until(() => /^sealed/.test(status()) && new RegExp(newId.slice(0, 10)).test(status()), 60);
   i(/^sealed/.test(status()) && status().includes(newId.slice(0, 10)) && L(p2, "#social-dm textarea").value === "a second word",
     "review again: the room re-arms to the buyer's key, says which, and keeps what was typed", status());
+  /* the same refusal from the read inside the press: the slab is open when #3's key moves under it (found by
+     review: the press refused, nothing was sent, and the status went on naming the key that had moved) */
+  await press(p2, L(p2, "[data-act=whisper]"));
+  const slabBefore = slabOpen(p2) && p2.text("#cslab [data-function]") === WHISPER && /^\d+ units$/.test(gasRow(p2)) && "0x" + slabCd(p2).slice(10 + 64 * 3, 10 + 64 * 4) === newId;
+  const third = await sealKey(stranger, 1, hub);
+  await buyer.exec(keys, "setEncryptionKey(uint16,bytes)", [3, third.pk], { label: "setEncryptionKey" });
+  await buyer.exec(parley, "bindKey(uint256)", [3], { label: "bindKey" });
+  const thirdId = await keyIdOf(3), markGo = W2.calls.length, sentGo = W2.sent();
+  p2.click(p2.$("#cslab [data-go]"));
+  await p2.until(() => /key moved/.test(tick(p2)) && !slabOpen(p2), 60);
+  await p2.until(() => /^sealed/.test(status()) && status().includes(thirdId.slice(0, 10)), 60);
+  const firstAsked = W2.calls.slice(markGo).find((x) => x.method === "eth_call" && lower(x.params[0].to) === lower(parley));
+  i(slabBefore && thirdId !== newId && /#3's key moved — review again/.test(tick(p2)) && !slabOpen(p2) && W2.sent() === sentGo &&
+    !!firstAsked && lower(firstAsked.params[0].data).startsWith(lower(sel("keyOf(uint256)"))) && word(firstAsked.params[0].data, 0) === 3n &&
+    /^sealed/.test(status()) && status().includes(thirdId.slice(0, 10)) && L(p2, "#social-dm textarea").value === "a second word",
+    "a key that moves under the open slab is refused by the read inside the press — nothing sent, keyOf(3) the first thing asked of Parley after the click — and the room re-arms to the key it found, keeping what was typed",
+    `slab ${slabBefore} tick "${tick(p2)}" sent ${W2.sent()} (was ${sentGo}) first ${firstAsked && firstAsked.params[0].data.slice(0, 10)} status "${status()}" typed "${L(p2, "#social-dm textarea") && L(p2, "#social-dm textarea").value}"`);
+  p2.type(L(p2, "#social-dm-to"), "3");
+  await p2.until(() => /^sealed/.test(status()) && status().includes(thirdId.slice(0, 10)), 60); await quiet(p2, W2);
+  /* a recipient key this page cannot seal to: the buyer publishes 32 bytes of another type and binds them to #3
+     (found by review: the note under the composer sent the holder to derive or bind, which mends nothing) */
+  await buyer.exec(keys, "setEncryptionKey(uint16,bytes)", [1, "0x" + "ab".repeat(32)], { label: "setEncryptionKey" });
+  await buyer.exec(parley, "bindKey(uint256)", [3], { label: "bindKey" });
+  p2.type(L(p2, "#social-dm-to"), "3");
+  await p2.until(() => /not a P-256 key/.test(status()), 60); await quiet(p2, W2);
+  const dmScreen = p2.text("#lane-social #social-dm");
+  i(status() === "#3's key is not a P-256 key; this page cannot seal to it" && LL(p2, "[data-act=whisper]").length === 0 && !/derive or bind/.test(dmScreen) && /a sealable room is never sent in the clear/.test(dmScreen),
+    "a recipient key this page cannot seal to is said as that, and nothing sends the holder elsewhere: no whisper control, no note to derive or bind, nothing in the clear",
+    `status "${status()}" whisper ${LL(p2, "[data-act=whisper]").length} note "${(dmScreen.match(/[^.;]*sealable room[^.]*/) || [""])[0]}"`);
+  await buyer.exec(keys, "setEncryptionKey(uint16,bytes)", [3, third.pk], { label: "setEncryptionKey" });
+  await buyer.exec(parley, "bindKey(uint256)", [3], { label: "bindKey" });
+  p2.type(L(p2, "#social-dm-to"), "3");
+  await p2.until(() => /^sealed/.test(status()) && status().includes(thirdId.slice(0, 10)), 60); await quiet(p2, W2);
   t.ok(I, "the composer appears only for HOLD or ACCOUNT");
 
   /*═══════════ K′ · inbox and postage ═══════════*/
@@ -377,6 +470,15 @@ export async function run(t, ctx) {
     await p2.until(() => /pending/.test(p2.text("#lane-social #social-receipts")), 60);
     t.ok(pending === 1n && decUint(await c.read(weth, "balanceOf(address)", [reach1])) === 5n * WAD && /stamp 1/.test(p2.text("#lane-social #social-receipts")) && /5 WETH/.test(p2.text("#lane-social #social-receipts")) && LL(p2, "[data-act=expire]").length === 1,
       "the stamp lands: Postage pulled 5 WETH from the Reach, the receipt row reads pending, and expire is offered", `pending ${pending} reach ${decUint(await c.read(weth, "balanceOf(address)", [reach1]))} receipts "${p2.text("#lane-social #social-receipts").slice(0, 120)}"`);
+    /* the stamp a pair remembers is that pair's (found by review: one slot followed the lane into every pair) */
+    p2.type(L(p2, "#social-dm-to"), "2");
+    await p2.until(() => /^#2 has no key/.test(p2.text("#lane-social #social-dm-status")), 60); await quiet(p2, W2);
+    const under2 = p2.text("#lane-social #social-receipts"), expireUnder2 = LL(p2, "[data-act=expire]").length;
+    p2.type(L(p2, "#social-dm-to"), "3");
+    await p2.until(() => /pending/.test(p2.text("#lane-social #social-receipts")) && LL(p2, "[data-act=expire]").length === 1, 60); await quiet(p2, W2);
+    t.ok(under2 === "" && expireUnder2 === 0 && /stamp 1/.test(p2.text("#lane-social #social-receipts")) && /pending/.test(p2.text("#lane-social #social-receipts")) && LL(p2, "[data-act=expire]").length === 1,
+      "the stamp a pair remembers is that pair's: addressing #2 shows no stamp and no expire, and back on #3 stamp 1 is pending with its expire",
+      `under #2 "${under2.slice(0, 120)}" expire ${expireUnder2}; back on #3 "${p2.text("#lane-social #social-receipts").slice(0, 80)}"`);
     /* the window lapses: expire, then the refund — to the Reach, whoever signed */
     await press(p2, L(p2, "[data-act=expire]"));
     const early = gasRow(p2);
@@ -398,10 +500,21 @@ export async function run(t, ctx) {
   /*═══════════ P′ · the holder's other hands, and the refusals (added by review) ═══════════*/
   t.head("P′ · the holder's other hands, and the refusals");
   {
+    /* #1's inbox earns 5 WETH before the page boots: priced in WETH, #3 stamps a first word to it, #1 answers
+       inside the window, and Parley settles the stamp to #1's fee sink. The price list moves to ETH below. */
+    const reach3 = decAddr(await c.read(hub, "account(uint256)", [3])), sink1 = decAddr(await c.read(hub, "feeSink(uint256)", [1]));
+    await c.exec(postage, "configureInbox(uint256,address,uint128,uint64,bool)", [1, weth, 5n * WAD, 86400, true], { label: "configureInbox" });
+    await c.exec(weth, "mint(address,uint256)", [reach3, 5n * WAD]);
+    await buyer.exec(reach3, EXEC, [weth, 0, enc("approve(address,uint256)", [postage, 5n * WAD]), 0], { label: "execute" });
+    await buyer.exec(parley, STAMPED, [3, 1, 0, "0x" + "0".repeat(64), hexOf("paying to talk"), weth, 5n * WAD], { label: "whisperStamped" });
+    await c.exec(parley, WHISPER, [1, 3, 0, "0x" + "0".repeat(64), hexOf("answered")], { label: "whisper" });
+    const owedWeth = async () => decUint(await c.read(postage, "owed(address,address)", [sink1, weth]));
     const W = walletFor(c, me);
     const { page, ctx: vctx } = await bootToken(1, { wallet: W });
     await lane(page, "social");
     await page.until(() => rows(page, "#social-commons").length === 5 && LL(page, "#social-rooms .room").length === 1, 80);
+    await page.until(() => !!earned(page) && earned(page)[1] !== "reading…", 40);
+    const earnedAtBoot = earned(page), claimAtBoot = LL(page, "[data-act=claimSettled]").length, owedAtBoot = await owedWeth();
     /* a body over the room's limit is refused with the count, before any slab */
     page.type(L(page, "#social-composer textarea"), "x".repeat(1025));
     page.click(L(page, "[data-act=speak]")); await page.settle();
@@ -462,6 +575,13 @@ export async function run(t, ctx) {
     await sign(page, W, 5);
     await page.until(() => /0\.1 ETH per first contact · 1440-minute window/.test(page.text("#lane-social #social-inbox")), 60);
     t.ok(/0\.1 ETH per first contact · 1440-minute window/.test(page.text("#lane-social #social-inbox")) && decUint(await c.read(postage, "inboxOf(uint256)", [1]), 1) === WAD / 10n, "signed, the inbox facts move to the new price", page.text("#lane-social #social-inbox").slice(0, 160));
+    /* the ledger is per coin (found by review: moved to ETH, the row read "earned 0 ETH" over the 5 WETH still owed) */
+    await page.until(() => !!earned(page), 40); await quiet(page, W);
+    const earnedAfter = earned(page), owedAfter = await owedWeth();
+    t.ok(owedAtBoot === 5n * WAD && !!earnedAtBoot && earnedAtBoot[0] === "earned in WETH" && earnedAtBoot[1] === "5 WETH" && claimAtBoot === 1 &&
+      !!earnedAfter && earnedAfter[0] === "earned in ETH" && earnedAfter[1] === "0 ETH" && owedAfter === 5n * WAD,
+      "the inbox's ledger is per coin and the row names the coin it read: earned in WETH, 5 WETH and its claim while the price list is in WETH; moved to ETH, earned in ETH, 0 ETH, while the 5 WETH stays owed — never a bare earned 0",
+      `boot ${JSON.stringify(earnedAtBoot)} claim ${claimAtBoot} owed ${owedAtBoot}; after ${JSON.stringify(earnedAfter)} owed ${owedAfter}`);
     /* a refused eth_getLogs is a printed fact, never 0 */
     W.refuse("eth_getLogs", new Error("rate limited"));
     vctx.dispatchEvent(new vctx.CustomEvent("intact:lane", { detail: { name: "social" } }));
@@ -471,6 +591,29 @@ export async function run(t, ctx) {
       "a refused eth_getLogs is a printed fact: no rows, the refusal in words with the endpoint's reason, never 0 messages", st);
     W.override("eth_getLogs", null);
     t.ok(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML on the review page, and no script threw", page.errors.map((e) => e.message).join("; "));
+    page.close();
+  }
+  {
+    /* the derived key is the wallet's (D7): wallet A derives on #2's page, #2 is sold to the buyer, who binds its
+       key to #2 and connects in the same page (found by review: it was told that the key "this wallet derives" —
+       A's — is not the one #2 bound, and was offered no derivation of its own) */
+    await c.exec(parley, "bindKey(uint256)", [2], { label: "bindKey" });
+    const W = walletFor(c, me);
+    const { page } = await bootToken(2, { wallet: W });
+    await lane(page, "social");
+    const st = () => page.text("#lane-social #social-dm-status");
+    page.type(L(page, "#social-dm-to"), "1");
+    await page.until(() => !!L(page, "#social-dm-derive"), 40);
+    page.click(L(page, "#social-dm-derive"));
+    await page.until(() => /^sealed/.test(st()), 80);
+    const armedA = st();
+    await c.exec(hub, "transferFrom(address,address,uint256)", [ME, BUYER, 2], { label: "transferFrom" });
+    await buyer.exec(parley, "bindKey(uint256)", [2], { label: "bindKey" });
+    W.setAccounts([BUYER]);
+    await page.until(() => page.$("body").dataset.rights === "1" && /derive yours|bind again/.test(st()), 60); await quiet(page, W);
+    t.ok(/^sealed/.test(armedA) && lower(page.ctx.INTACT.ui.account()) === lower(BUYER) && page.$("body").dataset.rights === "1" && st() === "both keys are bound; derive yours to seal" && LL(page, "#social-dm-derive").length === 1 && W.prompts().filter((p) => p.method === "personal_sign").length === 1,
+      "the derived key is the wallet's: a second wallet connecting in the same page is offered its own derivation, never told that the first wallet's key is not the one bound",
+      `armed as A "${armedA}" account ${page.ctx.INTACT.ui.account()} rights ${page.$("body").dataset.rights} status "${st()}" derive ${LL(page, "#social-dm-derive").length}`);
     page.close();
   }
   {
