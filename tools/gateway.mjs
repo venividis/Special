@@ -43,7 +43,9 @@ const record = fs.existsSync(recordPath) ? JSON.parse(fs.readFileSync(recordPath
 const PORT = Number(arg("--port", 8080));
 const HOST = arg("--host", "127.0.0.1");
 const PREMISES = process.env.PREMISES || record?.contracts?.premises;
-const RPC = process.env.RPC_URL || record?.rpc || (record?.chainId === 31337 ? "http://127.0.0.1:8545" : null);
+/// the endpoint comes from the environment, never from the record (a record
+/// that named the node that serves it would be choosing its own oracle)
+const RPC = process.env.RPC_URL || (record?.chainId === 31337 ? "http://127.0.0.1:8545" : null);
 if (!PREMISES || !RPC) {
   console.error("no deployment to serve: pass --record <deployments/<chainId>.json> or set PREMISES and RPC_URL");
   process.exit(2);

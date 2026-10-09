@@ -37,20 +37,31 @@ before writing the record and refuses to publish on any disagreement; a
 field the record lacks that a complete deployment has is reported as
 `missing` and is not fatal, because a chain may predate a contract.
 
+Every disagreement has a kind. A **drift** is the record and the chain
+answering differently. A **contradiction** is the chain answering one
+question two ways — `hub.POOL()` against `factory.predict(salts.pool)`,
+a facet's `intactConfigHash` against the hub's, `factory.TIMELOCK()`
+against the CREATE3 arithmetic — which no edit to the record could
+repair. A contract the record names that has no code answers every read
+"(no answer)" and the walk continues to its last line, so the list is
+complete.
+
 `tools/verify-recover.mjs` runs all of this against the in-process EVM
 (the same `deployIntact` code, through a chain adapter) and proves the
 recovery catches a tampered codehash, salt, address, build, selector set,
-shard pointer, engine hash, panel hash, band, deployer, catalog hash and
-admin by name.
+shard pointer, engine hash, panel hash, band, deployer, catalog hash,
+admin, venue table and Coin template by name, reports a factory etched
+with a stranger's as a contradiction, and walks a codeless Engine to the
+end.
 
 ## The schema (`intact.deployment/1`)
 
 | Field | Meaning |
 |---|---|
-| `chainId`, `network`, `rpc` | the chain; `rpc` is the endpoint the record was made against (null for a public one) |
+| `chainId`, `network` | the chain. The record never carries the endpoint it was made against: on a real band that is a keyed provider URL, and a record that named the node that verifies it would be choosing its own oracle — `recover-record` and the gateway take `RPC_URL` from the environment (31337 defaults to the local node) |
 | `band` | `{band, lo, hi, rehearsal}` — the hub's `BAND`, `BAND_LO`, `BAND_HI`; rehearsal chains take the whole edition |
 | `deployer` | the burner. On a real band it was at nonce 0 before the run and must never be used again |
-| `factory`, `factoryVia` | the `Create3Factory`, and the plain CREATE that made it (`{from, nonce: 0}`) |
+| `factory`, `factoryVia` | the `Create3Factory`, and the plain CREATE that made it (`{from, nonce: 0}`). Its `DEPLOYER` is the burner and its `TIMELOCK` the timelock salt's address — the only two callers of `deploy` (see "The burner") |
 | `salts` | `keccak("intact.v1.<key>")` per record key, including the three post-MVB pins |
 | `contracts` | record key → address. Flat, like IPSEITY's, so a spread cannot drop one |
 | `codehashes` | `extcodehash` at deploy, per key |
@@ -62,8 +73,9 @@ admin by name.
 | `coinTemplate` | the keccak and length of `type(Coin).creationCode` the Kiln carries |
 | `registry` | the ERC-6551 registry's address and codehash |
 | `price` | the initial mint price the hub's constructor wrote |
-| `timelock` | `admin` (the burner at deploy), `delay`, `grace`, and `disposition` — what happens to the admin next |
-| `venues` | the probed venue table used for the Router and Kiln, or null (Router skipped, letter X pinned as address(0)) |
+| `timelock` | `admin` (the burner at deploy), `delay`, `grace`, and `disposition` — read from the chain, not written in advance: "the burner holds the admin…" while `admin` is the burner, "renounced" at address(0), "rotated to …" otherwise |
+| `burner` | `nonceAfter` and `balanceAfter`: the burner as the run left it, so a later reader can see whether it was ever used again |
+| `venues` | the probed venue table used for the Router and Kiln, or null (Router skipped, letter X pinned as address(0)). Read back by name: `kiln.POOL_MANAGER`, `router.SWAP_ROUTER02/POOL_MANAGER/WETH`, and the Router's four codehash immutables |
 | `gas`, `gasTotal` | gas per step label and the sum |
 | `toolchain` | solc version, optimizer runs, viaIR, evmVersion, `bytecodeHash: none`, the EIP-170 limit |
 | `confirmToken`, `journal`, `writtenAt`, `block`, `recovered` | the literal token the run carried, the journal's path, when, at which block, and how many fields the in-process recovery checked |
@@ -87,14 +99,27 @@ admin by name.
 ## The journal
 
 `deployments/<chainId>.journal.json` (gitignored) is written atomically
-after every receipt — public receipt data only, never the key. A crashed
-run re-runs the same command: a step whose predicted address already holds
-code with the journaled codehash is skipped; the Engine's loads are
-counted against the chain and only the missing ones are sent. Code at a
-prediction that the journal does not account for is a refusal, not an
-adoption: anyone may use a salt once, and a stranger's contract at our
-address is exactly what a record must not bless. A journal belonging to
-another deployer is refused.
+after every receipt — public receipt data only, never the key; each
+Engine load carries the pointer its receipt's `Loaded`/`PanelLoaded` log
+named. A crashed run re-runs the same command: a step whose predicted
+address already holds code with the journaled codehash is skipped; the
+Engine's loads are counted against the chain and only the missing ones
+are sent. Code at a prediction that the journal does not account for is a
+refusal, not an adoption: only the burner and the Timelock can put code
+there, so it can only mean a run this journal does not know, and a
+contract at our address that we did not put there is exactly what a
+record must not bless. A journal belonging to another deployer is refused.
+
+A journal can also outlive its chain. On 31337 the node is restarted
+freely, and a journal that says the key sent twenty-six steps while the
+chain has that key at nonce 0 describes a chain that no longer exists: the
+deployer sets it aside as `<chainId>.journal.stale-<time>.json` (never
+deleted; it is the only account of what the old chain held), says so, and
+starts clean. On any other chain the same contradiction — or a journaled
+factory address with no code — is a refusal that names the remedy. Before
+the record is written the journal's steps are compared with `DEPLOY_ORDER`
+(DESIGN §12's sequence as one list in `tools/deploy.mjs`); a reordering is
+a refusal.
 
 ## The burner
 
@@ -105,13 +130,32 @@ in the environment (`PRIVATE_KEY`) and nowhere in this repository;
 `.testnet-key` is gitignored for throwaway testnet keys. After the record
 is written the burner should do nothing else, ever; DESIGN §12 destroys it
 once the Timelock's admin has been rotated through the Timelock's own
-seven-day queue (`disposition` records the state of that).
+seven-day queue (`disposition` records the state of that, read from the
+chain; `burner.nonceAfter` records how far the key had got).
+
+The factory admits exactly two callers, fixed when it is built and
+changeable by no one: `DEPLOYER`, the burner, and `TIMELOCK`, the address
+`keccak("intact.v1.timelock")` lands at, computed from the factory's own
+`predict` before the Timelock exists. The first version let anyone call
+`deploy`, and a reviewer took a token with it: the hub pins `MARKET`,
+`ROLES` and `AGENTCARD` as predictions that are codeless at the MVB, and
+`moduleTransfer` trusts whatever answers at `MARKET`, so the first
+stranger to land the market salt after the burner was gone would have
+owned every unlocked, unsealed token — and one stranger's transaction
+under any public salt would have burned that address on a fresh band
+forever. Now a post-MVB satellite lands only through the Timelock's
+seven-day public queue (`Timelock.execute(factory, 0, deploy(salt, code))`,
+executable by anyone once ripe), which is where every other privileged
+action already lives. No prediction moved: `predict` depends on the
+factory's address and the salt alone.
 
 ## `31337.json`
 
 A fixture produced by an actual local run against `npx hardhat node`
 (`node tools/deploy.mjs --chain 31337 --confirm DEPLOY_INTACT_LOCAL`, then
 `node tools/recover-record.mjs deployments/31337.json` → `0 disagreeing`).
+A rehearsal that must not overwrite it passes `--record <path>` (and
+`--journal <path>`); the deployer refuses an option it does not know.
 Its `engine.placeholder` says whether `dist/` held the placeholder shell
 from `tools/fixtures/` (until U9's shell lands, it does); `deploy.mjs`
 refuses to deploy a placeholder anywhere but 31337. Its deployer is

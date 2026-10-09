@@ -40,25 +40,71 @@ pragma solidity ^0.8.24;
   Solady's `deployDeterministic` callers usually mix it in: mixing the
   sender in would make the addresses depend on who sends the transaction,
   and the whole point is that they depend only on the burner that made
-  the factory and on the name of the contract. The cost is that anyone may
-  use a salt once; the deploy script checks what landed (the `Deployed`
-  event's address against the prediction, the codehash against the
-  compiled runtime) and refuses to publish a record it cannot confirm.
+  the factory and on the name of the contract.
 
-  Refusals: a salt whose address already holds code (`SaltUsed`), a proxy
-  that did not deploy or a constructor that reverted or returned no code
-  (`DeploymentFailed`) — the transaction reverts, so nothing half-lands and
-  the salt stays usable.
+  Who may deploy through it. The first version of this file let anyone
+  call `deploy`, arguing that the script checks what landed. It does, but
+  the hub does not: `IntactBase` pins `MARKET`, `ROLES` and the Renderer,
+  Catalog and Premises pin `AGENTCARD` as CREATE3 predictions that are
+  CODELESS on every band at the MVB (deployments/README.md
+  `placeholders`), and `CoreLogic.moduleTransfer` trusts `msg.sender ==
+  _MARKET` with no codehash check. So the first stranger to call
+  `deploy(keccak("intact.v1.market"), theirCode)` after the burner was
+  destroyed would have become the hub's market and moved every unlocked,
+  unsealed token; under the roles salt they could have locked every
+  token for good; under the agentCard salt they would have served their
+  own bytes on /.well-known/* and face 2 of every tokenURI. A reviewer
+  proved it on the in-process EVM (U10 review: mallory, never the
+  deployer, took token #1 from alice in three transactions). The second
+  prong was cheaper still: one stranger's transaction under any of the
+  twenty-seven public salts, on a band whose factory had just landed,
+  would have burned that address on that band forever.
+
+  So `deploy` admits exactly two callers, both fixed at construction and
+  neither of them an admin: DEPLOYER, the burner that created the factory
+  (`msg.sender` in the constructor), and TIMELOCK, the address the
+  "intact.v1.timelock" salt lands at — computed here from `predict`, so it
+  is right before the Timelock exists and does not depend on the burner
+  keeping any promise. The burner lands the MVB; once it is destroyed,
+  every later satellite lands only through the Timelock's own seven-day
+  public queue (`Timelock.execute(factory, value, deploy(...))`, open to
+  anyone once ripe), which is where DESIGN.md §12 already puts every
+  privileged action. Neither address moves a prediction: `predict`
+  depends on `address(this)` and the salt alone, so every address on
+  every band is what it was before the gate existed. There is no setter,
+  no second role and no way to widen the pair.
+
+  Refusals: a caller that is neither the deployer nor the Timelock
+  (`NotDeployer`), a salt whose address already holds code (`SaltUsed`),
+  a proxy that did not deploy or a constructor that reverted or returned
+  no code (`DeploymentFailed`) — the transaction reverts, so nothing
+  half-lands and the salt stays usable.
 
   Measured (tools/compile.mjs, solc 0.8.36, viaIR, 800 runs, bytecodeHash
-  none): 757 bytes of runtime (783 of initcode), 3.1 % of EIP-170.
+  none): 1,103 bytes of runtime (1,418 of initcode), 4.5 % of EIP-170.
 ───────────────────────────────────────────────────────────────────────────*/
 contract Create3Factory {
     /// @notice A contract landed at `addr` under `salt`.
     event Deployed(bytes32 indexed salt, address indexed addr);
 
+    error NotDeployer();
     error SaltUsed();
     error DeploymentFailed();
+
+    /// @notice The burner that created this factory: the only caller of
+    ///         `deploy` until the Timelock exists, and the one that lands
+    ///         the MVB.
+    address public immutable DEPLOYER;
+    /// @notice Where keccak("intact.v1.timelock") lands from this factory:
+    ///         the only other caller of `deploy`, for every satellite that
+    ///         comes after the burner is gone.
+    address public immutable TIMELOCK;
+    bytes32 public constant TIMELOCK_SALT = keccak256("intact.v1.timelock");
+
+    constructor() {
+        DEPLOYER = msg.sender;
+        TIMELOCK = predict(TIMELOCK_SALT);
+    }
 
     /// @dev The sixteen-byte proxy initcode, right-aligned in a word, and
     ///      its keccak — the constant every CREATE2 prediction uses.
@@ -73,6 +119,7 @@ contract Create3Factory {
     ///         exists means a deployment already happened (the two are made
     ///         in one transaction or not at all).
     function deploy(bytes32 salt, bytes memory creationCode) external payable returns (address deployed) {
+        if (msg.sender != DEPLOYER && msg.sender != TIMELOCK) revert NotDeployer();
         deployed = predict(salt);
         if (deployed.code.length != 0) revert SaltUsed();
 

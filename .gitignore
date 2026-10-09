@@ -18,3 +18,4 @@ dist/
 
 # deploy journals: a crashed run resumes from one; the record is what is committed
 deployments/*.journal.json
+deployments/*.journal.*.json

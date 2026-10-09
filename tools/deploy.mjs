@@ -55,13 +55,29 @@
   as soon as its receipt is in. A crashed run re-runs the same command;
   a step whose predicted address already holds code with the journaled
   codehash is skipped. Code at a prediction that the journal does not
-  know is a refusal, not an adoption — anyone may use a salt once, and a
-  stranger's contract at our address is exactly what the record must not
-  bless.
+  know is a refusal, not an adoption: the factory admits only the burner
+  and the Timelock (`Create3Factory.NotDeployer`), so such code can only
+  mean a run this journal does not know about, and a contract at our
+  address that we did not put there is exactly what the record must not
+  bless. On 31337 a journal whose deployer is back at nonce 0 describes a
+  chain that no longer exists (the node was restarted); it is set aside
+  with a line saying so and the run starts clean. Anywhere else that
+  contradiction is a refusal.
+
+  The order is declared once (`DEPLOY_ORDER`) and the journal's steps are
+  asserted against it before the record is written, so a reordering is a
+  refusal and not a silent difference between DESIGN §12 and the band.
 
     node tools/deploy.mjs --chain 31337 --confirm DEPLOY_INTACT_LOCAL
     RPC_URL=… PRIVATE_KEY=0x… node tools/deploy.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA
       [--rpc URL] [--journal path] [--record path] [--price wei]
+
+  `--record` names where the record is written (default
+  deployments/<chainId>.json — a rehearsal that must not overwrite the
+  committed fixture passes its own path); an option not in this list is
+  refused. The record never carries the endpoint: on a real band RPC_URL
+  is a keyed provider URL, and a record that named the node that verifies
+  it would be choosing its own oracle.
 
   The key comes from the environment only. On a real band it MUST be a
   fresh burner at nonce 0 (checked; refused otherwise unless a journal
@@ -159,6 +175,13 @@ export const SALTED = [
   "keys", "roster", "postage", "parley", "locks", "pool", "kiln", "launchpad", "router", "steward", "premises"
 ];
 export const PLACEHOLDERS = ["market", "roles", "agentCard"];
+/// DESIGN §12's order as one list, asserted against the journal before the
+/// record is written: the factory, the Timelock, the Engine (whose loads
+/// are journaled apart), then every salted key. The facets exist only in
+/// the diamond build and the Router only where a venue table exists, so
+/// the assertion compares the journal with this list FILTERED to what the
+/// run deployed, in this order.
+export const DEPLOY_ORDER = ["factory", "timelock", "engine", ...SALTED.filter((k) => k !== "timelock")];
 /// What a complete MVB record contains. `router` is present only where a
 /// venue table exists for the chain; the facets only in the diamond build.
 export const RECORD_KEYS = ["factory", "engine", ...SALTED];
@@ -276,6 +299,7 @@ export const decBytes4s = (hex) => decWords(hex).map((w) => w.slice(0, 10));
 /// appear as two rows (hub.POOL and pool.HUB), so a one-sided pin is a
 /// disagreement in one direction and a contradiction in the other.
 export const PINS = [
+  ["factory", "TIMELOCK()", "timelock"],
   ["hub", "REACH_IMPL()", "reachImpl"], ["hub", "GRIP_IMPL()", "gripImpl"],
   ["hub", "STEWARD()", "steward"], ["hub", "MARKET()", "market"], ["hub", "ROLES()", "roles"],
   ["hub", "POOL()", "pool"], ["hub", "PARLEY()", "parley"], ["hub", "LAUNCHPAD()", "launchpad"],
@@ -300,9 +324,23 @@ export const PINS = [
   ["pool", "HUB()", "hub"], ["pool", "LAUNCHPAD()", "launchpad"],
   ["kiln", "HUB()", "hub"], ["kiln", "LAUNCHPAD()", "launchpad"],
   ["launchpad", "HUB()", "hub"], ["launchpad", "KILN()", "kiln"], ["launchpad", "POOL()", "pool"], ["launchpad", "LOCKS()", "locks"],
+  ["kiln", "POOL_MANAGER()", "venuePoolManager"],
   ["locks", "HUB()", "hub"], ["steward", "HUB()", "hub"],
-  ["router", "HUB()", "hub"], ["router", "POOL()", "pool"]
+  ["router", "HUB()", "hub"], ["router", "POOL()", "pool"],
+  ["router", "SWAP_ROUTER02()", "venueSwapRouter02"], ["router", "POOL_MANAGER()", "venuePoolManager"], ["router", "WETH()", "venueWeth"]
 ];
+/// The venue table's addresses as PINS targets (`venue*` keys), so the
+/// Kiln's and the Router's venue immutables are read back like every other
+/// pin: a record that lies about `venues.poolManager` is caught by name,
+/// not only by the Router's codehash. Absent venues pin as address(0).
+export const venueTargets = (venues) => ({
+  venuePoolManager: venues?.poolManager || ZERO, venueSwapRouter02: venues?.swapRouter02 || ZERO, venueWeth: venues?.weth || ZERO
+});
+/// The Router's bytes32 immutables: [getter, what the chain must say given
+/// the record]. POOL_HASH is the Pool's codehash at construction; the two
+/// venue hashes are the venues' codehashes or zero when the venue is absent;
+/// the hook codehash is the table's.
+export const ROUTER_HASHES = ["POOL_HASH()", "SWAP_ROUTER02_HASH()", "POOL_MANAGER_HASH()", "LAUNCH_HOOK_CODEHASH()"];
 /// Non-address immutables of the hub and the Catalog, read back as numbers.
 export const BAND_GETTERS = [["hub", "BAND()"], ["hub", "BAND_LO()"], ["hub", "BAND_HI()"],
                              ["catalog", "BAND()"], ["catalog", "BAND_LO()"], ["catalog", "BAND_HI()"]];
@@ -342,7 +380,8 @@ export function toolchain() {
  * failure, or any disagreement recover-record finds.
  *
  * opts: out, plan, manifest, price, venues, journalPath (null = in memory),
- *       recordPath (null = return only), band override, log(line),
+ *       recordPath (null = return only; undefined = deployments/<chainId>.json),
+ *       band override, log(line),
  *       mispredict {key: address} — a TEST hook that feeds a wrong prediction
  *       into every constructor that pins `key`, so the refusal can be proved.
  */
@@ -370,12 +409,31 @@ export async function deployIntact(ad, opts = {}) {
   if (journalPath && fs.existsSync(journalPath)) {
     const j = JSON.parse(fs.readFileSync(journalPath, "utf8"));
     if (low(j.deployer) !== from) throw new Error(`${journalPath} belongs to deployer ${j.deployer}, this key is ${from}`);
-    journal = j;
-    log(`  resuming from ${path.relative(ROOT, journalPath)} (${Object.keys(j.steps).length} step(s) done)`);
+    const done = Object.keys(j.steps).length;
+    if (done && (await ad.nonceNow()) === 0n) {
+      /*  The journal says this key sent transactions; the chain says it
+          never did. On 31337 that is a restarted node and the journal is
+          stale: set aside (never deleted — it is the only account of
+          what the old chain held) and start clean. Anywhere else the two
+          cannot both be true and nothing is sent.                       */
+      if (chainId !== 31337) throw new Error(`${path.relative(ROOT, journalPath)} records ${done} step(s) by ${from}, but the chain has ${from} at nonce 0 — a different chain, or an endpoint far behind; refusing`);
+      const aside = journalPath.replace(/\.json$/, "") + `.stale-${Date.now()}.json`;
+      fs.renameSync(journalPath, aside);
+      log(`  the journal (${done} step(s)) names a run this chain never saw — the local node was restarted; set aside as ${path.relative(ROOT, aside)}, starting clean`);
+    } else {
+      journal = j;
+      log(`  resuming from ${path.relative(ROOT, journalPath)} (${done} step(s) done)`);
+    }
   }
   const save = () => { if (journalPath) atomicWrite(journalPath, journal); };
   const gasOf = {};
-  const took = (label, r) => { gasOf[label] = (gasOf[label] || 0n) + BigInt(r.gas || 0n); return r; };
+  /// every receipt is held to the EIP-7825 transaction cap (DESIGN §12:
+  /// "the deployer refuses post-EIP-8037 chunks over the 2^24 cap") — a
+  /// step that spent more could not be included on a Fusaka chain
+  const took = (label, r) => {
+    if (BigInt(r.gas || 0n) > TX_GAS_CAP) throw new Error(`${label} used ${r.gas} gas, over the 2^24 transaction cap — not includable on a Fusaka chain`);
+    gasOf[label] = (gasOf[label] || 0n) + BigInt(r.gas || 0n); return r;
+  };
 
   /*── the registry: canonical address, real runtime, checked by codehash ──*/
   const registryCode = await ad.codeAt(REGISTRY);
@@ -395,7 +453,10 @@ export async function deployIntact(ad, opts = {}) {
   let factory;
   if (journal.steps.factory) {
     factory = low(journal.steps.factory.address);
-    if ((await ad.codeAt(factory)) === "0x") throw new Error("the journal names a factory with no code");
+    if ((await ad.codeAt(factory)) === "0x") {
+      throw new Error(`the journal names a factory at ${factory} with no code — a different chain, or an endpoint far behind` +
+                      (chainId === 31337 ? `; if the local node was restarted, remove ${journalPath ? path.relative(ROOT, journalPath) : "the journal"} and run again` : ""));
+    }
   } else {
     if (nonce0 !== 0n) {
       const msg = `the deployer ${from} is at nonce ${nonce0}, not 0 — the factory's address, and so every address, would differ from the other bands'`;
@@ -417,11 +478,17 @@ export async function deployIntact(ad, opts = {}) {
   for (const k of [...SALTED, ...PLACEHOLDERS]) salts[k] = saltOf(k);
   const P = {};
   for (const k of Object.keys(salts)) P[k] = predictCreate3(factory, salts[k]);
+  /// the gate the factory was built with: this key, and the Timelock's
+  /// predicted address — checked now, since every later step depends on it
+  const gateDeployer = low(decAddr(await ad.read(factory, "DEPLOYER()")));
+  if (gateDeployer !== from) throw new Error(`the factory's DEPLOYER is ${gateDeployer}, this key is ${from} — this key cannot deploy through it`);
+  const gateTimelock = low(decAddr(await ad.read(factory, "TIMELOCK()")));
+  if (gateTimelock !== P.timelock) throw new Error(`the factory's TIMELOCK is ${gateTimelock}, the timelock salt predicts ${P.timelock}`);
   /// what the constructors are TOLD (the test hook may lie here; the chain never does)
   const T = { ...P, ...(opts.mispredict || {}) };
   if (!venues) { P.router = ZERO; T.router = ZERO; }
 
-  const got = {};         // key → deployed address
+  const got = { factory }; // key → deployed address
   const codehashes = {};  // key → extcodehash
   const reproducible = {};// key → codehash equals keccak(compiled runtime)
 
@@ -490,46 +557,69 @@ export async function deployIntact(ad, opts = {}) {
   /// Loads are idempotent against the chain: what is already there is
   /// counted, what is missing is sent. `dropLast` is never called (it would
   /// desynchronise the Engine's nonce from the shard sequence the record
-  /// predicts). Pointers come from the `Loaded`/`PanelLoaded` logs.
+  /// predicts). Each pointer comes from the receipt's own `Loaded` /
+  /// `PanelLoaded` log (the second lag defence: the receipt is the only
+  /// thing the node has already proved) and is journaled with the load; a
+  /// shard a resumed run finds already on the chain takes its pointer from
+  /// the journal, or, when the journal predates this field, from the
+  /// chain's public arrays. The endpoint is held to each receipt's block
+  /// before the next read (the third defence) — the first version of this
+  /// script read the pointers back after the writes and waited for no
+  /// block, which a reviewer measured against the header's claim.
   const pointers = { head: [], body: [], panels: [] };
+  const pointerOf = (kind, i) => journal.loads.find((l) => l.kind === kind && l.i === i && l.pointer)?.pointer;
+  const loadedPointer = (r, topic, i) => {
+    const ev = logsBy(r.logs, engine, topic);
+    if (ev.length !== 1) throw new Error(`load ${i}: expected one ${topic === LOADED_TOPIC ? "Loaded" : "PanelLoaded"} event from the Engine, saw ${ev.length}`);
+    // Loaded(bool isHead, uint256 index, address pointer, uint256 size): the pointer is data word 2;
+    // PanelLoaded(uint256 indexed index, address pointer, uint256 size, bytes32 hash): data word 0
+    return low(decAddr(ev[0].data, topic === LOADED_TOPIC ? 2 : 0));
+  };
   const frozen0 = decBool(await ad.read(engine, "frozen()"));
   if (!frozen0) {
     const counts = await ad.read(engine, "shardCount()");
     const nh = Number(decUint(counts, 0)), nb = Number(decUint(counts, 1));
     for (let i = nh; i < plan.head.length; i++) {
       const r = took("loadHead", await ad.exec(engine, "loadHead(bytes)", [plan.head[i].data], { label: "loadHead" }));
-      journal.loads.push({ kind: "head", i, tx: r.hash, gas: r.gas.toString(), block: r.block.toString() }); save();
+      await awaitBlock(ad, r.block);
+      journal.loads.push({ kind: "head", i, pointer: loadedPointer(r, LOADED_TOPIC, i), tx: r.hash, gas: r.gas.toString(), block: r.block.toString() }); save();
     }
     for (let i = nb; i < plan.body.length; i++) {
       const r = took("loadBody", await ad.exec(engine, "loadBody(bytes)", [plan.body[i].data], { label: "loadBody" }));
-      journal.loads.push({ kind: "body", i, tx: r.hash, gas: r.gas.toString(), block: r.block.toString() }); save();
+      await awaitBlock(ad, r.block);
+      journal.loads.push({ kind: "body", i, pointer: loadedPointer(r, LOADED_TOPIC, i), tx: r.hash, gas: r.gas.toString(), block: r.block.toString() }); save();
     }
     for (let i = 0; i < plan.panels.length; i++) {
       const p = plan.panels[i];
       const have = await ad.read(engine, "panelHash(uint256)", [i]);
       if (low(have) === low(p.hash)) continue;
       const r = took("loadPanel", await ad.exec(engine, "loadPanel(uint256,bytes,bytes32)", [i, p.data, p.hash], { label: "loadPanel" }));
-      journal.loads.push({ kind: "panel", i, tx: r.hash, gas: r.gas.toString(), block: r.block.toString() }); save();
+      await awaitBlock(ad, r.block);
+      journal.loads.push({ kind: "panel", i, pointer: loadedPointer(r, PANEL_TOPIC, i), tx: r.hash, gas: r.gas.toString(), block: r.block.toString() }); save();
     }
     if (low(await ad.read(engine, "engineHash()")) !== low(plan.engineHash)) {
       const r = took("setEngineHash", await ad.exec(engine, "setEngineHash(bytes32,uint32)", [plan.engineHash, plan.inflatedSize], { label: "setEngineHash" }));
+      await awaitBlock(ad, r.block);
       journal.loads.push({ kind: "setEngineHash", tx: r.hash, gas: r.gas.toString(), block: r.block.toString() }); save();
     }
     const fr = took("freeze", await ad.exec(engine, "freeze()", [], { label: "freeze" }));
+    await awaitBlock(ad, fr.block);
     journal.loads.push({ kind: "freeze", tx: fr.hash, gas: fr.gas.toString(), block: fr.block.toString() }); save();
     log(`  engine loaded: ${plan.head.length} head, ${plan.body.length} body, ${plan.panels.length} panels; frozen`);
   } else {
     log("  engine already frozen (resumed)");
   }
-  // the pointers, from the chain (head/body are public arrays) and, for the
-  // panels, recomputed from the Engine's nonce — the k-th shard written is
-  // CREATE(engine, 1 + k) in load order: head, body, then panels
-  for (let i = 0; i < plan.head.length; i++) pointers.head.push(decAddr(await ad.read(engine, "head(uint256)", [i])));
-  for (let i = 0; i < plan.body.length; i++) pointers.body.push(decAddr(await ad.read(engine, "body(uint256)", [i])));
+  // the pointers: from the receipts (via the journal) where this or a
+  // resumed run sent the load, else from the chain's public arrays; every
+  // one then asserted against CREATE(engine, 1 + k) in load order — head,
+  // body, then panels — which is what the record and the recovery predict
+  for (let i = 0; i < plan.head.length; i++) pointers.head.push(pointerOf("head", i) || low(decAddr(await ad.read(engine, "head(uint256)", [i]))));
+  for (let i = 0; i < plan.body.length; i++) pointers.body.push(pointerOf("body", i) || low(decAddr(await ad.read(engine, "body(uint256)", [i]))));
   const shardBase = 1 + plan.head.length + plan.body.length;
-  for (let i = 0; i < plan.panels.length; i++) pointers.panels.push(predictCreate(engine, shardBase + i));
+  for (let i = 0; i < plan.panels.length; i++) pointers.panels.push(pointerOf("panel", i) || predictCreate(engine, shardBase + i));
   pointers.head.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, 1 + i))) throw new Error(`head shard ${i} is not at CREATE(engine, ${1 + i})`); });
   pointers.body.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, 1 + plan.head.length + i))) throw new Error(`body shard ${i} is not at CREATE(engine, ${1 + plan.head.length + i})`); });
+  pointers.panels.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, shardBase + i))) throw new Error(`panel ${PANELS[i]} is not at CREATE(engine, ${shardBase + i})`); });
   for (let i = 0; i < plan.panels.length; i++) {
     const c = await ad.codeAt(pointers.panels[i]);
     if (kecHex(c.slice(4)) !== low(plan.panels[i].gzipHash)) throw new Error(`panel ${PANELS[i]}'s pointer ${pointers.panels[i]} does not hold its gzip bytes`);
@@ -608,9 +698,18 @@ export async function deployIntact(ad, opts = {}) {
     encodeParams("address,address,address,address,address,address", [got.hub, got.renderer, engine, got.catalog, got.crest, T.agentCard]));
 
   /*═══════════════════ post-conditions: refuse to publish on any miss ═══════════════════*/
-  const world = { ...got, factory, market: P.market, roles: P.roles, agentCard: P.agentCard };
+  const world = { ...got, factory, market: P.market, roles: P.roles, agentCard: P.agentCard, ...venueTargets(venues) };
   if (!venues) world.router = ZERO;
   const fail = (m) => { throw new Error("refusing to publish: " + m); };
+
+  // the order performed is the order declared (DESIGN §12)
+  const performed = Object.keys(journal.steps);
+  const declared = DEPLOY_ORDER.filter((k) => journal.steps[k]);
+  if (JSON.stringify(performed) !== JSON.stringify(declared)) fail(`the steps were performed as [${performed}], DESIGN §12 declares [${declared}]`);
+  for (const k of performed) if (!DEPLOY_ORDER.includes(k)) fail(`the journal holds a step DESIGN §12 does not name: ${k}`);
+
+  // the factory's gate
+  if (low(decAddr(await ad.read(factory, "DEPLOYER()"))) !== from) fail("the factory's DEPLOYER is not the burner");
 
   // every pin, both ways
   for (const [holder, getter, target] of PINS) {
@@ -692,9 +791,15 @@ export async function deployIntact(ad, opts = {}) {
   const gasTotal = Object.values(gasOfAll).reduce((a, b) => a + b, 0n);
   const gasThisRun = Object.values(gasOf).reduce((a, b) => a + b, 0n);
   const contracts = { factory, engine, ...Object.fromEntries(SALTED.filter((k) => got[k]).map((k) => [k, got[k]])) };
+  /// what the chain says about the admin, not a sentence written in advance:
+  /// the burner holds it at the MVB; the record of a later state (rotated
+  /// through the queue, or renounced) reads the same field
+  const disposition = admin === from ? "the burner holds the admin; rotation or renunciation only through the Timelock's own 7-day queue"
+                    : admin === ZERO ? "renounced" : `rotated to ${admin} (through the queue; the burner no longer holds it)`;
+  const burner = { nonceAfter: (await ad.nonceNow()).toString(), balanceAfter: (await ad.balanceOf(from)).toString() };
   const record = {
     schema: "intact.deployment/1",
-    chainId, network: band.name, rpc: opts.rpc || null,
+    chainId, network: band.name,
     band: { band: band.band, lo: band.first.toString(), hi: band.last.toString(), rehearsal: band.rehearsal },
     deployer: from,
     factory, factoryVia: { create: { from, nonce: journal.factoryNonce ?? "0" } },
@@ -716,7 +821,8 @@ export async function deployIntact(ad, opts = {}) {
     catalogHash, coinTemplate,
     registry: { address: REGISTRY, codehash: registryHash },
     price: price.toString(),
-    timelock: { admin, delay: "604800", grace: "1209600", disposition: "burner holds the admin; rotation or renunciation only through its own 7-day queue" },
+    timelock: { admin, delay: "604800", grace: "1209600", disposition },
+    burner,
     venues: venues || null,
     gas, gasTotal: gasTotal.toString(), gasThisRun: gasThisRun.toString(),
     toolchain: toolchain(),
@@ -757,8 +863,13 @@ export function parseArgs(argv) {
   return o;
 }
 
+export const CLI_OPTIONS = ["chain", "confirm", "rpc", "journal", "record", "price"];
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = parseArgs(process.argv.slice(2));
+  for (const k of Object.keys(args)) {
+    if (!CLI_OPTIONS.includes(k)) { console.error(`unknown option --${k}; the options are ${CLI_OPTIONS.map((o) => "--" + o).join(" ")}`); process.exit(2); }
+  }
   /*  The confirm token first, before reading a file, opening a socket or
       touching the key (MASTER's rule): a mistyped command costs nothing. */
   const chainId = Number(args.chain);
@@ -799,6 +910,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (c.chainId !== chainId) { console.error(`  the node at ${rpc} is chain ${c.chainId}, not ${chainId}`); process.exit(2); }
   const ad = adapt(c);
   const journalPath = args.journal ? path.resolve(ROOT, args.journal) : path.join(ROOT, "deployments", `${chainId}.journal.json`);
+  const recordPath = args.record ? path.resolve(ROOT, args.record) : path.join(ROOT, "deployments", `${chainId}.json`);
   const resuming = fs.existsSync(journalPath);
 
   // preflight: the burner, its balance, and what the run needs
@@ -836,7 +948,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const t0 = Date.now();
   let record;
   try {
-    record = await deployIntact(ad, { out, plan, manifest, journalPath, rpc, price: args.price ? BigInt(args.price) : undefined,
+    record = await deployIntact(ad, { out, plan, manifest, journalPath, recordPath, price: args.price ? BigInt(args.price) : undefined,
                                       log: (s) => console.log(s) });
   } catch (e) {
     console.error(`\n  \x1b[31m${e.message}\x1b[0m\n  nothing was published; the journal at ${path.relative(ROOT, journalPath)} holds what landed`);

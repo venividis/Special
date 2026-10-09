@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "forge-std/Test.sol";
 import {Create3Factory} from "../src/lib/Create3Factory.sol";
+import {Timelock} from "../src/Timelock.sol";
 
 /*───────────────────────────────────────────────────────────────────────────
   The CREATE3 factory, held to its one promise: an address is a function
@@ -12,6 +13,14 @@ import {Create3Factory} from "../src/lib/Create3Factory.sol";
   factory's own `predict`, so the two implementations check each other;
   tools/deploy.mjs carries a third, in JavaScript, and asserts it against
   the chain after every step.
+
+  And to its second promise, added after a reviewer took a token through
+  the ungated first version: only the burner that made the factory and the
+  address the Timelock salt lands at may deploy through it, so no stranger
+  can become the hub's MARKET, ROLES or AGENTCARD by landing first, nor
+  burn a public salt on a fresh band. The gate moves no address — the
+  last test below lands a real Timelock through its own queue at exactly
+  the address the ungated arithmetic predicts.
 ───────────────────────────────────────────────────────────────────────────*/
 
 /// @dev Three contracts with three different initcodes and one shared salt.
@@ -123,6 +132,68 @@ contract Create3Test is Test {
         assertEq(Paid(got).GOT(), 1 ether);
         assertEq(got.balance, 1 ether);
         assertEq(address(factory).balance, 0, "the factory keeps nothing");
+    }
+
+    /*──────────── who may deploy ────────────*/
+
+    function test_theFactoryNamesItsDeployerAndThePredictedTimelock() public view {
+        assertEq(factory.DEPLOYER(), address(this), "the constructor's msg.sender is the deployer");
+        assertEq(factory.TIMELOCK_SALT(), keccak256("intact.v1.timelock"));
+        assertEq(factory.TIMELOCK(), _create3(address(factory), keccak256("intact.v1.timelock")),
+                 "the Timelock's address is known before the Timelock exists");
+        assertEq(factory.TIMELOCK().code.length, 0, "and it has no code yet");
+    }
+
+    function test_aStrangerCannotDeployThroughTheFactory() public {
+        address mallory = address(0xBAD);
+        address predicted = factory.predict(SALT);
+        bytes memory code = abi.encodePacked(type(Small).creationCode, abi.encode(uint256(7)));
+        vm.prank(mallory);
+        vm.expectRevert(Create3Factory.NotDeployer.selector);
+        factory.deploy(SALT, code);
+        assertEq(predicted.code.length, 0, "nothing landed");
+        // the salt is untouched: the deployer lands it afterwards where predicted
+        assertEq(factory.deploy(SALT, code), predicted, "the stranger burned nothing");
+    }
+
+    function test_aStrangerCannotTakeAPostMvbSaltEither() public {
+        // the three salts the hub pins while they are still codeless
+        bytes32[3] memory salts = [keccak256("intact.v1.market"), keccak256("intact.v1.roles"), keccak256("intact.v1.agentCard")];
+        for (uint256 i; i < 3; ++i) {
+            vm.prank(address(0xBAD));
+            vm.expectRevert(Create3Factory.NotDeployer.selector);
+            factory.deploy(salts[i], abi.encodePacked(type(Small).creationCode, abi.encode(i)));
+            assertEq(factory.predict(salts[i]).code.length, 0, "the pin stays codeless");
+        }
+    }
+
+    function test_theTimelockDeploysThroughItsOwnQueueOnceTheBurnerIsGone() public {
+        // the deployer lands the Timelock under its salt, admin = this test
+        bytes32 tsalt = factory.TIMELOCK_SALT();
+        address payable tl = payable(factory.deploy(tsalt, abi.encodePacked(type(Timelock).creationCode, abi.encode(address(this)))));
+        assertEq(tl, factory.TIMELOCK(), "the Timelock landed where the factory said it would");
+        assertEq(Timelock(tl).admin(), address(this));
+
+        // the burner is gone: a later satellite is queued, waits a week, and
+        // is executed by a stranger — exactly DESIGN §12's post-MVB path
+        bytes memory code = abi.encodePacked(type(Small).creationCode, abi.encode(uint256(99)));
+        bytes memory call = abi.encodeCall(Create3Factory.deploy, (SALT, code));
+        address predicted = factory.predict(SALT);
+        Timelock(tl).queue(address(factory), 0, call, bytes32("market"));
+        vm.warp(block.timestamp + 7 days);
+        vm.prank(address(0xC0FFEE));
+        Timelock(tl).execute(address(factory), 0, call, bytes32("market"));
+        assertEq(predicted.code.length > 0, true, "the queued deployment landed");
+        assertEq(Small(predicted).X(), 99);
+    }
+
+    function test_theTimelockAddressMayDeployEvenBeforeItHasCode() public {
+        // msg.sender is what the gate reads; a prank from the predicted
+        // address proves the gate is an address check and nothing wider
+        address predicted = factory.predict(SALT);
+        vm.prank(factory.TIMELOCK());
+        address got = factory.deploy(SALT, abi.encodePacked(type(Small).creationCode, abi.encode(uint256(5))));
+        assertEq(got, predicted);
     }
 
     function test_twoSaltsAreTwoAddressesAndTwoDeployments() public {

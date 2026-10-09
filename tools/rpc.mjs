@@ -169,8 +169,10 @@ export class RpcChain {
         receipt, not from a read after the write" is one of the three
         public-RPC lag defences: a replica one block behind answers the
         read about the past, and the receipt is the only thing the node
-        has already proved. tools/deploy.mjs reads the factory's
-        `Deployed` event and the Engine's `PanelLoaded` pointers here.  */
+        has already proved. tools/deploy.mjs takes the factory's
+        `Deployed` address and every Engine `Loaded`/`PanelLoaded` pointer
+        from these logs, and holds the endpoint to each receipt's block
+        before its next read.                                           */
     return { gas, hash, address: receipt.contractAddress || null,
              block: BigInt(receipt.blockNumber), logs: receipt.logs || [] };
   }
