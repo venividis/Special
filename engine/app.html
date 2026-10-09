@@ -567,9 +567,15 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   const wired = new WeakSet();
   /* chainChanged carries the new id: the gate moves on the event itself, synchronously, and
      the re-read only confirms it — a read parked between the event and eth_chainId's answer
-     must already be refused, or the new chain answers it (CONSOLE §2) */
+     must already be refused, or the new chain answers it (CONSOLE §2). A handler acts only while
+     its provider is the one in use: a wallet dropped from the crest, or passed over on a late
+     pick, stays wired (the WeakSet is what keeps a re-pick from wiring it twice), and its events
+     must move nothing for the wallet that replaced it. (Review, round three: the dropped wallet's
+     chainChanged refused a read on the chosen one with the wrong chain sentence and, in the
+     inverse case, opened the gate for a wallet on Base for one eth_chainId round trip; its
+     accountsChanged re-read everything through the chosen one.) */
   const setChain = n => { walletChain = n; B.dataset.chain = chain = n === CHAIN ? "ok" : "wrong"; };
-  const wire = p => { if (p && p.on && !wired.has(p)) { wired.add(p); p.on("accountsChanged", refresh); p.on("chainChanged", n => { setChain(Number(n)); refresh(); }); } };
+  const wire = p => { if (p && p.on && !wired.has(p)) { wired.add(p); p.on("accountsChanged", () => p === PV && refresh()); p.on("chainChanged", n => { if (p === PV) { setChain(Number(n)); refresh(); } }); } };
   async function checkChain() {
     if (!PV) B.dataset.chain = chain = "none";
     else { let n = 0; try { n = Number(await PV.request({ method: "eth_chainId" })); } catch {} setChain(n); }
@@ -602,17 +608,22 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   /* one read is the whole authority model; zero and no answer stay different facts. Only the latest
      read may write: a real provider does not serialise, so an older read — for an account since
      dropped, or sent before the chain went wrong — can land after the newer one; the sequence
-     number throws it away (the shim's one-at-a-time queue hid this; the suite overtakes it by hand) */
+     number throws it away whether it lands as an answer or as a rejection (review, round three: a
+     stale rejection printed "could not be read" over a read that had succeeded, and fired again).
+     An answer that lands while the chain is wrong is thrown away even when it is the latest: the
+     refresh chainChanged started has not reached rights() while its eth_chainId is in flight, so
+     the sequence number alone does not cover it. (The shim's one-at-a-time queue hid all of this;
+     the suite overtakes it by hand.) */
   async function rights() {
     const actor = sess ? (account && account !== KEY ? null : KEY) : account, n = ++seq;
     bits = null;
     if (actor && chain === "ok" && ID) {
       try {
         const r = await hub("hub.rightsOf", [ID, actor]);
-        if (n < seq) return;
+        if (n < seq || chain !== "ok") return;
         let b = Number(L.decUint(r)); if (sess) b &= R.SESSION; bits = b;
         setEpoch(L.decUint(r, 1)); F.holder = L.decAddr(r, 2);
-      } catch { say("your rights could not be read at block " + S.block, "err"); }
+      } catch { if (n < seq) return; say("your rights could not be read at block " + S.block, "err"); }
     }
     B.dataset.rights = bits === null ? "" : String(bits);
     crest(); home(); session(); sentence();
@@ -1009,11 +1020,15 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
      more announcers the page enters the dismissed state first — no provider, chain "none", rights
      null, the crest read-only, #connect shown, intact:rights fired with null bits — and stays there
      until the picker is answered, so no read reaches the wallet just dropped; with one announcer
-     there is no picker and that wallet is simply asked again. The guard is the provider, not the
-     account: once dropped there is no address to click, and a wallet on the wrong chain can still
-     be exchanged. (Review, round two: nulling the account alone left rights at 1, #connect hidden,
-     the crest naming the dropped wallet and every read still going to it.) */
-  $("#c-wallet-v").addEventListener("click", () => { if (viewer || !PV) return; store(s => s.removeItem("intact.wallet")); account = null; if (P.size > 1) { CHO = PV = null; refresh(); } connect(); });
+     there is no picker: the page is disconnected first — rights() with no account writes body "",
+     the crest read-only, #connect shown, intact:rights fired with null bits — and that wallet is
+     asked again; it reconnects when the wallet answers, and a decline leaves it disconnected, which
+     is what the page then says. The guard is the provider, not the account: once dropped there is
+     no address to click, and a wallet on the wrong chain can still be exchanged. (Review, round two:
+     nulling the account alone left rights at 1, #connect hidden, the crest naming the dropped wallet
+     and every read still going to it. Round three: with one announcer the same shape held for the
+     length of the wallet prompt — account null under a crest that named it and a rights of 1.) */
+  $("#c-wallet-v").addEventListener("click", () => { if (viewer || !PV) return; store(s => s.removeItem("intact.wallet")); account = null; if (P.size > 1) { CHO = PV = null; refresh(); } else rights(); connect(); });
   addEventListener("hashchange", () => show(location.hash.slice(1)));
   addEventListener("keydown", e => { if (e.key === "Escape") closeSlab(); });
   (async () => {

@@ -122,9 +122,12 @@ late wallet joins, and the gesture asks"*.
 The choice is remembered in `localStorage["intact.wallet"]` inside
 `try/catch`, as a convenience only. Clicking your own address in the crest
 clears it and asks again; until the picker is answered the page is in the
-dismissed state above (with one announcer there is no picker: that wallet is
-asked again and the page stays connected). Closing the tab is logout; there
-is no SIWE, no nonce, no server.
+dismissed state above (with one announcer there is no picker: the page is
+disconnected first and that wallet is asked again; it reconnects when the
+wallet answers, and a decline leaves it disconnected). A wallet the page
+dropped, or passed over on a late pick, is never heard again: its
+`chainChanged` and `accountsChanged` move nothing for the wallet in use.
+Closing the tab is logout; there is no SIWE, no nonce, no server.
 
 **Order on the chosen provider**, before anything else:
 `eth_chainId` → compare to `INTACT.chainId` → on mismatch `body.dataset.chain
@@ -437,7 +440,7 @@ different lanes, and the two that would have collided outright are renamed
 | `body[data-mode]` | `viewer` \| `console` \| `session` |
 | `body[data-rights]` | the decimal bits; `""` before connect and when the read failed |
 | `body[data-chain]` | `ok` \| `wrong` \| `none` |
-| `#crest` | the wallet cell: *read only — connect* / *<wallet> · 0x12… 3456*; on a wrong chain *your wallet is on <name>; this token lives on <name>*; clicking an address drops the remembered choice |
+| `#crest` | the wallet cell: *read only — connect* / *<wallet> · 0x12… 3456*; on a wrong chain *your wallet is on <name>; this token lives on <name>*; clicking the wallet cell — the address, the *read only — connect* text or the chain sentence — drops the remembered choice and asks again (§2) |
 | `#connect`, `#switch` | the gesture controls; neither exists in the viewer (`#switch` is rendered only when `mode !== "viewer"`). `#connect` is visible while the chain is `ok` and nobody is connected, and also after a dismissed picker (§2), so it can ask again |
 | `#picker button[data-rdns]` | the EIP-6963 picker |
 | `#lanes a[data-lane=<name>]` | the nav; absent or `aria-disabled="true"` in the viewer **without a provider** (with one, the viewer loads panels through `engine.panel(i)`); no `agent` link until the AgentCard has code |
