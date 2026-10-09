@@ -24,12 +24,21 @@
     revert beside the owned quote, router.venues() in hooklist shape, and
     the swap itself through reach.executeTyped with a spend cap and a
     receive floor, hidden for a native or manifest input under a Reach seal
-    (D §4.4). Not built here (CONSOLE §14, and said where a holder would
-    look): v3 paths and v4 keys from this page, Market listings, trade
-    history.
+    (D §4.4). Not built here (CONSOLE §14), and the lane says so where a
+    holder would look — under the directory wherever the lane renders a
+    market, and in the Elsewhere note: Market listings, trade history, v3
+    paths and v4 keys from this page. Both swaps ask their venue once more inside the press
+    (the slab's `recheck`): a floor the quote no longer meets, or a quote
+    that will not answer, is a sentence before the wallet opens, never a
+    Slippage revert after the signature. A receipt that leaves the rights
+    as they were keeps what is typed and re-quotes, so after the approve
+    step lands the same button is the swap; different bits or another
+    account repaint the lane (the review's finding: a wholesale repaint on
+    every receipt wiped the amount the slab had just said to press again).
 
     Elements this panel introduces (CONSOLE §6.2; the suite reads them
     scoped to #lane-swap):
+      #swap-card          the swap card itself
       #swap-in            the amount input (exact-in: what you pay; exact-out: what you receive)
       #swap-out           the quote, dataset.raw = the quote in base units; or a sentence
       #swap-go            the button; its label is the current step (Approve … / Swap)
@@ -101,6 +110,11 @@
     };
     var utf8 = function (hex) { return new TextDecoder().decode(new Uint8Array((hex.match(/../g) || []).map(function (x) { return parseInt(x, 16); }))); };
     var unread = function (e) { return "not reported: " + (e && e.message || e); };
+    /* a coin's symbol and exponent: the symbol capped at 32 characters as the Catalog caps the baked one (Web.MAX_LABEL);
+       the exponent is custody — when decimals() does not answer it stays null and every amount for that coin refuses */
+    var sym = function (a) { return isEth(a) ? Promise.resolve(["ETH", 18]) : Promise.all([
+      ui.read(a, "erc20.symbol", []).then(function (x) { return x.s(0).slice(0, 32); }, function () { return ui.short(a); }),
+      ui.read(a, "erc20.decimals", []).then(function (x) { return Number(x.w(0)); }, function () { return null; })]); };
 
     /*── one SwapRequest, laid by hand: data() builds no tuples (CONSOLE §5) ──*/
     var swapReq = function (venue, tin, tout, a, minOut, dl) {
@@ -118,7 +132,7 @@
     };
 
     /*── state the lane keeps between paints ──*/
-    var baseIn = true, exactOut = false, tab = "owned", pending = null, qseq = 0, snT = 0, card = null;
+    var baseIn = true, exactOut = false, tab = "owned", pending = null, qseq = 0, snT = 0, card = null, requote = null, seenBits, seenAcct;
     var reachSeal = S.clocks && S.clocks.sealedUntil || 0, manifest = [], manifestKnown = false;
 
     /*── the market re-read from the chain; a changed word repaints ──*/
@@ -129,22 +143,20 @@
         var pairSame = M && same(n.base, M.base) && same(n.quote, M.quote);
         var changed = !M || !pairSame || ["open", "rB", "rQ", "fee", "curve", "snBps", "snUntil", "seal"].some(function (k) { return String(n[k]) !== String(M[k]); });
         if (!changed) return false;
-        var sym = function (a) { return isEth(a) ? Promise.resolve(["ETH", 18]) : Promise.all([
-          ui.read(a, "erc20.symbol", []).then(function (x) { return x.s(0); }, function () { return ui.short(a); }),
-          /* the exponent is custody: when decimals() does not answer it stays null and every amount for that coin refuses */
-          ui.read(a, "erc20.decimals", []).then(function (x) { return Number(x.w(0)); }, function () { return null; })]); };
         return (pairSame ? Promise.resolve([[M.bs, M.bd], [M.qs, M.qd]]) : Promise.all([sym(n.base), sym(n.quote)])).then(function (s) {
           n.bs = s[0][0]; n.bd = s[0][1]; n.qs = s[1][0]; n.qd = s[1][1]; M = n; return true;
         });
       });
     }
     function syncClock() { return ui.clock().then(function (t) { base = Number(t); T0 = ui.now(); }, function () {}); }
+    /* after a receipt that changed the market: the clock re-anchored, the market re-read, the lane repainted */
+    var after = function () { return syncClock().then(syncMarket).then(function () { paint(); }); };
 
     /*═══════════ the swap card: anyone with a wallet; quoted at review time, every time ═══════════*/
     function swapCard(p) {
       var c = ui.el("div"); c.id = "swap-card"; card = c;
       p.append(ui.el("h3", "", "its own market"), c);
-      ui.note(c, "swapping needs no permission from the holder; the fee is what they earn from you. Quoted first; the swap refuses to settle below what the slab states.");
+      ui.note(c, "no permission from the holder is needed; the fee is theirs. Quoted first; nothing settles below what the slab states.");
       var row = ui.el("div", "kv");
       var sIn = ui.el("span", "k"); sIn.id = "swap-sym-in";
       var flip = ui.el("button", "chip", "flip"); flip.type = "button"; flip.id = "swap-flip";
@@ -165,7 +177,7 @@
       flip.addEventListener("click", function () { baseIn = !baseIn; paintDir(); quoteNow(); paintElsewhereAct(); });
       mode.addEventListener("click", function () { exactOut = !exactOut; paintDir(); quoteNow(); });
       inp.addEventListener("input", quoteNow);
-      paintDir();
+      paintDir(); requote = quoteNow;
 
       function quoteNow() {
         var IN = coin(baseIn), OUT = coin(!baseIn), typedCoin = exactOut ? OUT : IN, quotedCoin = exactOut ? IN : OUT;
@@ -203,7 +215,7 @@
         }, function (e) {
           if (seq !== qseq) return;
           var m = String(e && e.message || "");
-          out.textContent = /TradeTooLarge/.test(m) ? "more than half of the reserve — the market states its maximum trade rather than promise what it cannot pay"
+          out.textContent = /TradeTooLarge/.test(m) ? "more than half of the reserve — the market will not promise what it cannot pay"
             : /ZeroAmount/.test(m) ? "prices at zero — nothing to swap" : /MarketNotOpen/.test(m) ? "the market is not open" : unread(e);
         });
       }
@@ -230,7 +242,7 @@
               return ui.propose({
                 to: S.pool, key: exactOut ? "pool.swapExactOut" : "pool.swapExactIn", args: [ID, baseIn, P.a, lim, to, dl], value: value, need: 0, spend: true, lines: lines,
                 /* at the press the market is asked once more: a floor the curve no longer meets is a sentence here, not a Slippage revert after the signature */
-                recheck: function () { return ui.read(S.pool, exactOut ? "pool.quoteExactOut" : "pool.quote", [ID, baseIn, P.a]).then(function (r) { return (exactOut ? r.w(0) > lim : r.w(0) < lim) ? "the price moved past the floor — review again" : null; }, function () { return null; }); },
+                recheck: function () { return ui.read(S.pool, exactOut ? "pool.quoteExactOut" : "pool.quote", [ID, baseIn, P.a]).then(function (r) { return (exactOut ? r.w(0) > lim : r.w(0) < lim) ? "the price moved past the floor — review again" : null; }, function () { return "the market could not be re-quoted at the press — review again"; }); },
                 sentence: exactOut
                   ? "buys exactly " + amt(P.a, OUT.dec) + " " + OUT.sym + " through #" + ID + "'s market for at most " + amt(lim, IN.dec) + " " + IN.sym + ", or nothing moves; dies in fifteen minutes"
                   : "swaps exactly " + amt(P.a, IN.dec) + " " + IN.sym + " through #" + ID + "'s market for no less than " + amt(lim, OUT.dec) + " " + OUT.sym + ", or nothing moves; dies in fifteen minutes",
@@ -246,7 +258,7 @@
                       ui.note(box, "the market pulled less than approved: " + amt(left, spent.dec) + " " + spent.sym + " stays approved", "warn");
                       ui.act(box, "approveZero", "revoke the " + amt(left, spent.dec) + " " + spent.sym + " left approved", 0, function () {
                         return ui.propose({ to: spent.addr, key: "erc20.approve", args: [S.pool, 0n], need: 0, spend: true,
-                          lines: [["Leaves", "no standing allowance to the market"], ["Amount", "0 " + spent.sym]],
+                          lines: [["Amount", "0 " + spent.sym], ["Leaves", "no standing allowance"]],
                           sentence: "revokes the " + amt(left, spent.dec) + " " + spent.sym + " still approved to the market: nothing stays approved" });
                       }, { spend: true });
                       card.append(box);
@@ -264,23 +276,27 @@
     /*═══════════ Elsewhere: the Router's quote beside the owned one; the swap through the Reach ═══════════*/
     var routerOn = !!(S.reported & S.bits.router) && !isEth(S.router);
     var elseOut = null, elseBox = null;
+    /* the Router quotes by revert — QuoteResult(spent, received, sqrtPriceAfter): the received word, or null for any other answer */
+    var routerGot = function (r) { var sig = !r.ok && S.err[r.data.slice(0, 10).toLowerCase()] || ""; return sig.indexOf("QuoteResult(") === 0 ? BigInt("0x" + r.data.slice(74, 138)) : null; };
     function quoteElsewhere(a, seq) {
       if (!routerOn || !elseOut) return;
-      var IN = coin(baseIn), OUT = coin(!baseIn);
-      elseOut.lastChild.textContent = "reading…"; delete elseOut.lastChild.dataset.raw;
-      var data = S.sel["router.quoteExactIn"] + swapReq(0, IN.addr, OUT.addr, exactOut ? pending.lim : a, 0n, 0n);
-      ui.simulate(S.router, data, { from: ui.account() || S.reach }).then(function (r) {
+      var IN = coin(baseIn), OUT = coin(!baseIn), v = elseOut.lastChild;
+      delete v.dataset.raw;
+      /* the Router swaps exact-in only: in exact-out mode the row says so, rather than print what the ceiling
+         would buy in one coin beside what the owned market would charge in the other as if they compared */
+      if (exactOut) { v.textContent = "exact-in only — switch the mode to compare"; return; }
+      v.textContent = "reading…";
+      ui.simulate(S.router, S.sel["router.quoteExactIn"] + swapReq(0, IN.addr, OUT.addr, a, 0n, 0n), { from: ui.account() || S.reach }).then(function (r) {
         if (seq !== qseq) return;
-        var sig = !r.ok && S.err[r.data.slice(0, 10).toLowerCase()] || "";
-        if (sig.indexOf("QuoteResult(") !== 0) { elseOut.lastChild.textContent = r.ok ? "the Router answered without a quote" : "no quote: " + r.sentence; return; }
-        var got = BigInt("0x" + r.data.slice(10 + 64, 10 + 128));
-        elseOut.lastChild.dataset.raw = String(got); elseOut.lastChild.textContent = amt(got, OUT.dec) + " " + OUT.sym + " through the Router";
-      }, function (e) { if (seq === qseq) elseOut.lastChild.textContent = unread(e); });
+        var got = routerGot(r);
+        if (got == null) { v.textContent = "no quote: " + (r.sentence || "the Router returned instead"); return; }
+        v.dataset.raw = String(got); v.textContent = amt(got, OUT.dec) + " " + OUT.sym + " through the Router";
+      }, function (e) { if (seq === qseq) v.textContent = unread(e); });
     }
     function elsewhere(p) {
       var sec = ui.el("div"); sec.id = "swap-elsewhere"; sec.hidden = tab !== "elsewhere"; p.append(sec);
       sec.append(ui.el("h3", "", "elsewhere"));
-      ui.note(sec, "the same pair through the Router, swapped by the Reach: an exact approval, the call, the allowance zeroed and proved, what left and what arrived measured. v3 paths and v4 keys are not built by this page yet.");
+      ui.note(sec, "the same pair through the Router, from the Reach: an exact approval, the call, the allowance zeroed and proved, what left and what arrived measured. v3 paths and v4 keys are not built by this page yet.");
       elseOut = ui.kv(sec, "through the Router", "type an amount above"); elseOut.id = "swap-quote-elsewhere"; elseOut.classList.add("quote");
       var ven = ui.el("div"); ven.id = "swap-venues"; sec.append(ven);
       ui.read(S.router, "router.venues", []).then(function (r) {
@@ -302,28 +318,29 @@
         manifest asset's balance may not fall — so both routes hide, and say why. */
     function paintElsewhereAct() {
       if (!elseBox) return; elseBox.replaceChildren();
-      var IN = coin(baseIn), OUT = coin(!baseIn), sealed = reachSeal > chainNow();
-      if (sealed && isEth(IN.addr)) return ui.note(elseBox, "the Reach is sealed until " + date(reachSeal) + ": nothing native leaves it — flip the pair", "warn");
-      if (sealed && manifest.some(function (a) { return same(a, IN.addr); })) return ui.note(elseBox, IN.sym + " is on the Reach's manifest and the Reach is sealed until " + date(reachSeal) + ": it cannot leave", "warn");
-      if (sealed && !manifestKnown) return ui.note(elseBox, "the Reach is sealed until " + date(reachSeal) + "; its manifest could not be read", "warn");
+      var IN = coin(baseIn), OUT = coin(!baseIn);
+      var why = reachSeal > chainNow() && (isEth(IN.addr) ? "nothing native leaves it — flip the pair" : manifest.some(function (a) { return same(a, IN.addr); }) ? IN.sym + " is on the Reach's manifest: it cannot leave" : !manifestKnown && "its manifest could not be read");
+      if (why) return ui.note(elseBox, "the Reach is sealed until " + date(reachSeal) + ": " + why, "warn");
       ui.act(elseBox, "swapElsewhere", "swap through the Router, from the Reach", R.HOLD, function () {
         var P = pending; if (!P || exactOut) return ui.say(exactOut ? "the Router swaps exact-in only; switch the mode" : "an amount first", "err");
-        var a = P.a, data = S.sel["router.quoteExactIn"] + swapReq(0, IN.addr, OUT.addr, a, 0n, 0n);
+        var a = P.a, ask = function () { return ui.simulate(S.router, S.sel["router.quoteExactIn"] + swapReq(0, IN.addr, OUT.addr, a, 0n, 0n), { from: S.reach }); };
         /* quoted again at this press, by the Router itself */
-        return ui.simulate(S.router, data, { from: S.reach }).then(function (r) {
-          var sig = !r.ok && S.err[r.data.slice(0, 10).toLowerCase()] || "";
-          if (sig.indexOf("QuoteResult(") !== 0) return ui.say("the Router would not price it: " + (r.sentence || "no quote"), "err");
-          var q = BigInt("0x" + r.data.slice(10 + 64, 10 + 128)), minOut = q - q * 50n / 10000n;
+        return ask().then(function (r) {
+          var q = routerGot(r);
+          if (q == null) return ui.say("the Router would not price it: " + (r.sentence || "no quote"), "err");
+          var minOut = q - q * 50n / 10000n;
           return ui.clock().then(function (now) {
             var dl = now + 900n, value = isEth(IN.addr) ? a : 0n;
             var inner = "0x" + S.sel["router.swap"].slice(2) + swapReq(0, IN.addr, OUT.addr, a, minOut, dl);
             return ui.propose({
               to: S.reach, data: "0x" + typedCall(S.router, value, inner, [[IN.addr, a]], [[OUT.addr, minOut]], dl).slice(2), sig: TYPED, need: R.HOLD, spend: true,
+              /* the Router is asked once more inside the press: a floor its quote no longer meets is a sentence here, not a Slippage revert after the signature */
+              recheck: function () { return ask().then(function (r) { var g = routerGot(r); return g == null ? "the Router could not be re-quoted at the press — review again" : g < minOut ? "the Router's price moved past the floor — review again" : null; }, function () { return "the Router could not be re-quoted at the press — review again"; }); },
               lines: [["Token", "#" + ID], ["Through", "the Router " + ui.short(ui.checksum(S.router)) + ", venue: its own pool, from the Reach"],
                       ["Spend", "at most " + amt(a, IN.dec) + " " + IN.sym + (value ? ", sent as value" : "")], ["Receive at least", amt(minOut, OUT.dec) + " " + OUT.sym + " — or nothing moves"],
                       ["About", amt(q, OUT.dec) + " " + OUT.sym], ["Allowance after", "zero, proved"], ["Dies", "in fifteen minutes"]],
               sentence: "the Reach swaps exactly " + amt(a, IN.dec) + " " + IN.sym + " through the Router for no less than " + amt(minOut, OUT.dec) + " " + OUT.sym + ", or nothing moves; no allowance survives; dies in fifteen minutes",
-              then: function () { return syncClock().then(syncMarket).then(function () { paint(); }); }
+              then: after
             });
           }, function () { ui.say("the chain's clock could not be read", "err"); });
         }, function (e) { ui.say(unread(e), "err"); });
@@ -356,7 +373,6 @@
           return [ab, aq];
         };
       };
-      var after = function () { return syncClock().then(syncMarket).then(function () { paint(); }); };
       var dep = ui.el("div"); y.append(dep); var readDep = two(dep, "deposit");
       ui.act(dep, "deposit", "review the deposit", R.HOLD, function () {
         var v = readDep(); if (!v) return;
@@ -364,7 +380,7 @@
         return ui.approveExactThen(legs(v[0], v[1]), function () {
           return ui.propose({ to: S.pool, key: "pool.deposit", args: [ID, v[0], v[1]], value: value, need: R.HOLD, spend: true,
             lines: [["Token", "#" + ID], [Bc.sym, amt(v[0], Bc.dec)], [Qc.sym, amt(v[1], Qc.dec)], ["Counted as", "what actually arrives, not what was sent"]],
-            sentence: "deposits " + amt(v[0], Bc.dec) + " " + Bc.sym + " and " + amt(v[1], Qc.dec) + " " + Qc.sym + " into #" + ID + "'s market; the market re-anchors its curve on what arrives", then: after });
+            sentence: "deposits " + amt(v[0], Bc.dec) + " " + Bc.sym + " and " + amt(v[1], Qc.dec) + " " + Qc.sym + " into #" + ID + "'s market, counted as what arrives", then: after });
         }).catch(function (e) { ui.say("the allowance did not answer: " + (e && e.message), "err"); });
       }, { spend: true });
       if (!sealed) {
@@ -372,7 +388,7 @@
         ui.act(wd, "withdraw", "review the withdrawal", R.HOLD, function () {
           var v = readWd(); if (!v) return;
           return ui.propose({ to: S.pool, key: "pool.withdraw", args: [ID, v[0], v[1], ui.account()], need: R.HOLD,
-            lines: [["Token", "#" + ID], [Bc.sym, amt(v[0], Bc.dec)], [Qc.sym, amt(v[1], Qc.dec)], ["To", ui.short(ui.account())], ["Refused while", "a seal stands"]],
+            lines: [["Token", "#" + ID], [Bc.sym, amt(v[0], Bc.dec)], [Qc.sym, amt(v[1], Qc.dec)], ["To", ui.short(ui.account())]],
             sentence: "withdraws " + amt(v[0], Bc.dec) + " " + Bc.sym + " and " + amt(v[1], Qc.dec) + " " + Qc.sym + " from #" + ID + "'s market to " + ui.account(), then: after });
         });
         var fee = ui.el("div"); y.append(fee); y.append(ui.el("h3", "", "the fee"));
@@ -380,7 +396,7 @@
         ui.act(fee, "setFee", "review the fee", R.HOLD, function () {
           var f = digits(fIn.value, 500n, "the fee"); if (f == null) return;
           return ui.propose({ to: S.pool, key: "pool.setFee", args: [ID, f], need: R.HOLD,
-            lines: [["Token", "#" + ID], ["From", M.fee + " bps"], ["To", f + " bps, to whoever holds the token"], ["Refused while", "a seal stands — a sealed market's terms are promised"]],
+            lines: [["Token", "#" + ID], ["From", M.fee + " bps"], ["To", f + " bps, to whoever holds the token"]],
             sentence: "sets #" + ID + "'s market fee from " + M.fee + " to " + f + " bps", then: after });
         });
         var cv = ui.el("div"); y.append(cv); cv.append(ui.el("h3", "", "the curve"));
@@ -390,7 +406,7 @@
           function (e) { drift.lastChild.textContent = M.curve + " bps; the curve trait " + unread(e) + " (baked: " + trait + ")"; });
         ui.act(cv, "syncCurve", "re-anchor to the trait", R.HOLD, function () {
           return ui.propose({ to: S.pool, key: "pool.syncCurve", args: [ID, trait, BigInt(M.curve)], need: R.HOLD,
-            lines: [["Token", "#" + ID], ["Curve", M.curve + " bps → " + trait + " bps"], ["Expected", M.curve + " bps, as read here; a curve that moved since is refused"], ["This is", "the only place the trait moves the price"]],
+            lines: [["Token", "#" + ID], ["Curve", M.curve + " bps → " + trait + " bps"], ["Expected", M.curve + " bps as read here; moved since, it is refused"], ["This is", "the only place the trait moves the price"]],
             sentence: "re-anchors #" + ID + "'s market to a curve of " + trait + " bps, expecting it to stand at " + M.curve + " bps", then: after });
         });
       }
@@ -400,7 +416,7 @@
       if (!sealed) {
         var days = ui.field(sl, "seal for how many days (≤ 365)", "7");
         ui.act(sl, "sealMarket", "review the seal", R.HOLD, function () {
-          var d = digits(days.value, 365n, "the days"); if (d == null || !d) return ui.say("days, as a whole number", "err");
+          var d = digits(days.value, 365n, "the number of days"); if (d == null) return; if (!d) return ui.say("at least one day", "err");
           return ui.clock().then(function (now) {
             var until = now + d * 86400n;
             return ui.propose({ to: S.pool, key: "pool.sealMarket", args: [ID, until], need: R.HOLD,
@@ -412,7 +428,7 @@
       var wr = ui.el("div"); y.append(wr); wr.append(ui.el("h3", "", "after a rebase"));
       ui.act(wr, "writeDown", "write the reserves down to what is held", R.HOLD, function () {
         return ui.propose({ to: S.pool, key: "pool.writeDown", args: [ID], need: R.HOLD,
-          lines: [["Token", "#" + ID], ["Writes", "each reserve down to what the pool holds"], ["Refused when", "nothing has shrunk"]],
+          lines: [["Token", "#" + ID], ["Refused when", "nothing has shrunk"]],
           sentence: "writes #" + ID + "'s reserves down to what the pool actually holds", then: after });
       });
       var cl = ui.el("div"); y.append(cl); cl.append(ui.el("h3", "", "close it"));
@@ -420,7 +436,7 @@
       else if (M.rB || M.rQ) ui.note(cl, "the inventory must be empty first: withdraw it, then close");
       else ui.act(cl, "closeMarket", "review the closing", R.HOLD, function () {
         return ui.propose({ to: S.pool, key: "pool.closeMarket", args: [ID], need: R.HOLD,
-          lines: [["Token", "#" + ID], ["Refused unless", "both reserves are zero and no seal stands"]],
+          lines: [["Token", "#" + ID], ["Refused unless", "both reserves are zero"]],
           sentence: "closes #" + ID + "'s market; it can be opened again", then: after });
       });
     }
@@ -434,16 +450,18 @@
       var oS = ui.field(f, "sniper fee at open, in bps (≤ 9000)", "0"); oS.name = "sniperBps";
       var oT = ui.field(f, "sniper window, in seconds (≤ 5880)", "0"); oT.name = "sniperSeconds";
       ui.act(f, "openMarket", "review the opening", R.HOLD, function () {
-        var b = String(oB.value).trim() || ZERO, q = String(oQ.value).trim() || ZERO;
+        /* "0x0 for ETH", as the labels say: an empty field, 0x0 or any run of zeros is the native coin */
+        var eth0 = function (s) { s = String(s).trim(); return /^(0x0*)?$/i.test(s) ? ZERO : s; };
+        var b = eth0(oB.value), q = eth0(oQ.value);
         if (!ui.isAddr(b) || !ui.isAddr(q)) return ui.say("two coin addresses (0x0 for ETH)", "err");
         if (same(b, q)) return ui.say("two different coins", "err");
         var fee = digits(oF.value, 500n, "the fee"), cv = digits(oC.value, 80000n, "the curve"), sb = digits(oS.value, 9000n, "the sniper fee"), ss = digits(oT.value, 5880n, "the sniper window");
         if (fee == null || cv == null || sb == null || ss == null) return;
         return ui.propose({ to: S.pool, key: "pool.openMarket", args: [ID, b, q, fee, cv, sb, ss], need: R.HOLD,
           lines: [["Token", "#" + ID], ["Base", isEth(b) ? "ETH" : ui.short(ui.checksum(b))], ["Quote", isEth(q) ? "ETH" : ui.short(ui.checksum(q))], ["Fee", fee + " bps, paid to whoever holds the token"],
-                  ["Curve", cv + " bps of concentration"], ["Sniper fee", sb ? sb + " bps at open, falling to nothing over " + ss + " s — set here and nowhere else" : "none"], ["Priced by", "the curve trait"]],
+                  ["Curve", cv + " bps of concentration"], ["Sniper fee", sb ? sb + " bps at open, falling to nothing over " + ss + " s — set here and nowhere else" : "none"]],
           sentence: "opens #" + ID + "'s market, " + (isEth(b) ? "ETH" : ui.short(ui.checksum(b))) + " against " + (isEth(q) ? "ETH" : ui.short(ui.checksum(q))) + " at " + fee + " bps" + (sb ? " with a sniper fee of " + sb + " bps for " + ss + " s" : ""),
-          then: function () { return syncClock().then(syncMarket).then(function () { paint(); }); } });
+          then: after });
       });
     }
 
@@ -456,7 +474,7 @@
       ui.kv(f, "reserves", amt(M.rB, Bc.dec) + " " + Bc.sym + " · " + amt(M.rQ, Qc.dec) + " " + Qc.sym);
       ui.kv(f, "fee", M.fee + " bps");
       ui.kv(f, "curve", M.curve + " bps");
-      ui.kv(f, "seal", M.seal > chainNow() ? "sealed until " + date(M.seal) : "none");
+      ui.kv(f, "seal", M.seal ? (M.seal > chainNow() ? "sealed until " : "lapsed ") + date(M.seal) : "none");
       clearTimeout(snT);
       if (M.snBps && M.snUntil > chainNow()) {
         var sn = ui.kv(f, "sniper fee", ""); sn.id = "swap-sniper";
@@ -485,12 +503,15 @@
         return Promise.all(r.arr(0).map(function (key) {
           return ui.read(S.pool, "pool.marketOf", [key]).then(function (m) {
             if (m.w(15) !== BigInt(ID)) return;
-            var row = ui.el("div", "sealed"); d.append(row);
-            ui.kv(row, "sealed market " + String(key).slice(0, 8) + "…", "owes " + m.w(13) + " base units · " + m.w(14) + " quote units to #" + ID + "'s feeSink");
-            ui.act(row, "collect", "collect its fees", 0, function () {
-              return ui.propose({ to: S.pool, key: "pool.collect", args: [key], need: 0,
-                lines: [["Sealed market", String(key)], ["Pays", "its owed fees to #" + ID + "'s feeSink"], ["Who may", "anyone; the recipient is fixed"]],
-                sentence: "collects the fees sealed market " + String(key).slice(0, 10) + "… owes to #" + ID + "'s feeSink" });
+            /* its quote is ETH by construction (Pool.openSealed refuses any other); its base is the launch coin, read like the pair's */
+            return sym(m.a(0)).then(function (s) {
+              var row = ui.el("div", "sealed"); d.append(row);
+              ui.kv(row, "sealed market " + String(key).slice(0, 8) + "…", "owes " + amt(m.w(13), s[1]) + " " + s[0] + " · " + amt(m.w(14), 18) + " ETH to #" + ID + "'s feeSink");
+              ui.act(row, "collect", "collect its fees", 0, function () {
+                return ui.propose({ to: S.pool, key: "pool.collect", args: [key], need: 0,
+                  lines: [["Sealed market", String(key)], ["Pays", "its owed fees to #" + ID + "'s feeSink"], ["Who may", "anyone; the recipient is fixed"]],
+                  sentence: "collects the fees sealed market " + String(key).slice(0, 10) + "… owes to #" + ID + "'s feeSink" });
+              });
             });
           });
         }));
@@ -499,7 +520,8 @@
 
     /*═══════════ paint ═══════════*/
     function paint() {
-      host.replaceChildren(); card = null; elseOut = null; elseBox = null; pending = null; qseq++; clearTimeout(snT);
+      host.replaceChildren(); card = null; elseOut = null; elseBox = null; requote = null; pending = null; qseq++; clearTimeout(snT);
+      seenBits = ui.rights(); seenAcct = ui.account();
       if (!(S.reported & S.bits.pool) || !M) {
         ui.note(host, S.absent & S.bits.pool ? "the market contract is not deployed on this chain" : "the market could not be read at block " + S.block + " — not the same fact as having no market", "warn");
         S.loaded.swap = true; return;
@@ -519,6 +541,7 @@
       if (M.open) swapCard(owned); else ui.note(owned, "no market is open for #" + ID + "; its holder opens one below");
       yourMarket(owned);
       directory(owned);
+      ui.note(owned, "trade history and Market listings are not built into this page yet");
       if (routerOn && M.open) elsewhere(host);
       show();
       S.loaded.swap = true;
@@ -530,7 +553,14 @@
       }
     }
     paint();
-    window.addEventListener("intact:rights", paint);
+    /*  intact:rights fires after every receipt. The same bits for the same account is not a reason to
+        wipe the card: the lane re-quotes instead, so the approve step's "press the same button again"
+        holds — the amount stays typed and the button's step moves to Swap. Different bits, or another
+        account, repaint: the holder's half and every gate are theirs. */
+    window.addEventListener("intact:rights", function (e) {
+      var d = e.detail || {};
+      if (String(d.bits) !== String(seenBits) || String(d.account) !== String(seenAcct)) paint(); else if (requote) requote();
+    });
     window.addEventListener("intact:epoch", paint);
     window.addEventListener("intact:lane", function (e) { if (e.detail && e.detail.name === "swap") paint(); });
   }).catch(function (e) { ui.say("this lane failed to open: " + (e && e.message), "err"); });
