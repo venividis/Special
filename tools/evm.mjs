@@ -408,6 +408,13 @@ export class Chain {
   }
 
   /// @dev A read. Runs as a call so state is untouched and gas is free.
+  ///      `skipNonceIncrement`: ethereumjs's `runCall` at depth 0 bumps
+  ///      the caller's nonce as if a transaction had been sent, which an
+  ///      `eth_call` never does. INTACT U10 found it when two reads of the
+  ///      factory's gate between the factory and the Engine moved the
+  ///      Engine from CREATE(burner, 2) to CREATE(burner, 4) in-process
+  ///      while a real node would have left it at 2 — the one place the
+  ///      harness and the wire would have disagreed about an address.
   async call(to, data, from) {
     const res = await this.vm.evm.runCall({
       to: createAddressFromString(to),
@@ -416,7 +423,8 @@ export class Chain {
       data: hexToBytes(data.startsWith("0x") ? data : "0x" + data),
       gasLimit: 3_000_000_000n,
       value: 0n,
-      block: BLOCK
+      block: BLOCK,
+      skipNonceIncrement: true
     });
     if (res.execResult.exceptionError) {
       const ret = bytesToHex(res.execResult.returnValue || new Uint8Array());
