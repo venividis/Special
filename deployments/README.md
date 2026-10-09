@@ -10,7 +10,7 @@ when they do not.
 ## The recovery rule
 
 ```
-node tools/recover-record.mjs deployments/<chainId>.json     # RPC_URL or the record's rpc
+node tools/recover-record.mjs deployments/<chainId>.json     # RPC_URL from the environment; 31337 defaults to the local node
 ```
 
 Every field that can be read back is read back and compared. Addresses
