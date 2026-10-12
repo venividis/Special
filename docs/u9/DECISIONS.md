@@ -1,4 +1,4 @@
-<!-- Working document from the U9 design phase (2026-10-08), kept so the panel work can resume. docs/CONSOLE.md is the contract and wins wherever the two disagree; D1–D6, D10–D15, D17 and D18 were executed in the prep and shell commits (see docs/CHECKPOINT.md). -->
+<!-- Working document from the U9 design phase (2026-10-08), kept as the record of what was decided. docs/CONSOLE.md is the contract and wins wherever the two disagree; D1–D6, D10–D15, D17 and D18 were executed in the prep and shell commits, D7–D9, D16 and D19–D20 by the shell and the six panels (see docs/CHECKPOINT.md). -->
 
 # G — decisions for INTACT U9 (taken by the unit lead after reading A–F)
 

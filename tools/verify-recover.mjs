@@ -33,10 +33,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { Chain, warp, BLOCK, encodeParams, enc, decAddr } from "./evm.mjs";
+import { Chain, warp, BLOCK, encodeParams, enc, decAddr, decUint, decBool } from "./evm.mjs";
 import { compile, shipRule, artifact } from "./compile.mjs";
 import { ROOT, adapt, deployIntact, predictCreate3, saltOf, SALTED, PLACEHOLDERS, RECORD_KEYS, PINS, DEPLOY_ORDER,
-         PROXY_INITCODE_HASH, bandOf, assertTiles, BANDS, COLLECTION, kec, parseArgs, readDist, atomicWrite, CLI_OPTIONS } from "./deploy.mjs";
+         PROXY_INITCODE_HASH, bandOf, assertTiles, BANDS, COLLECTION, kec, parseArgs, readDist, atomicWrite, CLI_OPTIONS, decWords } from "./deploy.mjs";
 import { recover } from "./recover-record.mjs";
 import { predictCreate, PANELS } from "./site.mjs";
 
@@ -166,6 +166,35 @@ ok("a journal belonging to another deployer is refused", msg && !msg.startsWith(
   atomicWrite(bogus, { ...JSON.parse(fs.readFileSync(journalPath, "utf8")), steps: { factory: { address: "0x" + "99".repeat(20), codehash: "0x" + "00".repeat(32) } } });
   const b = await throwsWith(() => deployIntact(ad1, { out, journalPath: bogus, recordPath: null }), /factory at .* with no code .* remove .*bogus\.journal\.json/);
   ok("a journal naming a factory with no code is refused with the remedy named", b && !b.startsWith("wrong"), b);
+}
+
+/*──────────────── a crash mid-engine, then a rebuilt dist/ ────────────────*/
+head("a resume whose stored shards differ from the plan is refused before freeze");
+{
+  const adX = adapt(await Chain.open({ chainId: 31337 }));
+  const jX = path.join(scratch, "crash.journal.json");
+  const { plan: planX, manifest: manX } = readDist();
+  const counts = async (engine) => { const w = await adX.read(engine, "shardCount()"); return `${decUint(w, 0)},${decUint(w, 1)}`; };
+  const died = await throwsWith(() => deployIntact(adX, { out, plan: planX, manifest: manX, journalPath: jX, recordPath: null, crashAfter: "loadBody:0" }), /crashed after loadBody:0/);
+  ok("a run that dies right after its first body shard leaves a journal behind", died && !died.startsWith("wrong") && fs.existsSync(jX), died);
+  const engineX = low(JSON.parse(fs.readFileSync(jX, "utf8")).steps.engine.address);
+  eq("with one head and one body shard stored and the Engine not frozen", `${await counts(engineX)} ${decBool(await adX.read(engineX, "frozen()"))}`, "1,1 false");
+  // dist/ is rebuilt before the resume: the first body shard's bytes change, and so does its hash
+  const rebuilt = clone(planX);
+  const data = rebuilt.body[0].data;
+  const flipped = data.slice(0, -2) + (parseInt(data.slice(-2), 16) ^ 0xff).toString(16).padStart(2, "0");
+  rebuilt.body[0] = { ...rebuilt.body[0], data: flipped, hash: kec(Buffer.from(flipped.slice(2), "hex")) };
+  const refused = await throwsWith(() => deployIntact(adX, { out, plan: rebuilt, manifest: manX, journalPath: jX, recordPath: null }),
+                                   /body shard 0 stored on the chain \(0x[0-9a-f]{64}\) is not the plan's .* nothing more was sent and the Engine is not frozen/s);
+  ok("resuming with the rebuilt dist/ is refused, naming the shard that differs", refused && !refused.startsWith("wrong"), refused);
+  eq("nothing more was sent and the Engine is still open", `${await counts(engineX)} ${decBool(await adX.read(engineX, "frozen()"))}`, "1,1 false");
+  eq("the stored body shard is the interrupted run's, untouched", decWords(await adX.read(engineX, "shardHashes()"))[1].toLowerCase(), planX.body[0].hash.toLowerCase());
+  const fewer = clone(planX); fewer.body = [];
+  const short = await throwsWith(() => deployIntact(adX, { out, plan: fewer, manifest: manX, journalPath: jX, recordPath: null }), /body shard 0 is stored but the plan has only 0 body shard/);
+  ok("a plan with fewer shards than the chain already holds is refused too", short && !short.startsWith("wrong"), short);
+  const resumed = await deployIntact(adX, { out, plan: planX, manifest: manX, journalPath: jX, recordPath: null });
+  const rX = await recover(adX, resumed, { out });
+  eq("while the honest resume, with the interrupted run's own plan, completes and recovers with 0 disagreeing", `${resumed.engine.frozen} ${rX.disagreements.length}`, "true 0");
 }
 
 /*──────────────── the refusal ────────────────*/

@@ -592,6 +592,7 @@ An AI agent is a holder-authorised key on the Reach and nothing more. **Manifest
 | F4 | Escaping everywhere; `textContent` only; CSP meta present | `tools/verify-site.mjs` · "a coin named `</script>` cannot end the state block" |
 | F5 | Viewer never asks to sign; picker never auto-selects; rights recomputed on account/chain change | `tools/verify-console.mjs` · "the opaque origin shows the viewer and never a wallet prompt" |
 | F6 | Optional dependencies degrade; "zero" ≠ "no answer"; hash-manifest and gateway diff | `tools/verify-site.mjs` · "an absent Router hides the tab and sets the chip to not reported"; `tools/verify-gateway.mjs` |
+| F7 | The confirm slab: the custody epoch is re-read immediately before Sign; every approval the slab builds is exact, also inside a Reach call; every deadline is the chain's clock; no panel can reach a provider | `tools/verify-site.mjs` · "the epoch is re-read immediately before Sign, and a changed epoch closes the slab unsent", "every approval the slab builds is exact", "an unlimited approve hidden in a Reach call is still refused", "no panel can reach a provider" |
 | G1 | Receiving a token grants no authority; no `onERC*Received` grants anything | `test/Rights.t.sol` · `test_receivingATokenGrantsNothing` |
 | G2 | Catalog hashes on chain; bridge refuses mismatch | `sdk/mcp.test.mjs` · "a catalog whose hash drifted is refused" |
 | H1 | Transient slots hashed, single-purpose, cleared on every exit incl. revert | `test/Transient.t.sol` · `test_everySlotIsRegisteredAndClearedOnRevert` |
