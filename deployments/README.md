@@ -157,8 +157,12 @@ A fixture produced by an actual local run against `npx hardhat node`
 A rehearsal that must not overwrite it passes `--record <path>` (and
 `--journal <path>`); the deployer refuses an option it does not know.
 Its `engine.placeholder` says whether `dist/` held the placeholder shell
-from `tools/fixtures/` (until U9's shell lands, it does); `deploy.mjs`
-refuses to deploy a placeholder anywhere but 31337. Its deployer is
+from `tools/fixtures/`: it did until U9 landed; the record in the tree was
+regenerated on 2026-10-12 from the console with every lane real and reads
+`false`, so a fresh local deploy from the same sources recovers against it
+with 0 disagreeing. `deploy.mjs` refuses to deploy a placeholder anywhere
+but 31337, and a resumed run refuses a `dist/` rebuilt since the Engine's
+first shards were stored. Its deployer is
 hardhat's first account, which is nobody's burner; the warning the run
 printed is the record's `deployer` field.
 

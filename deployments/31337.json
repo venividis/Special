@@ -80,11 +80,11 @@
   "crest": "0x6ef70eadf4183436ee1e1f35330874e1265a315a3c32925f395745d4868eb36c",
   "reachImpl": "0x949c6883c6a50b12d853ff08b25b69ac2ff586bd829271184a56a97d0b30cf58",
   "gripImpl": "0x239b658de98d451e4c4305e90f433964b50700b9f60973d32f33fa5fe4189824",
-  "catalogRows": "0x8be582e8b9a629b6c1cf4c8f221387576ad630a954312261617bae96c2f40138",
-  "catalogText": "0xa0cffba1a246016f2600f1cc882b7c816f44d8581268c5a7f800841451dccd34",
-  "catalogState": "0x257d0b6530985dcf9c54f3182dd47061f8c9e7be4db8f2e043725ca45b01c34c",
-  "catalog": "0x046d4066a6108217849c960ce171420da3bd43201e01037a9a5c6528d7c7191e",
-  "renderer": "0x70eac4a2afc0453716c1057897a8793d36ec3931d8eeb7b898b3010c194e3f1a",
+  "catalogRows": "0x708c76c6a7782812a7a3f42a1323dcc11eab36b9f943a325a07f82184df043d8",
+  "catalogText": "0xd346984c30a715fcb9761ef63d8e81786ec283236945cfb7e51f5d031040b406",
+  "catalogState": "0xdc1edf186543188a102827ce1ab1498b981202bfabc95d2d13e32dee794f53cd",
+  "catalog": "0x826767442f87b1c534a96bf05f93b44ad30fc3d80078bb8aa0d3b16e690e340a",
+  "renderer": "0xd531647379c715a0e29bb8936e2c1253ad56ba6e10e4938d9d89bb8489db82af",
   "coreFacet": "0xb00dfd3567abb0e341ea651c60bf6adb2b8a8bec859d3c20ccc5d418c3243a48",
   "rightsFacet": "0xbe8a7da18b36927584e6aaebf8dfa8dcd62465b5314968d7043b0913130cdcb9",
   "mintFacet": "0x1ed4c77e84caab9a77c5bd5166c8a86539352f351c50cb66ea94a09776018074",
@@ -386,25 +386,25 @@
   },
   "curator": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
   "frozen": true,
-  "engineHash": "0x41c9d5532b90c80b357da459a05aa43f5d997a3ad8326952d7a92fe218c4dcf1",
-  "inflatedSize": 5125,
+  "engineHash": "0xc1acdbcc40b641dac296c7d9a1f64e90ee74512c8b423d3530ab21015267834d",
+  "inflatedSize": 37115,
   "shardHashes": [
    "0xb6acaff94afb2d06c080baa4cf3f22ba12559e5ef7dedbc3d181379aa8768d47",
-   "0x9c7c58a99e6366c31afa1121afb147dd77c27027aff1df94d852d9fbbf363ed4",
-   "0xe3b6dcc075da3215e43a633150fbe35566dc8faf4520c60825e946892c7bf1bf",
-   "0xd5c526f965eacec23f7dc67c4960613d0a84c0cedcd343aafc46675ced9218ee",
-   "0xc23efee5bf664db103a631be047e203c5116e2c244848bbfa6948e3cacd29f13",
-   "0x22914ea8b4105a0934e84aa6c14763e119ca1423276795698ae1ca4e3b6e2891",
-   "0x0b1f52e9525b81a892f1269940c5483cfed003312fe7d0470a49b06b07e49d85",
-   "0xc2361cdd7f41b4f6d2acbe392861e2002fe75ef95aa8390531b2b3645f90dad7"
+   "0x08540320d4f84bf3569324027ea54543a1e1c55991353b14b589bc8ce4f96b39",
+   "0xa80f76158d77bdc9cf5e9d71b18bca290394e3de411374ce54ff6d5bea98af1f",
+   "0x0dcbd1153a29693fd1a1a890026d0060616217b41918ea1971b936973372d7b5",
+   "0x86abd9726beb2c4e73a2b6de4c461a43c1238ebe0ddfaf9905552724d038a870",
+   "0x802c164931ff1b2bf8404078632628c46f102ff20f3b4ca984130c5b6c93f36a",
+   "0xe5e2c6d310d99de7ab63d50031f5ad6440dec4685d612062fefe067ff0fe2359",
+   "0x13c633dd8227de2c63ea66200fbb23eac28b2b48c9b1c611806674ab6fda3e68"
   ],
   "panelHashes": {
-   "swap": "0xe401a24d505d352aab15ba41a5092b54b269ff9850994d8abab613f401a524d8",
-   "social": "0xd593f3be40bf90bbec83bc4af11121f53c0eea41c12bf201ad55c98174bb8960",
-   "launch": "0xbf1dc61642cb651d99b23b64d0a8b3b031c84e3d78bbddf44cfb4f108d8fac7d",
-   "vault": "0xa68447264e0263e58d651fd3eaf6f632600cd49e892dd239d14103b11eaaca89",
-   "identity": "0xcb9968c18b8fba50469ce790cda5aaf990b0b4700a437674a67fc42d0767b4bf",
-   "agent": "0x6a1379de4b4f071958a72bd3b2e944bf43a25bab72fcf5379357c2ef3ee32882"
+   "swap": "0xdc4b1af24cabfa1b16123a32b97d77dab9736ba078d05afb5258114d5e717c54",
+   "social": "0x428b0eda1396cf894e2d478d64be635d45cd5e2f53cb02fde33d3d97ea2b7394",
+   "launch": "0x9bf63461832fb1c957287f1c26787d749d26eefa38f8aa4b4177adf08e5ae6a3",
+   "vault": "0x8375c52d946ebe840762ae3233cbdc1161598f84ed1bcbb43db3935995a17d84",
+   "identity": "0xf7df7d9bd4099377128cdaff9ba3d47fa622916ce3c58df0f62a39b0cdbf8f02",
+   "agent": "0xbf79819d13154b8f35cf088438a8fcc699ba77772f05bb4e97d4bfbb58bbe548"
   },
   "head": [
    "0x75537828f2ce51be7289709686a69cbfdbb714f1"
@@ -416,44 +416,44 @@
    {
     "name": "swap",
     "address": "0x5392a33f7f677f59e833febf4016cddd88ff9e67",
-    "hash": "0xe401a24d505d352aab15ba41a5092b54b269ff9850994d8abab613f401a524d8",
-    "gzipHash": "0xe3b6dcc075da3215e43a633150fbe35566dc8faf4520c60825e946892c7bf1bf"
+    "hash": "0xdc4b1af24cabfa1b16123a32b97d77dab9736ba078d05afb5258114d5e717c54",
+    "gzipHash": "0xa80f76158d77bdc9cf5e9d71b18bca290394e3de411374ce54ff6d5bea98af1f"
    },
    {
     "name": "social",
     "address": "0xa783cdc72e34a174cca57a6d9a74904d0bec05a9",
-    "hash": "0xd593f3be40bf90bbec83bc4af11121f53c0eea41c12bf201ad55c98174bb8960",
-    "gzipHash": "0xd5c526f965eacec23f7dc67c4960613d0a84c0cedcd343aafc46675ced9218ee"
+    "hash": "0x428b0eda1396cf894e2d478d64be635d45cd5e2f53cb02fde33d3d97ea2b7394",
+    "gzipHash": "0x0dcbd1153a29693fd1a1a890026d0060616217b41918ea1971b936973372d7b5"
    },
    {
     "name": "launch",
     "address": "0xb30daf0240261be564cea33260f01213c47aaa0d",
-    "hash": "0xbf1dc61642cb651d99b23b64d0a8b3b031c84e3d78bbddf44cfb4f108d8fac7d",
-    "gzipHash": "0xc23efee5bf664db103a631be047e203c5116e2c244848bbfa6948e3cacd29f13"
+    "hash": "0x9bf63461832fb1c957287f1c26787d749d26eefa38f8aa4b4177adf08e5ae6a3",
+    "gzipHash": "0x86abd9726beb2c4e73a2b6de4c461a43c1238ebe0ddfaf9905552724d038a870"
    },
    {
     "name": "vault",
     "address": "0x61ef99673a65bee0512b8d1eb1aa656866d24296",
-    "hash": "0xa68447264e0263e58d651fd3eaf6f632600cd49e892dd239d14103b11eaaca89",
-    "gzipHash": "0x22914ea8b4105a0934e84aa6c14763e119ca1423276795698ae1ca4e3b6e2891"
+    "hash": "0x8375c52d946ebe840762ae3233cbdc1161598f84ed1bcbb43db3935995a17d84",
+    "gzipHash": "0x802c164931ff1b2bf8404078632628c46f102ff20f3b4ca984130c5b6c93f36a"
    },
    {
     "name": "identity",
     "address": "0xf45bcadcc83dea176213ae4e22f5af918d08647b",
-    "hash": "0xcb9968c18b8fba50469ce790cda5aaf990b0b4700a437674a67fc42d0767b4bf",
-    "gzipHash": "0x0b1f52e9525b81a892f1269940c5483cfed003312fe7d0470a49b06b07e49d85"
+    "hash": "0xf7df7d9bd4099377128cdaff9ba3d47fa622916ce3c58df0f62a39b0cdbf8f02",
+    "gzipHash": "0xe5e2c6d310d99de7ab63d50031f5ad6440dec4685d612062fefe067ff0fe2359"
    },
    {
     "name": "agent",
     "address": "0xecae6cc78251a4f3b8d70c9bd4de1b3742338489",
-    "hash": "0x6a1379de4b4f071958a72bd3b2e944bf43a25bab72fcf5379357c2ef3ee32882",
-    "gzipHash": "0xc2361cdd7f41b4f6d2acbe392861e2002fe75ef95aa8390531b2b3645f90dad7"
+    "hash": "0xbf79819d13154b8f35cf088438a8fcc699ba77772f05bb4e97d4bfbb58bbe548",
+    "gzipHash": "0x13c633dd8227de2c63ea66200fbb23eac28b2b48c9b1c611806674ab6fda3e68"
    }
   ],
-  "storedBytes": 3013,
-  "placeholder": true
+  "storedBytes": 15519,
+  "placeholder": false
  },
- "catalogHash": "0x99833a1aea440ee977fe4e25a772c08657337a1fab11d334808b99a2df75a014",
+ "catalogHash": "0x4ee284ad6d819b5a8f3e872548bc70a6ffb98027f0da1a4c08a140112134b404",
  "coinTemplate": {
   "bytes": 4417,
   "keccak": "0x5e0426f5c22671c9c063f5a8871b1d6312ee976df3c4f56733c881ed84a09050"
@@ -471,7 +471,7 @@
  },
  "burner": {
   "nonceAfter": "36",
-  "balanceAfter": "9999886058298618697524"
+  "balanceAfter": "9999860842438938648783"
  },
  "venues": null,
  "gas": {
@@ -481,11 +481,11 @@
   "crest": "941945",
   "reachImpl": "4604579",
   "gripImpl": "512860",
-  "catalogRows": "14072671",
-  "catalogText": "4019943",
-  "catalogState": "3540865",
-  "catalog": "3510000",
-  "renderer": "3537845",
+  "catalogRows": "14936948",
+  "catalogText": "4138643",
+  "catalogState": "3548051",
+  "catalog": "3531823",
+  "renderer": "3588351",
   "coreFacet": "2892943",
   "rightsFacet": "1223341",
   "mintFacet": "1290948",
@@ -502,13 +502,13 @@
   "steward": "1986980",
   "premises": "3399149",
   "loadHead": "225757",
-  "loadBody": "634068",
-  "loadPanel": "948460",
+  "loadBody": "3344899",
+  "loadPanel": "9180767",
   "setEngineHash": "68557",
   "freeze": "57857"
  },
- "gasTotal": "69435136",
- "gasThisRun": "69435136",
+ "gasTotal": "81440766",
+ "gasThisRun": "81440766",
  "toolchain": {
   "solc": "0.8.36+commit.8a079791.Emscripten.clang",
   "optimizerRuns": 800,
@@ -519,7 +519,7 @@
  },
  "confirmToken": "DEPLOY_INTACT_LOCAL",
  "journal": "deployments/31337.journal.json",
- "writtenAt": "2026-10-08T23:47:37.027Z",
+ "writtenAt": "2026-10-12T04:28:24.132Z",
  "block": "36",
  "recovered": {
   "checked": 345,
