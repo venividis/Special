@@ -54,7 +54,11 @@
   Resume: every step is journaled to deployments/<chainId>.journal.json
   as soon as its receipt is in. A crashed run re-runs the same command;
   a step whose predicted address already holds code with the journaled
-  codehash is skipped. Code at a prediction that the journal does not
+  codehash is skipped. Engine shards already stored are compared with the
+  plan by keccak (the Engine's own shardHashes()) before anything more is
+  sent: a dist/ rebuilt since the crash is a refusal while the Engine is
+  still open, because the Engine — a plain CREATE at the burner's nonce 2 —
+  can never be redeployed. Code at a prediction that the journal does not
   know is a refusal, not an adoption: the factory admits only the burner
   and the Timelock (`Create3Factory.NotDeployer`), so such code can only
   mean a run this journal does not know about, and a contract at our
@@ -383,7 +387,10 @@ export function toolchain() {
  *       recordPath (null = return only; undefined = deployments/<chainId>.json),
  *       band override, log(line),
  *       mispredict {key: address} — a TEST hook that feeds a wrong prediction
- *       into every constructor that pins `key`, so the refusal can be proved.
+ *       into every constructor that pins `key`, so the refusal can be proved;
+ *       crashAfter "<loadHead|loadBody|loadPanel>:<i>" — a TEST hook that
+ *       throws right after that shard is journaled, so a run that died
+ *       mid-engine can be staged and its resume proved.
  */
 export async function deployIntact(ad, opts = {}) {
   const log = opts.log || (() => {});
@@ -576,18 +583,45 @@ export async function deployIntact(ad, opts = {}) {
     return low(decAddr(ev[0].data, topic === LOADED_TOPIC ? 2 : 0));
   };
   const frozen0 = decBool(await ad.read(engine, "frozen()"));
+  /// a TEST hook beside `mispredict`: die right after a journaled load
+  const crash = (step) => { if (opts.crashAfter === step) throw new Error(`test hook: crashed after ${step}`); };
   if (!frozen0) {
     const counts = await ad.read(engine, "shardCount()");
     const nh = Number(decUint(counts, 0)), nb = Number(decUint(counts, 1));
+    /*  A resumed run finds shards already stored. Each is compared with
+        the plan — by keccak, through the Engine's own shardHashes() —
+        BEFORE anything more is sent. The first version of these loops
+        skipped the stored prefix by count alone, so a dist/ rebuilt
+        between the crash and the resume would have been loaded on top of
+        the old shards and frozen; the manifest comparison would have
+        failed afterwards, but by then the Engine — a plain CREATE at the
+        burner's nonce 2, never redeployable — held a document no plan
+        describes. A reviewer named it; this refuses it while the Engine
+        can still take the right bytes.                                   */
+    if (nh || nb) {
+      const stored = decWords(await ad.read(engine, "shardHashes()")).map(low);
+      const differs = (kind, want, at, i) => i >= want.length
+        ? `${kind} shard ${i} is stored but the plan has only ${want.length} ${kind} shard(s)`
+        : low(want[i].hash) === stored[at] ? null : `${kind} shard ${i} stored on the chain (${stored[at]}) is not the plan's (${low(want[i].hash)})`;
+      const bad = [];
+      for (let i = 0; i < nh; i++) { const d = differs("head", plan.head, i, i); if (d) bad.push(d); }
+      for (let i = 0; i < nb; i++) { const d = differs("body", plan.body, nh + i, i); if (d) bad.push(d); }
+      if (bad.length) {
+        throw new Error(`the Engine at ${engine} already holds ${nh} head and ${nb} body shard(s) that are not this plan's — dist/ was rebuilt since this run began:\n    ${bad.join("\n    ")}\n  nothing more was sent and the Engine is not frozen; rebuild dist/ exactly as the interrupted run built it and resume, or start again with a fresh burner`);
+      }
+      log(`  engine: ${nh} head and ${nb} body shard(s) already stored match the plan (resumed)`);
+    }
     for (let i = nh; i < plan.head.length; i++) {
       const r = took("loadHead", await ad.exec(engine, "loadHead(bytes)", [plan.head[i].data], { label: "loadHead" }));
       await awaitBlock(ad, r.block);
       journal.loads.push({ kind: "head", i, pointer: loadedPointer(r, LOADED_TOPIC, i), tx: r.hash, gas: r.gas.toString(), block: r.block.toString() }); save();
+      crash(`loadHead:${i}`);
     }
     for (let i = nb; i < plan.body.length; i++) {
       const r = took("loadBody", await ad.exec(engine, "loadBody(bytes)", [plan.body[i].data], { label: "loadBody" }));
       await awaitBlock(ad, r.block);
       journal.loads.push({ kind: "body", i, pointer: loadedPointer(r, LOADED_TOPIC, i), tx: r.hash, gas: r.gas.toString(), block: r.block.toString() }); save();
+      crash(`loadBody:${i}`);
     }
     for (let i = 0; i < plan.panels.length; i++) {
       const p = plan.panels[i];
@@ -596,6 +630,7 @@ export async function deployIntact(ad, opts = {}) {
       const r = took("loadPanel", await ad.exec(engine, "loadPanel(uint256,bytes,bytes32)", [i, p.data, p.hash], { label: "loadPanel" }));
       await awaitBlock(ad, r.block);
       journal.loads.push({ kind: "panel", i, pointer: loadedPointer(r, PANEL_TOPIC, i), tx: r.hash, gas: r.gas.toString(), block: r.block.toString() }); save();
+      crash(`loadPanel:${i}`);
     }
     if (low(await ad.read(engine, "engineHash()")) !== low(plan.engineHash)) {
       const r = took("setEngineHash", await ad.exec(engine, "setEngineHash(bytes32,uint32)", [plan.engineHash, plan.inflatedSize], { label: "setEngineHash" }));
