@@ -65,7 +65,7 @@ section.on{display:block}
     ["id", S.id], ["chain", S.chainId], ["holder", S.owner], ["custody epoch", S.epoch],
     ["status", S.status === 0 ? "Active" : "Paused"], ["reach", S.reach], ["grip", S.grip],
     ["sealed until", S.clocks ? S.clocks.sealedUntil : "-"],
-    ["market", S.market ? (S.market.open ? "open" : "closed") : "not reported"],
+    ["market", S.ownedMarket ? (S.ownedMarket.open ? "open" : "closed") : "not reported"],
     ["fingerprint", S.fingerprint], ["engine", S.engineHash], ["catalog", S.catalogHash], ["block", S.block]
   ];
   var dl = $("facts");

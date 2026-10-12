@@ -30,8 +30,13 @@ binary is needed:
 npm install
 npm run compile     # tools/compile.mjs — fails any contract over the EIP-170 ceiling
 npm run forge       # tools/forge.mjs   — runs test/*.t.sol on @ethereumjs/vm with a cheatcode shim
-npm run check       # both
+npm run check       # the whole battery, in the order DESIGN §13 and docs/CHECKPOINT.md give
 ```
 
-Status: waves 0–2 of the build plan are merged except the real app shell (U9) and the deployment
-tooling (U10); `npm run check` runs 271 tests on both hub builds. Unaudited; nothing is deployed.
+Status: waves 0–2 of the build plan are merged. U9 is partial: the console's shell
+(`engine/app.html`), its DOM-and-wallet shim and the boot group are in, and the five lane panels
+(swap, social, launch, vault, identity) are still fixtures, so the build labels the shard plan
+`PLACEHOLDER panels`. U10 (CREATE3 factory, journaled deploy, machine-checked records, read-only
+gateway) is complete. `npm run check` runs the suite on both hub builds, the gas gate cold, the
+shell's boot group through the shim and the record recovery; the counts are in `docs/CHECKPOINT.md`
+after each run. Unaudited; nothing is deployed beyond a local chain.

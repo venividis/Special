@@ -355,7 +355,20 @@ contract CatalogRows is Templated {
         G engine, Q the catalog. Kind: r read, w write, p payable. Via: d
         direct from the holder's wallet, a `acts` (holder or the token's
         Reach), r the Reach only. The selector is keccak'd from the
-        signature at construction; nothing hex is written by hand.      */
+        signature at construction; nothing hex is written by hand.
+
+        A note may not contain `|`, `;` or `"` (they are the row and field
+        separators and the JSON quote) and must be ASCII (a Solidity string
+        literal admits nothing else) - which is why the knownDelegates row
+        says "0xef0100 designation" where the design brief wrote a double
+        bar. Rows added in U9 for the MVB screens (DESIGN §1): the Reach's
+        pieces, the Postage stamp, the four Launchpad clocks, the Steward's
+        instrument heir, the engine hash and the known delegates; Parley's
+        steward tools, `revokeEncryptionKey`, `guardNFT`/`unguardNFT` and
+        ERC-7409 reactions are deliberately NOT here (struck from the MVB
+        panels by the same decision - no row, no control). Each
+        names a public function its contract's ABI serves - the drift gate
+        in tools/verify.mjs fails the build on one that does not.        */
     string internal constant SERVICES =
         "mint|H|mint(address)|p|d|value is price() exactly - the id is in the Transfer log;"
         "transferFrom|H|transferFrom(address,address,uint256)|w|d|;"
@@ -415,6 +428,7 @@ contract CatalogRows is Templated {
         "sealMax|R|sealMax()|w|d|;"
         "guard|R|guard(address)|w|d|;"
         "unguard|R|unguard(address)|w|d|;"
+        "pieces|R|pieces()|r|d|the guarded NFTs - (collection,tokenId)[];"
         "grantSession|R|grantSession(address,uint64,uint128,(address,uint128)[],address[],bytes4[],uint32,uint32)|w|d|;"
         "grantRecipe|R|grantRecipe(address,uint64,address,bytes32,uint256,uint32,uint32)|w|d|;"
         "revokeSession|R|revokeSession(address)|w|d|;"
@@ -450,6 +464,7 @@ contract CatalogRows is Templated {
         "claimSettled|S|claimSettled(uint256,address)|w|d|;"
         "owed|S|owed(address,address)|r|d|;"
         "pendingOf|S|pendingOf(uint256)|r|d|;"
+        "stampOf|S|stampOf(uint256)|r|d|a sent stamp - replyBy and whether it was refunded;"
         "setEncryptionKey|K|setEncryptionKey(uint16,bytes)|w|d|;"
         "getPublicKeys|K|getPublicKeys(address)|r|d|;"
         "keyIdOf|K|keyIdOf(address)|r|d|;"
@@ -472,6 +487,10 @@ contract CatalogRows is Templated {
         "quoteSell|L|quoteSell(uint256,uint256)|r|d|;"
         "snipeTaxBps|L|snipeTaxBps(uint256)|r|d|;"
         "creditOf|L|creditOf(uint256,address)|r|d|;"
+        "graduationTargetOf|L|graduationTargetOf(uint256)|r|d|raised X of Y - the Y, which the Launch struct lacks;"
+        "boughtInWindow|L|boughtInWindow(uint256,address)|r|d|against maxBuyInWindow while the fair window runs;"
+        "lastLaunchAt|L|lastLaunchAt(uint256)|r|d|the next launch is this plus LAUNCH_SPACING;"
+        "firstLaunchApproved|L|firstLaunchApproved(uint256)|r|d|live only under the current epoch;"
         "termsHash|L|termsHash((uint256,address,uint128,uint128,uint128,uint64,uint64,uint128,uint16,uint16,uint16,uint16,uint64,uint8))|r|d|;"
         "contribute|C|contribute()|p|d|raises every holder's floor;"
         "redeem|C|redeem(uint256)|w|d|;"
@@ -495,6 +514,7 @@ contract CatalogRows is Templated {
         "getWill|W|getWill(uint256)|r|d|;"
         "getObit|W|getObit(uint256)|r|d|;"
         "heirHashOf|W|heirHashOf(address,bytes32)|r|d|;"
+        "heirHashOfToken|W|heirHashOfToken(uint256,bytes32)|r|d|an instrument heir - whoever holds token N when the plan matures;"
         "swap|X|swap((uint8,address,address,uint256,uint256,uint64,uint256,bytes,(address,address,uint24,int24,address),uint160))|p|r|only a canonical Reach;"
         "quoteExactIn|X|quoteExactIn((uint8,address,address,uint256,uint256,uint64,uint256,bytes,(address,address,uint24,int24,address),uint160))|r|d|reverts QuoteResult(spent,received,sqrtPriceAfter);"
         "venues|X|venues()|r|d|;"
@@ -504,9 +524,11 @@ contract CatalogRows is Templated {
         "symbol|E|symbol()|r|d|;"
         "decimals|E|decimals()|r|d|;"
         "panel|G|panel(uint256)|r|d|gzip - keccak the inflated bytes against panels;"
+        "engineHash|G|engineHash()|r|d|keccak of the inflated shell - the shell compares its own bytes to this, live;"
         "state|Q|state(uint256)|r|d|;"
         "stateOf|Q|stateOf(uint256)|r|d|;"
-        "services|Q|services()|r|d|";
+        "services|Q|services()|r|d|;"
+        "knownDelegates|Q|knownDelegates()|r|d|keccak of the 23-byte 0xef0100 designation per known 7702 delegate;";
 
     /// @dev The sixteen letters, in the order the constructor takes their addresses.
     bytes internal constant LETTERS = "HPRYTSKNLCOWXEGQ";
@@ -787,19 +809,26 @@ contract CatalogText is Templated {
 
     /*═══════════════════ the rendering, at construction ═══════════════════*/
 
-    /// @dev `{"0x12345678":"NotHolder",…}`.
+    /// @dev `{"0x12345678":"NotHolder()","0x…":"Slippage(uint256,uint256)",…}`
+    ///      — the WHOLE signature, not the name. U7 cut each entry at `(`,
+    ///      which served a name the slab could print and nothing it could
+    ///      decode: a `Slippage(uint256,uint256)` revert carries "got 9,
+    ///      wanted 10" in its data and the panel had no types to read it
+    ///      with. The name is the prefix before `(`; the argument list is
+    ///      what the shell decodes a revert's data against (U9, D6). The
+    ///      buffer is three times the table because a short entry
+    ///      (`Void();`, 7 bytes) renders to 22.
     function _renderErrors(bytes memory t) private pure returns (bytes memory o) {
-        o = new bytes(t.length * 2 + 64);
+        o = new bytes(t.length * 3 + 64);
         uint256 n = _put(o, 0, "{");
         uint256 p;
         while (p < t.length) {
             uint256 e = _find(t, p, ";");
-            uint256 paren = _find(t, p, "(");
             if (p != 0) n = _put(o, n, ",");
             n = _put(o, n, '"');
             n = _writeHex(o, n, uint256(_keccak(t, p, e - p)) >> 224, 4);
             n = _put(o, n, '":"');
-            n = _slice(o, n, t, p, paren - p);
+            n = _slice(o, n, t, p, e - p);
             n = _put(o, n, '"');
             p = e + 1;
         }
@@ -867,14 +896,23 @@ contract CatalogState is Templated {
         '"bits":{"reach":1,"pool":2,"parley":4,"postage":8,"locks":16,"launchpad":32,"steward":64,"router":128,'
         '"market":256,"roles":512,"keys":1024,"agentcard":4096},';
 
+    /*  Four of the token-level keys were once `market`, `locks`, `steward`
+        and `roles` — the names TPL_WORLD above already uses for ADDRESSES.
+        The block was valid JSON and `JSON.parse` kept the last key, so
+        the Locks and Steward addresses were unreachable from every state
+        surface (the gap, `/state.json`, an agent's read) and a panel that
+        wanted `S.locks` got a count. The token-level facts are now
+        `ownedMarket` (the 16-field market object), `reachLocks`
+        (`Locks.lockCountOf(reach)`), `stewardStatus` (`wouldPass`) and
+        `roleCount`; the world-level four stay the addresses (U9, D1).  */
     string internal constant TPL_TOKEN =
         '"price":"\x02","owner":"\x01","reach":"\x01","grip":"\x01","guardian":"\x01","user":"\x01",'
         '"agentWallet":"\x01","proposedWallet":"\x01","feeSink":"\x01","epoch":\x02,"status":\x02,'
         '"locked":\x03,"lockCount":\x02,"guardianHold":\x03,"feesToGrip":\x03,"pinnedFace":\x02,'
         '"launchCount":\x02,"curve":\x02,"name":"\x04","fingerprint":"\x04",'
         '"clocks":{"sealedUntil":\x02,"marketSealedUntil":\x02,"userExpires":\x02,"transferSealUntil":\x02,"createdAt":\x02},'
-        '"market":\x04,"inbox":\x04,"home":\x04,"commons":\x04,"key":\x04,"launches":\x04,"locks":\x04,'
-        '"steward":\x04,"roles":\x04,"holderKeyId":\x04,"reported":\x02,"absent":\x02,';
+        '"ownedMarket":\x04,"inbox":\x04,"home":\x04,"commons":\x04,"key":\x04,"launches":\x04,"reachLocks":\x04,'
+        '"stewardStatus":\x04,"roleCount":\x04,"holderKeyId":\x04,"reported":\x02,"absent":\x02,';
 
     string internal constant TPL_COLLECTION =
         '"price":"\x02","minted":\x02,"open":\x04,"recent":\x04,"commons":\x04,';

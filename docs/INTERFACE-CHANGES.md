@@ -94,6 +94,48 @@ Nothing in `IIntact`, `IReach`, `IPool`, `IParley`, `ILaunchpad`, `ISteward`,
   when present and falls back to `tools/fixtures/` placeholders, marking
   `dist/shards.json` `placeholder: true`.
 
+## U9 — the state block and the catalog, before any shell reads them
+
+No interface under `src/interfaces/` changed. These are shapes the shell,
+the panels and an agent read, settled by the U9 prep so the console is
+built against them once (decisions D1, D3, D4, D5, D6 of the unit lead's
+record). `CATALOG_HASH` moved; nothing was deployed, so nothing is owed.
+
+| Surface | Change | Why |
+|---|---|---|
+| `Catalog.state(id)` — four token-level keys | `market` → `ownedMarket` (the 16-field market object), `locks` → `reachLocks` (`Locks.lockCountOf(reach)`), `steward` → `stewardStatus` (`Steward.wouldPass`), `roles` → `roleCount` (`Roles.liveRoleCount`). The world-level `market`, `locks`, `steward`, `roles` are, and always were meant to be, the ADDRESSES. | `TPL_TOKEN` reused four keys `TPL_WORLD` had already written. The block stayed valid JSON and `JSON.parse` keeps the last key, so the Locks and Steward addresses were unreachable from the gap, from `/token/<id>/state.json` and from any agent's read, and `S.locks` was a count. `tools/verify.mjs` · *"state.locks is the Locks ADDRESS (no longer shadowed by the token's lock count)"*; `test/Premises.t.sol` · `test_everySelectorInTheStateBlockIsComputedOnChain`. |
+| `err` in the state block, `errors` in `/services.json` | Each value is the error's WHOLE signature: `"0x…":"Slippage(uint256,uint256)"`, `"0x…":"NotHolder()"`. The name is the prefix before `(`. | U7 cut each entry at `(` and served a name a slab could print but no types it could decode a revert's data with, so "got 9, wanted 10" could never be said from served data. 211 entries; the rendered table grew 5,851 → 7,144 bytes. `tools/verify.mjs` · *"every err value is a signature: a name, a parenthesised list, and its own selector"*, *"and every err entry IS the signature of the error whose selector it is, as some contract's ABI spells it"*. |
+| `sel` rows (`CatalogRows.SERVICES`), nine added, 150 → 159 | `engine.engineHash` `engineHash()`; `catalog.knownDelegates` `knownDelegates()`; `launchpad.graduationTargetOf` `graduationTargetOf(uint256)`; `launchpad.boughtInWindow` `boughtInWindow(uint256,address)`; `launchpad.lastLaunchAt` `lastLaunchAt(uint256)`; `launchpad.firstLaunchApproved` `firstLaunchApproved(uint256)`; `postage.stampOf` `stampOf(uint256)`; `reach.pieces` `pieces()`; `steward.heirHashOfToken` `heirHashOfToken(uint256,bytes32)`. Every one is a public function its contract's ABI serves (the drift gate in `tools/verify.mjs` fails the build otherwise). | The MVB screens: the self-hash footer's LIVE comparison, the 7702 delegate check, "raised X of Y", "you may still buy X in the window", "next launch in …", the guardian's first-launch approval in Panic's list, a sent stamp's `replyBy`/refund, the Reach's guarded pieces, an instrument heir. Struck from the MVB with NO row and no control: Parley `evict`/`setCooldown`/`hide`, `revokeEncryptionKey`, Reach `guardNFT`/`unguardNFT`, ERC-7409 reactions (`tools/verify.mjs` · *"no row for what the MVB struck …"*). A row's note is ASCII without `\|`, `;` or `"` — the Solidity literal and the row parser admit nothing else. |
+| `Renderer.INFLATE` | `window.INTACT.$doc=t;` immediately before `document.open()`. A property on the state object the sibling script already made — not a binding, so `checkLoader` and *"declares nothing at all in global scope"* still hold. | The inflated text was a `const` dropped after the write and the shell had no byte-exact copy of itself; `documentElement.outerHTML` is a re-serialisation. The shell keccaks `INTACT.$doc` once after first paint, compares with the baked `engineHash` and with a live `engine.engineHash()`, prints "verified against chain at block N" only after the live comparison, then deletes the property. `tools/verify.mjs` · *"the loader keeps the inflated bytes on INTACT.$doc for the shell to hash, immediately before document.open()"*. |
+
+Toolchain shapes settled alongside (not interfaces, recorded here because
+three units build on them):
+
+- `tools/evm.mjs` · `Chain.send()` returns `hash` (keccak of the signed
+  transaction, hex) beside `gas`, `address`, `ret`, `logs`;
+  `Chain.simulate(to, data, {from, value, gasLimit})` → `{ok, data, gas,
+  error}` under a journal checkpoint that is always reverted, with the FULL
+  revert data (`call()` keeps throwing and keeps cutting at 138 hex
+  characters). Additive; U0's file.
+- `tools/build-app.mjs` · `SHELL_GZIP_CEILING` 18,000 → 15,000;
+  `engine/app.css` inlined at the single `<link rel="stylesheet"
+  href="app.css">` marker, `engine/whispers.mjs` inlined into a panel at the
+  one-line `@inline engine/whispers.mjs` block comment with every `export `
+  stripped — both before the minifier and the refusals, both hard errors on
+  a real source missing its marker, a doubled marker, a missing file or a
+  module that no longer parses; the fixtures carry no marker and pass.
+- `tools/gas.mjs` · a one-wei transaction between every two probes, so
+  every route is measured cold (≈ 0.19 M higher on every route that
+  re-reads the engine; see the header).
+- `tools/selftest.mjs` · reads `engine/app.html` between `/*── keccak-256`
+  and the `end of the chain half` box comment the shell places right after
+  `agrees()`; the `S` stub is `{id: 7, hub, chainId: 1, reachImpl: 0,
+  gripImpl: 0}`; 50 chain vectors plus the hard ERC-6551 pair (Reach
+  `0x6aFB0ef97eB85b6742326c7372421a166C5dac1a`, Grip
+  `0xc4392998811A83E714e2E443D5C1f3EC72C55E0A`), pinned against
+  `AccountBinding.predict` by `test/Binding.t.sol`. Exits 1 with "engine/
+  app.html missing" until the shell lands; not in `npm run check` until then.
+
 ## How to add to this file
 
 One row per signature, additive only, with the unit report or issue it

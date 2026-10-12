@@ -50,7 +50,7 @@ head("build");
 const plan = readPlan();
 const DOC = fs.readFileSync(path.join(ROOT, "dist/app.html"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "dist/manifest.json"), "utf8"));
-ok(`shard plan is ${plan.mode}${plan.placeholder ? " (PLACEHOLDER shell from tools/fixtures/)" : ""}`, plan.mode === "packed");
+ok(`shard plan is ${plan.mode}${plan.shellIsFixture ? " (PLACEHOLDER shell from tools/fixtures/)" : plan.placeholder ? ` (PLACEHOLDER panels from tools/fixtures/: ${(plan.fixturePanels || []).join(" ")})` : ""}`, plan.mode === "packed");
 eq("the plan's engine hash is the keccak of dist/app.html", plan.engineHash, kec(Buffer.from(DOC, "utf8")));
 console.log(`      ${plan.storedBytes.toLocaleString()} bytes on chain across ${plan.head.length + plan.body.length} shard(s), ${plan.panels.length} panels`);
 
@@ -156,6 +156,11 @@ ok("the loader hands the payload over on a property, not a global binding", load
 ok("and declares nothing at all in global scope", !/\b(?:const|let|var|function|class)\b/.test(outside), outside.slice(0, 160));
 ok("the state is a sibling script before the loader, so the Window keeps it across document.open()",
    html.indexOf("<script>window.INTACT=") < html.indexOf("<script>self.$INTACT="));
+/*  The one line U9 added to the loader: the inflated text rides as a
+    PROPERTY on the state object, not a binding, so the shell has the exact
+    bytes to keccak against engine.engineHash() after first paint.        */
+ok("the loader keeps the inflated bytes on INTACT.$doc for the shell to hash, immediately before document.open()",
+   html.includes("window.INTACT.$doc=t;document.open();document.write(t);document.close();"));
 
 /*──────────────────── the state block ────────────────────*/
 head("the state written into the document");
@@ -177,20 +182,29 @@ eq("state.parley", S.parley.toLowerCase(), site.parley.toLowerCase());
 eq("state.router is zero on a band with no Router", S.router, ZERO);
 eq("state.engineHash", S.engineHash, plan.engineHash);
 ok("state.block is the block the call ran at", Number(S.block) > 0);
-for (const k of ["clocks", "market", "inbox", "home", "commons", "sel", "err", "topics", "panels", "rights", "bits"]) {
+for (const k of ["clocks", "ownedMarket", "inbox", "home", "commons", "sel", "err", "topics", "panels", "rights", "bits"]) {
   ok(`state.${k} is present`, S[k] !== undefined);
 }
+/*  Four token-level keys once reused the world's address keys; JSON.parse
+    kept the last one and the Locks and Steward addresses were unreachable
+    from every state surface. The world-level four are addresses again.   */
+eq("state.locks is the Locks ADDRESS (no longer shadowed by the token's lock count)", S.locks.toLowerCase(), site.locks.toLowerCase());
+eq("state.steward is the Steward ADDRESS (no longer shadowed by wouldPass)", S.steward.toLowerCase(), site.steward.toLowerCase());
+ok("state.market and state.roles are addresses, and the token's facts live under ownedMarket and roleCount",
+   typeof S.market === "string" && S.market.startsWith("0x") && typeof S.roles === "string" && S.roles.startsWith("0x") &&
+   "ownedMarket" in S && "reachLocks" in S && "stewardStatus" in S && "roleCount" in S);
 
 /* the reported bits: a clear bit is "not reported", never zero */
 const bits = S.bits;
 const rep = (name) => (S.reported & bits[name]) !== 0;
 ok("the Reach reported (bit 1)", rep("reach"));
-ok("the Pool reported (bit 2) — a closed market is a reported zero, not an absence", rep("pool") && S.market && S.market.open === false);
+ok("the Pool reported (bit 2) — a closed market is a reported zero, not an absence", rep("pool") && S.ownedMarket && S.ownedMarket.open === false);
 ok("the Parley reported (bit 4)", rep("parley") && S.home !== null);
 ok("the Postage reported (bit 8) — the inbox defaults open and free", rep("postage") && S.inbox && S.inbox.open === true && S.inbox.postage === "0");
-ok("the Locks reported (bit 16) — zero locks, as a reported zero", rep("locks") && S.locks === 0);
+ok("the Locks reported (bit 16) — zero locks, as a reported zero", rep("locks") && S.reachLocks === 0);
 ok("the Launchpad reported (bit 32)", rep("launchpad") && Array.isArray(S.launches));
-ok("the Steward reported (bit 64) — NO_PLAN, as a reported zero", rep("steward") && S.steward === 0);
+ok("the Steward reported (bit 64) — NO_PLAN, as a reported zero", rep("steward") && S.stewardStatus === 0);
+ok("the Roles did NOT report, and roleCount says null rather than 0", !rep("roles") && S.roleCount === null);
 ok("the Router did NOT report (bit 128) — there is none on this band, and the block says so rather than 0", !rep("router"));
 ok("the Market did NOT report (bit 256) — a prediction with no code yet", !rep("market"));
 ok("the Roles did NOT report (bit 512)", !rep("roles"));
@@ -218,14 +232,34 @@ ok(`every one of the ${selN} selectors in services.json and sel is keccak256(sig
 eq("sel['hub.mint'] is the hub's mint selector", S.sel["hub.mint"], selOf("mint(address)"));
 eq("sel['pool.swapExactIn']", S.sel["pool.swapExactIn"], selOf("swapExactIn(uint256,bool,uint256,uint256,address,uint64)"));
 eq("sel['reach.executeAsSession']", S.sel["reach.executeAsSession"], selOf("executeAsSession(address,uint256,bytes)"));
+/* the rows U9 added for the MVB screens, each a function its contract serves (the drift gate below proves the serving) */
+eq("sel['engine.engineHash'] — the live comparison for the self-hash footer", S.sel["engine.engineHash"], selOf("engineHash()"));
+eq("sel['catalog.knownDelegates'] — the 7702 check", S.sel["catalog.knownDelegates"], selOf("knownDelegates()"));
+eq("sel['launchpad.graduationTargetOf']", S.sel["launchpad.graduationTargetOf"], selOf("graduationTargetOf(uint256)"));
+eq("sel['launchpad.boughtInWindow']", S.sel["launchpad.boughtInWindow"], selOf("boughtInWindow(uint256,address)"));
+eq("sel['launchpad.lastLaunchAt']", S.sel["launchpad.lastLaunchAt"], selOf("lastLaunchAt(uint256)"));
+eq("sel['launchpad.firstLaunchApproved']", S.sel["launchpad.firstLaunchApproved"], selOf("firstLaunchApproved(uint256)"));
+eq("sel['postage.stampOf']", S.sel["postage.stampOf"], selOf("stampOf(uint256)"));
+eq("sel['reach.pieces']", S.sel["reach.pieces"], selOf("pieces()"));
+eq("sel['steward.heirHashOfToken']", S.sel["steward.heirHashOfToken"], selOf("heirHashOfToken(uint256,bytes32)"));
+ok("no row for what the MVB struck: Parley steward tools, revokeEncryptionKey, guardNFT/unguardNFT",
+   !("parley.evict" in S.sel) && !("parley.setCooldown" in S.sel) && !("parley.hide" in S.sel) &&
+   !("keys.revokeEncryptionKey" in S.sel) && !("reach.guardNFT" in S.sel) && !("reach.unguardNFT" in S.sel));
 let errBad = 0;
 for (const [selector, name] of Object.entries(S.err)) {
   const row = Object.entries(SV.errors).find(([s2]) => s2 === selector);
   if (!row) errBad++;
 }
 ok(`the err table (${Object.keys(S.err).length} errors) matches services.json's`, errBad === 0);
-eq("err maps NotHolder()", S.err[selOf("NotHolder()")], "NotHolder");
-eq("err maps Slippage(uint256,uint256)", S.err[selOf("Slippage(uint256,uint256)")], "Slippage");
+/*  The whole signature, since U9: the name is the prefix before `(`, the
+    argument list is what a slab decodes a revert's data with ("got 9,
+    wanted 10"). U7 cut the entry at `(` and served a name nobody could
+    decode an argument against.                                           */
+eq("err maps NotHolder() to its whole signature", S.err[selOf("NotHolder()")], "NotHolder()");
+eq("err maps Slippage(uint256,uint256) with its argument list", S.err[selOf("Slippage(uint256,uint256)")], "Slippage(uint256,uint256)");
+eq("err maps QuoteResult(uint256,uint256,uint160) — the Router's quote-by-revert — whole", S.err[selOf("QuoteResult(uint256,uint256,uint160)")], "QuoteResult(uint256,uint256,uint160)");
+ok("every err value is a signature: a name, a parenthesised list, and its own selector",
+   Object.entries(S.err).every(([s2, sig]) => /^[A-Za-z_]\w*\(.*\)$/.test(sig) && selOf(sig) === s2));
 const SAID = kec(Buffer.from("Said(uint256,uint256,uint64,uint64,uint64,uint8,uint64,uint64,bytes)"));
 eq("topics.said is keccak of the Said signature", S.topics.said, SAID);
 {
@@ -282,8 +316,8 @@ head("the catalog cannot drift from the ABIs");
     if (!CONSTRUCTION_ONLY.has(sig) && !errSels.has(selOf(sig))) lacking.add(`${name}.${sig}`);
   }
   ok(`every error a panel-facing contract declares is in the err table (${errSels.size} entries, ${PANEL_FACING.length} contracts)`, lacking.size === 0, [...lacking].join(", "));
-  ok("and every err entry names the error whose selector it is", Object.entries(SV.errors).every(([s2, name]) => {
-    return [...PANEL_FACING, "Engine", "Timelock", "IIntact"].some((n) => find(n).abi.some((f) => f.type === "error" && f.name === name && selOf(sigOf(f)) === s2));
+  ok("and every err entry IS the signature of the error whose selector it is, as some contract's ABI spells it", Object.entries(SV.errors).every(([s2, sig]) => {
+    return [...PANEL_FACING, "Engine", "Timelock", "IIntact"].some((n) => find(n).abi.some((f) => f.type === "error" && sigOf(f) === sig && selOf(sig) === s2));
   }));
   const eventHashes = new Set();
   for (const cs of Object.values(out.contracts)) for (const c2 of Object.values(cs)) for (const f of c2.abi || []) if (f.type === "event") eventHashes.add(kec(Buffer.from(sigOf(f))));
@@ -424,10 +458,10 @@ head("a coin named </script> cannot end the state block");
   const live2 = await GET(["token", "1", "live"]);
   const S2 = stateOfHtml(live2.body);
   ok("the state block still parses", !!S2);
-  ok("the hostile symbol is in the block, escaped", S2.obj.market.baseSymbol.includes("\\u003c") === false && S2.obj.market.baseSymbol.includes("</script>"));
+  ok("the hostile symbol is in the block, escaped", S2.obj.ownedMarket.baseSymbol.includes("\\u003c") === false && S2.obj.ownedMarket.baseSymbol.includes("</script>"));
   ok("the raw bytes of the document carry no </script> inside the state block", !S2.text.includes("</script>"));
   ok("the name trait is escaped the same way", S2.obj.name === "</script>x" && !S2.text.includes("</script>x"));
-  ok("the market now reports open with the coin as base", S2.obj.market.open === true && S2.obj.market.base.toLowerCase() === coin.toLowerCase());
+  ok("the market now reports open with the coin as base", S2.obj.ownedMarket.open === true && S2.obj.ownedMarket.base.toLowerCase() === coin.toLowerCase());
   const open1 = JSON.parse((await GET(["open"])).body);
   ok("/open lists the market", open1.markets.length === 1 && open1.markets[0].id === 1);
   const uri2 = decString(await c.read(site.hub, "tokenURI(uint256)", [1]));

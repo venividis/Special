@@ -32,7 +32,7 @@
     "fuzz": "node tools/fuzz.mjs",
     "agents": "node tools/agents.mjs",
     "invariants": "node tools/invariants-check.mjs",
-    "check": "npm run compile && npm run facets && npm run forge:monolith && npm run forge:diamond && npm run gas && npm run gas:selftest && npm run static-audit"
+    "check": "npm run compile && npm run facets && npm run selftest && npm run build && npm run forge:monolith && npm run forge:diamond && npm run gas && npm run gas:selftest && npm run verify && npm run verify:site && npm run static-audit && npm run verify:recover"
   },
   "dependencies": {
     "@ethereumjs/common": "^10.1.2",
@@ -47,6 +47,7 @@
   },
   "devDependencies": {
     "hardhat": "^2.29.1",
+    "jsqr": "^1.4.0",
     "playwright": "^1.62.1"
   },
   "overrides": {
