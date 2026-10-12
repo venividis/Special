@@ -3,7 +3,7 @@
 Written at the end of the third build session (2026-10-12). Everything below is on branch
 `ccr-47c47b14-2qr2op` of `venividis/Special` (PR #2): PR #1's head (`claude/special-work-continuation-0l0uhq`,
 7759e48 — U10 complete, U9's shell and its swap, social and launch lanes) plus this session's commits.
-`main` is still at 5aa323b, the first checkpoint. The two panel worktrees' branches (`u9/vault`,
+PR #1 was merged into `main` as d4aba9e on 2026-10-12, so `main` now holds that head. The two panel worktrees' branches (`u9/vault`,
 `u9/identity`) were not pushed; their two files each were checked out into this branch and committed here.
 
 ## What exists and is verified
@@ -55,8 +55,8 @@ into `npm run check` with the "incomplete ≠ pass" rule); U13 the testnet rehea
 pending: D2 and D6 for U14, G2 for U17, F6's gateway half for U13. Wave 4 (post-MVB): U14 Uniswap v4
 launch path; U15 Market; U16 Roles; U17 agent surfaces; U18 Nameplate; U19 audits + mainnet.
 
-Open on GitHub: PR #1 (its head is this branch's base) and PR #2 (this branch). Merge #1 first and #2's
-diff shrinks to this session's commits, or merge #2 and close #1.
+Open on GitHub: PR #2 (this branch), whose diff against `main` is this session's commits alone now that
+PR #1 is merged.
 
 ## How to resume
 ```sh
