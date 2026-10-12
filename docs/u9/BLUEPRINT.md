@@ -1,4 +1,4 @@
-<!-- Working document from the U9 design phase (2026-10-08), kept so the panel work can resume. §1 (prep), §2 (the shell), §6 (verify-site) and the boot blocks of §7 are built; §4, §5 and the five panel groups of §7, §8 (integration) are not. docs/CONSOLE.md is the contract and wins wherever the two disagree; the byte budget in §3 is superseded by the measured 14,976 B recorded in docs/INVARIANTS.md F2. -->
+<!-- Working document from the U9 design phase (2026-10-08), kept as the record of what was planned. Everything in it is built: §1 (prep), §2 (the shell), §6 (verify-site), §4 and §5 (the six panels; cuts named in each panel's header), §7 (every group; dropped lines named in each group's header) and §8 (integration, in docs/CHECKPOINT.md and docs/INVARIANTS.md). docs/CONSOLE.md is the contract and wins wherever the two disagree; the byte budget in §3 is superseded by the measured 14,976 B recorded in docs/INVARIANTS.md F2. -->
 
 # H — the U9 blueprint (what each implementation agent builds, in order)
 
