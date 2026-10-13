@@ -166,11 +166,44 @@ first shards were stored. Its deployer is
 hardhat's first account, which is nobody's burner; the warning the run
 printed is the record's `deployer` field.
 
+## The campaign record (`intact.campaign/1`)
+
+`deployments/<chainId>.campaign.json`, written by `tools/testnet.mjs`
+(U13) beside the deployment record it exercises, and committed with it.
+Where the deployment record says what was deployed, the campaign record
+says what was DONE with it: every function family exercised live, one
+step per transaction, each written as soon as its receipt is in (atomic
+writes, append-only, so a crashed campaign is resumed with `--resume` and
+a step already carrying a receipt is never sent twice). Public receipt
+data only — never a key, never the second key's derivation input.
+
+| Field | Meaning |
+|---|---|
+| `schema`, `chainId`, `network`, `confirmToken` | the chain and the literal token the run carried |
+| `record`, `hub`, `premises` | the deployment record this campaign ran against (a path relative to the repository) and the two addresses it is keyed to; a resume refuses a record whose hub differs |
+| `startedAt`, `finishedAt` | the run's clock |
+| `actors` | `holder` (the burner, who mints and holds the token under exercise), `second` (the buyer, the trader, the session key, the heir and the recipient of the stamped whisper), `secondDerivation` (the text `keccak256("intact.campaign/1:second" ‖ the burner's 32 key bytes)`: the second key is derived from the burner key, funded by it, swept back to it, and never printed) |
+| `amounts` | every amount the campaign spends, in wei or base units, as `tools/testnet.mjs` `AMOUNTS` defines them (one unit is 0.001 ETH) |
+| `preflight` | what the read-only phase saw: the lag probe (`blockA`, `blockB`, `latestTimestamp`, `wallClock`, `skewSeconds`), `gasPrice`, the deployer's `nonce` and `balance`, the `deployBudget` and `campaignBudget` the balance was held to, `campaignGas` and `campaignGasMeasuredOn` (the measured total the budget rests on, or null while it is a budget), `secondFund`, the L1 oracle and its two fees, `placeholder`, the ship rule, the mint `price` |
+| `vars` | what the steps learned from receipts, so a resume can continue without re-reading: `idA`, `idB` (from the `Transfer` logs), `reachA`, `reachB`, `coin` (from `Launched`), `launchId`, `marketKey` (from `Graduated`), `lockId` and `lockDue` (from `Locked`), `stampId` (from `Stamped`), the key ids, the exact-out swap's `maxIn`, the sealed market's `feeQuoteOwed` before `collect` |
+| `steps[]` | `{i, label, family, actor, fn, to, txHash, block, gasUsed, status, notes, ms, at}`. `status` is the receipt's `0x1`; `refused` for a step proven impossible by `eth_estimateGas` and the custom error's selector (a public chain's `summon` inside the quiet period); `local-only` for a clock move on 31337 (`evm_increaseTime`); `skipped` for a step the chain made unnecessary; `failed` for the step a crashed run stopped at. `notes` carries what was read back (the id from the log, the balance delta, the state code) |
+| `families` | per family — `fund`, `mint`, `launch`, `execute`, `market`, `swap`, `speak`, `social`, `raise`, `lock`, `session`, `seal`, `panic`, `steward`, `refusal`, `clock`, `sale` — the step count and the gas, summed from the receipts |
+| `gasTotal`, `secondGas` | the sum over every receipt, and the part the second key paid |
+| `recover` | `recover(ad, record)` run once more from the record on disk after the campaign: `checked`, `disagreeing` (0, or the run failed), `missing` |
+| `gateway` | `url`, and `tools/verify-gateway.mjs`'s `passed`/`failed` against it; on 31337 also `tamper` (the fixture's counts) |
+| `measure[]` | `tokenURI(<idA>)` per endpoint: `endpoint`, `chainId`, `estimateGas` (a number, or `refused: …`), `estimateMs`, `call` (`ok`, or the refusal), `bytes`, `callMs` |
+| `disposition` | `timelockAdmin` read from the chain and the sentence it yields, `recordSaid` (the deployment record's own sentence), `burnerNonce` and `burnerBalance` after the sweep, `secondBalance` (dust under one transfer's gas), `keyFile` (`overwritten and unlinked`, or who destroys the key) |
+
+The campaign is the rehearsal's proof, not its specification: the order
+of the steps and why are in `tools/testnet.mjs`'s header, and
+`docs/DEPLOYMENT.md` reads the measured numbers out of a record.
+
 ## Not in MVB
 
 Reusing an existing Parley on a redeploy (`--reuse parley=<addr>`, as
 IPSEITY's `existingParley`), the post-MVB satellites (AgentCard, Market,
 Roles, LPCustodian, LaunchHook template, Nameplate), the venue table
 (`VENUES` in `tools/deploy.mjs` is empty until each address is probed for
-code on a dated commit), and the campaign/exercise record shapes U13 will
-add.
+code on a dated commit). The campaign record above is U13's; an exercise
+record in IPSEITY's shape (every ABI function walked, with written reasons
+for the skipped ones) is not in MVB.
