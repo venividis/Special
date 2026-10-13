@@ -168,9 +168,14 @@ A rehearsal that must not overwrite it passes `--record <path>` (and
 `--journal <path>`); the deployer refuses an option it does not know.
 Its `engine.placeholder` says whether `dist/` held the placeholder shell
 from `tools/fixtures/`: it did until U9 landed; the record in the tree was
-regenerated on 2026-10-12 from the console with every lane real and reads
-`false`, so a fresh local deploy from the same sources recovers against it
-with 0 disagreeing. `deploy.mjs` refuses to deploy a placeholder anywhere
+regenerated on 2026-10-13 by the wave-4 integration tree's rehearsal
+(`tools/testnet.mjs`, 59 sentences, 0 failed) from the console with every
+lane real and reads `false`, carries `satellites` for the card, the Market
+and the Roles (each queued and landed through the Timelock) and recovered
+with 383 fields, 0 disagreeing; `31337.campaign.json` beside it is that
+run's campaign record, the receipts of every function family walked live.
+A fresh local deploy from the same sources recovers against it with 0
+disagreeing. `deploy.mjs` refuses to deploy a placeholder anywhere
 but 31337, and a resumed run refuses a `dist/` rebuilt since the Engine's
 first shards were stored. Its deployer is
 hardhat's first account, which is nobody's burner; the warning the run

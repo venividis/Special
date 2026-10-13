@@ -283,33 +283,34 @@ chain's clock (five-second polls, up to five minutes).
 ## Measured
 
 From `node tools/testnet.mjs --chain 31337 --confirm DEPLOY_INTACT_LOCAL`
-over `npx hardhat node --port 8547` (cancun), 2026-10-13, this tree: 56
-sentences passed, 0 failed, 101 s in all; every number below is from that
-run's records (`/tmp/wave3/u13/31337.json`, `/tmp/wave3/u13/31337.campaign.json`
-during the build; the fixture committed as `deployments/31337.json` is
-U10's, from the same sources).
+over `npx hardhat node --port 8547` (cancun), 2026-10-13, the wave-4
+integration tree: 59 sentences passed, 0 failed, 72 s in all; every number
+below is from that run's records, committed as `deployments/31337.json`
+and `deployments/31337.campaign.json` (the nameplate and the custodian
+were refused by name: 31337 has no NameWrapper and no probed venue table).
 
 | What | Measured on 31337 | Base Sepolia (84532) | Sepolia (11155111) |
 |---|---|---|---|
-| deploy, in all | 81,440,766 gas, 26 contracts, 41 s; the record recovered in-run: 345 fields, 0 disagreeing | awaiting a funded burner | awaiting a funded burner |
-| deploy, the largest steps | catalogRows 14.94 M · loadPanel (six) 9.18 M · reachImpl 4.60 M · catalogText 4.14 M · renderer 3.59 M · launchpad 3.56 M · catalogState 3.55 M · catalog 3.53 M | — | — |
-| campaign, in all | 5,902,168 gas over 39 transactions (40 steps, one of them the clock); the second key's share 1,445,791 | awaiting a funded burner | awaiting a funded burner |
+| deploy, in all | 89,680,000 gas (`89.68M` as the run prints it) for the 27 MVB contracts in 45 s, 95,874,720 with the three satellites; the record recovered in-run: 362 fields, 0 disagreeing after the MVB, 383 after the satellites | awaiting a funded burner | awaiting a funded burner |
+| satellites, through the Timelock's queue | the card queued for 327,180 and landed for 2,696,364 gas at the address the hub pinned; the Market 203,102 + 1,444,434; the Roles 188,154 + 1,336,285; each landing followed by a recover of the whole record, 0 disagreeing | awaiting a funded burner | awaiting a funded burner |
+| deploy, the largest steps | catalogRows 15.02 M · loadPanel (six) 10.07 M · catalogRowsPost 5.11 M · catalogText 4.72 M · reachImpl 4.60 M · catalog 3.82 M · launchpad 3.81 M · renderer 3.73 M · catalogState 3.55 M · premises 3.40 M | — | — |
+| campaign, in all | 5,907,685 gas over 39 transactions (40 steps, one of them the clock) | awaiting a funded burner | awaiting a funded burner |
 | fund (2) | 42,000 | | |
 | mint (2) | 595,922 | | |
-| launch (1) | 1,090,563 | | |
+| launch (1) | 1,090,585 | | |
 | execute (1) | 124,234 | | |
 | market: openMarket, approve, deposit (3) | 364,028 | | |
 | swap: exact-in, approve, exact-out (3) | 224,284 | | |
 | speak (1) | 180,330 | | |
 | social: two keys, two bindings, the inbox, the stamped whisper, the reply, claimSettled (8) | 1,012,549 | | |
-| raise: create, three buys, graduate, claim, a sealed trade, collect (8) | 1,076,687 | | |
+| raise: create, three buys, graduate, claim, a sealed trade, collect (8) | 1,082,182 | | |
 | lock: lock, release (2) | 289,104 | | |
 | session: grant, act (2) | 332,810 | | |
 | seal (1) | 46,898 | | |
 | panic (1) | 116,177 | | |
 | steward: arrange, summon, cancel (3) | 280,947 | | |
 | sale: transferFrom (1) | 125,635 | | |
-| `tokenURI(1)` | `eth_estimateGas` 7,914,549 gas (16.2 s for the estimate's search on hardhat); a plain `eth_call` answers 72,989 bytes in 2.4 s | awaiting a funded burner (three public endpoints, `--endpoints`) | awaiting a funded burner |
+| `tokenURI(1)` | `eth_estimateGas` 3,779,242 gas (1.4 s for the estimate's search on hardhat); a plain `eth_call` answers 78,109 bytes in 0.11 s | awaiting a funded burner (three public endpoints, `--endpoints`) | awaiting a funded burner |
 | `verify-gateway` against `tools/gateway.mjs` | 240 passed, 0 failed over 33 routes for ids 1 and 2; the tamper fixture: 243 passed, 0 failed (the appended script, the Set-Cookie and the rewritten ETag each caught by name) | awaiting a self-hosted `web3url-gateway` and a funded burner | — |
 
 The read-only preflight against `https://sepolia.base.org` on 2026-10-13,
@@ -324,8 +325,9 @@ the campaign 0.026866 ETH, of which two mints at the default 0.01 ETH
 price are 0.020 and the second key's funding 0.001713 — and the run ended
 with "fund `<address>` with at least 0.027946 ETH more", exit 1.
 
-The hub's `tokenURI` budget in CI is 8,000,000 (`tools/gas.mjs`, 7.64 M
-measured cold in the battery); the 7.91 M the node estimates is the
+The hub's `tokenURI` budget in CI is 8,000,000 (`tools/gas.mjs`, 3.62 M
+measured cold in the battery on the landed shape, after the encoder's
+rewrite — DESIGN §15, decision 39); the 3.78 M the node estimates is the
 estimate's own margin over the execution, not a different measurement.
 
 ## The key, when the run is done

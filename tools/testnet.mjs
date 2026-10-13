@@ -146,10 +146,13 @@ export const CAMPAIGN_GAS = {
   families: { fund: 42000n, mint: 595922n, launch: 1090563n, execute: 124234n, market: 364028n, swap: 224284n, speak: 180330n, social: 1012549n, raise: 1076687n, lock: 289104n, session: 332810n, seal: 46898n, panic: 116177n, steward: 280947n, clock: 0n, sale: 125635n }
 };
 export const CAMPAIGN_BUDGET_GAS = 30_000_000n;
-/// The post-MVB satellites' budget until a wire run has measured them:
-/// each is one `queue` and one `execute` through the Timelock, the
-/// execute carrying the satellite's initcode (deployments/README.md).
-export const SATELLITE_BUDGET_GAS = 2_500_000n;
+/// The post-MVB satellites' budget: each is one `queue` and one `execute`
+/// through the Timelock, the execute carrying the satellite's initcode
+/// (deployments/README.md). Measured on the 31337 rehearsal of 2026-10-13
+/// (the wave-4 integration tree): the card 3,023,544 gas (327,180 to queue,
+/// 2,696,364 to land), the Market 1,647,536, the Roles 1,524,439; the
+/// budget sits over the largest.
+export const SATELLITE_BUDGET_GAS = 3_500_000n;
 
 /*═══════════════════ signatures and topics ═══════════════════*/
 
@@ -417,6 +420,10 @@ async function main() {
            `satellites · ${key} landed at ${record.contracts[key]} through the Timelock's queue (${M(record.satellites[key].executed.gas)} gas to land it) and the record recovered with ${record.recovered.checked} fields, 0 disagreeing`);
       }
     } catch (e) { ok(false, `satellites · ${key}: ${e.message}`); }
+  }
+  for (const key of SATELLITE_ORDER) {
+    const why = admitsSatellite(key, { chainId, band: { band: band.band } });
+    if (why && hasArtifact(SATELLITES[key].file, SATELLITES[key].name)) note(`${key}: not landed on ${chainId} — ${why}`);
   }
 
   const S = record.contracts;
