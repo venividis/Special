@@ -19,6 +19,11 @@
       every other view     16,777,216   the EIP-7825 transaction cap
       nothing, anywhere    50,000,000   geth / erigon / reth --rpc.gascap
 
+  The wave-4 integration rewrote src/lib/Base64.sol (24 bytes a loop, no
+  table, no byte store) when the landed shape's tokenURI(1) crossed the cap
+  at 8.15 M: the same call measured 3.62 M after it on the same deployment,
+  the same 77,664 bytes (DESIGN §15, decision 39).
+
   Two halves: every argument-free view of every argument-free contract
   (a sweep that catches a view before a unit remembers to list it), and
   the routes — the whole MVB deployed from dist/ by tools/site.mjs, every
