@@ -13,6 +13,7 @@ import {Rights, IRightsHub} from "./lib/Rights.sol";
 import {Hook} from "./lib/Hook.sol";
 import {Transient} from "./lib/Transient.sol";
 import {Coin} from "./Coin.sol";
+import {LaunchHook} from "./LaunchHook.sol";
 
 /*  The half of the Launchpad the Kiln speaks to — `recordLaunch`, one
     keeper for the per-token launch clock, the first-launch rule and the
@@ -308,9 +309,13 @@ contract Kiln is IKiln {
     }
 
     /// @dev The catalogue. Kind 0 is the Gate — the header of `Gate` below
-    ///      says why it is the one most launches want. Kind 1 is reserved
-    ///      for the per-launch `LaunchHook` of DESIGN.md §8.4 (U14); until
-    ///      it ships, every other kind is `UnknownRecipe`.
+    ///      says why it is the one most launches want. Kind 1 is the
+    ///      per-launch `LaunchHook` of DESIGN.md §8.4 (U14): `arg` is the
+    ///      launch's coin, and the hook reads its terms from the LPCustodian
+    ///      the Launchpad pins — so the recipe's hash, and therefore the
+    ///      salt a launcher mines, depends on nothing but the coin, and a
+    ///      band with no custodian has no such recipe. Every other kind is
+    ///      `UnknownRecipe`.
     function _recipe(uint8 kind, bytes32 arg) private view returns (bytes memory code, uint16 flags) {
         if (kind == 0) {
             return (
@@ -320,6 +325,16 @@ contract Kiln is IKiln {
                     uint64(uint256(arg))             // liquidity unlocks
                 )),
                 uint16(Hook.BEFORE_REMOVE_LIQUIDITY | Hook.BEFORE_SWAP)
+            );
+        }
+        if (kind == 1) {
+            address custodian = ILaunchpad(LAUNCHPAD).CUSTODIAN();
+            if (custodian == address(0)) revert UnknownRecipe(kind);
+            return (
+                abi.encodePacked(type(LaunchHook).creationCode, abi.encode(
+                    POOL_MANAGER, custodian, address(uint160(uint256(arg)))   // the coin
+                )),
+                uint16(Hook.BEFORE_INITIALIZE | Hook.BEFORE_SWAP | Hook.BEFORE_REMOVE_LIQUIDITY)
             );
         }
         revert UnknownRecipe(kind);
