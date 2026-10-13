@@ -712,11 +712,11 @@ contract CatalogRows is RowTable {
 ///         of the interface until the contract lands, then to both).
 contract CatalogRowsPost is RowTable {
     string internal constant SERVICES =
-        "list|M|list(uint256,uint256,uint64,bytes32,(address,uint256)[])|w|d|holds - the Reach seal and the market seal must cover expiresAt;"
-        "delist|M|delist(uint256)|w|d|holds - unlocks;"
-        "buy|M|buy(uint256,uint256,bytes32)|p|d|value is the price exactly - the fingerprint and the floors are re-read;"
-        "claim|M|claim()|w|d|pulls what buy credited;"
-        "listingOf|M|listingOf(uint256)|r|d|;"
+        "list|M|list(uint256,uint256,uint64,bytes32,(address,uint256)[])|w|d|holds - both seals must reach expiresAt - the fingerprint is getStateFingerprint read live - a floor is (asset,min), asset 0 is ether;"
+        "delist|M|delist(uint256)|w|d|holds while live - anyone once expired or stale;"
+        "buy|M|buy(uint256,uint256,bytes32)|p|d|value is the price exactly - the fingerprint is listingOf(id).fingerprint - re-read the epoch and the fingerprint before Sign;"
+        "claim|M|claim()|w|d|pull what a sale owes you;"
+        "listingOf|M|listingOf(uint256)|r|d|seller price expiresAt epoch fingerprint floors - seller 0 means unlisted;"
         "owed|M|owed(address)|r|d|;"
         "grantRole|D|grantRole((bytes32,address,uint256,address,uint64,bool,bytes))|w|d|holder only - revocable only - one recipient per role id - locks the token;"
         "revokeRole|D|revokeRole(address,uint256,bytes32)|w|d|the holder or the recipient of a live role, anyone for an expired or stale record;"
@@ -807,6 +807,8 @@ contract CatalogText is Templated {
         "said=Said(uint256,uint256,uint64,uint64,uint64,uint8,uint64,uint64,bytes);"
         "founded=Founded(uint256,uint256,uint256,bool,string);entered=Entered(uint256,uint256);"
         "keyBound=KeyBound(uint256,address,uint64,uint16,bytes32);"
+        "orderPosted=OrderPosted(uint256,address,uint256,uint64,bytes32);delisted=Delisted(uint256);"
+        "sold=Sold(uint256,address,address,uint256,uint256);claimed=Claimed(address,uint256);"
         "transfer=Transfer(address,address,uint256);minted=Minted(uint256,address,address,uint8);"
         "custodyEpoch=CustodyEpoch(uint256,uint64);panicked=Panicked(uint256,uint64,address);"
         "statusChanged=StatusChanged(uint256,uint8,uint8);"
