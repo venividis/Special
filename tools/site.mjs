@@ -145,8 +145,16 @@ export async function deploySite(c, out, opts = {}) {
     locks: at(11), steward: at(12), postage: at(13), parley: at(14), roster: at(15),
     pool: at(16), kiln: at(17), launchpad: at(18)
   };
+  /*  U17 (additive): `deployAgentCard` deploys src/AgentCard.sol as the LAST
+      CREATE of the run, at the address the Catalog, the Renderer and the
+      Premises are pinned to before it exists — the card takes their
+      addresses as constructor arguments, so it must come after them and is
+      predicted like everything else. Without the option the pin stays the
+      codeless placeholder and every agent route is a 404, which is what
+      the other verifiers measure.                                         */
+  if (opts.deployAgentCard) P.agentCard = at(19);
   const router = opts.router || ZERO;
-  const agentCard = opts.agentCard || AGENTCARD_PLACEHOLDER;
+  const agentCard = opts.deployAgentCard ? P.agentCard : (opts.agentCard || AGENTCARD_PLACEHOLDER);
 
   // the Catalog's three companions, before it (EIP-3860 keeps them out of its
   // initcode; EIP-7825 keeps the two table renderings in two transactions);
@@ -193,6 +201,10 @@ export async function deploySite(c, out, opts = {}) {
   const got = { catalogRows, catalogText, catalogState, catalog, renderer, premises, coreFacet: facets.CoreFacet, rightsFacet: facets.RightsFacet,
                 mintFacet: facets.MintFacet, siteFacet: facets.SiteFacet, hub, locks, steward, postage, parley, roster,
                 pool, kiln, launchpad };
+  if (opts.deployAgentCard) {
+    got.agentCard = await c.deploy(A("src/AgentCard.sol", "AgentCard").bytecode,
+      encodeParams("address,address,address", [hub, catalog, premises]), "AgentCard");
+  }
   const missed = Object.keys(P).filter((k) => P[k].toLowerCase() !== got[k].toLowerCase());
   if (missed.length) throw new Error("a prediction missed: " + missed.map((k) => `${k} ${P[k]} vs ${got[k]}`).join(", "));
 
