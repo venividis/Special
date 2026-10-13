@@ -86,6 +86,7 @@ interface ICrest {
 interface ICatalog {
     function state(uint256 id) external view returns (bytes memory);           // the `window.INTACT={…}` script body
     function stateOf(uint256 id) external view returns (TokenState memory);
+    function stateFrom(uint256 id, TokenState calldata s) external view returns (bytes memory);   // wave 4 addition: `state(id)` from a state already read
     function services() external view returns (bytes memory);                  // services.json
     function servicesOf(uint256 id) external view returns (bytes memory);      // /token/<id>/services.json
     function open(uint256 from) external view returns (bytes memory);          // /open, 48 per page

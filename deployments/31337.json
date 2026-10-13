@@ -22,6 +22,7 @@
   "reachImpl": "0x6e43bd23e6e971ca8e656552916720ee39ace8ca5b3a5a174f6901b66bad456c",
   "gripImpl": "0x98c761b40501ef9ec93cda66bcd285b4f994919d114c26a9f5b0aabdd92aa956",
   "catalogRows": "0x5fa675ddc7cd467b1f5a1515873f78ef40ea35623c50ff17af8f87f43569b1e5",
+  "catalogRowsPost": "0xf14a82d5275701ce15ec3cad4c2fd0ba937c6a4b14e3cdfe556d9b7bb67df59d",
   "catalogText": "0x4b2b73a8d96e8d2c03efab052699d90e44501cd2b640a0854539adcca18c49ad",
   "catalogState": "0xecbe580fb3c7cbe422ddc38317b72a97f69b071f129c21b16ec32e448d73562f",
   "catalog": "0x05d008d74716e41801327df933fbf59c801ff75f7a6f728cf36d33518fe752fe",
@@ -43,7 +44,9 @@
   "premises": "0x3afa36609001de5c889c0fddc7fe8d74aaa46ef0a820717cefbb16d7ff3fac38",
   "market": "0xff4f9fcb604ba9a615c89a8fbe17f58e253deb8c46a504cd5959b15ee33ddc06",
   "roles": "0xafb529ff86eaea1f054206d1161c2733f54fcb108d3183bed19776f947407850",
-  "agentCard": "0x3daf25cb1677e8e8d84b78fc8573b3512f44a258a9cb3d5997671cb5680b9ee9"
+  "agentCard": "0x3daf25cb1677e8e8d84b78fc8573b3512f44a258a9cb3d5997671cb5680b9ee9",
+  "nameplate": "0x62b63fb3010a3d9dfde888c3de4827ba97254ce19558c6a1dee8dcfc4ee53614",
+  "custodian": "0xa031e2f3e5af7f8f1a60d8efa1f1e6762e22897c4ab52ebb7a49f591e86765dd"
  },
  "contracts": {
   "factory": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
@@ -53,6 +56,7 @@
   "reachImpl": "0x69025561b488064050514716faf7e1ed149c47a6",
   "gripImpl": "0xc78c70163acadf8ea4da8a16052eaf06569f0949",
   "catalogRows": "0xc34b52e0cea361d58743e81ef8af485944d0e7ff",
+  "catalogRowsPost": "0x346303bc091d75e97b0505ff02317a57b02acb95",
   "catalogText": "0x60369ee926606c88c19630588f0cc435ada21547",
   "catalogState": "0xab9e545f67ba5e66f0cd44bf1ada2866f991e198",
   "catalog": "0x6ea54c943310302fc1569fc1feac0b0acb105e1c",
@@ -71,7 +75,10 @@
   "kiln": "0x95716ef5368660e7a322efa81592c492027a4f06",
   "launchpad": "0xc271c6c975dc85e042951ff29b950a9ec979dc0e",
   "steward": "0xf30e9f353d51c439d812ff67edcfe1a247060373",
-  "premises": "0xdddc347818321a47fca4fc0c74b47fad28c3d601"
+  "premises": "0xdddc347818321a47fca4fc0c74b47fad28c3d601",
+  "agentCard": "0xe749b64eb8b600482fd0d4a1b218b1a4e4ed5eb9",
+  "market": "0xd2ddbb01a0e232549de9f24351d3f643353d5f99",
+  "roles": "0x1c2450b8a96781af2a6ec0126fd167ad862ee6f1"
  },
  "codehashes": {
   "factory": "0xc0a673b846766ac7eac5f546b695b503570d686bfe4df79302c7810ee6943fd9",
@@ -80,13 +87,14 @@
   "crest": "0x6ef70eadf4183436ee1e1f35330874e1265a315a3c32925f395745d4868eb36c",
   "reachImpl": "0x949c6883c6a50b12d853ff08b25b69ac2ff586bd829271184a56a97d0b30cf58",
   "gripImpl": "0x239b658de98d451e4c4305e90f433964b50700b9f60973d32f33fa5fe4189824",
-  "catalogRows": "0x708c76c6a7782812a7a3f42a1323dcc11eab36b9f943a325a07f82184df043d8",
-  "catalogText": "0xd346984c30a715fcb9761ef63d8e81786ec283236945cfb7e51f5d031040b406",
+  "catalogRows": "0x0bc24832a22bacbf7e12d1aa28449058176ea6f5eca5ba2019c466efe8ea6d92",
+  "catalogRowsPost": "0xa91a83600436c0600f5fbfe98b5db2a60783580e283b8bda96c9466b575ed241",
+  "catalogText": "0x06d5cedb7c330cea5cf2b96de7d49315563057f6bd73462e69b03eee59df7820",
   "catalogState": "0xdc1edf186543188a102827ce1ab1498b981202bfabc95d2d13e32dee794f53cd",
-  "catalog": "0x826767442f87b1c534a96bf05f93b44ad30fc3d80078bb8aa0d3b16e690e340a",
-  "renderer": "0xd531647379c715a0e29bb8936e2c1253ad56ba6e10e4938d9d89bb8489db82af",
+  "catalog": "0xd6a978d10970106db8feebf9d51c15825459737943a39bfb7cba0f87a87f3876",
+  "renderer": "0xdb69498828351d2cd57c60d0c3806f2ecbca10d2ed0e7d17eef8f3fe1148b92b",
   "coreFacet": "0xb00dfd3567abb0e341ea651c60bf6adb2b8a8bec859d3c20ccc5d418c3243a48",
-  "rightsFacet": "0xbe8a7da18b36927584e6aaebf8dfa8dcd62465b5314968d7043b0913130cdcb9",
+  "rightsFacet": "0x3ad049c8021e5078f70d4cc129df5238033cc940127c5d57945b579afcde38b8",
   "mintFacet": "0x1ed4c77e84caab9a77c5bd5166c8a86539352f351c50cb66ea94a09776018074",
   "siteFacet": "0x1baf800714315d2b6327ffd64373b39686f6cee054cd0df43011b09558b1960f",
   "hub": "0xd9322106dfc329434c918fc3a82ea5c5e13872726bb26cf22cf5cb871b878cda",
@@ -96,10 +104,13 @@
   "parley": "0x27da3f0470fcbaf6bc911dc82c3a9e01a6b4889790028fa47377538f2397ddab",
   "locks": "0x51e0fb478c4ad0801253d85328d1602e397ce0d214cb267bd7e1f8fb63a90d7e",
   "pool": "0x358348da0aa8fbbdd23583ea43bff6526d341122c8201e624375cade4d24192c",
-  "kiln": "0x7e53f8ee7a6970cf61517de4c0b1f0c0685ac4f8bbbcf5d7b67921189b7e74fe",
-  "launchpad": "0x41f46205d9853e3cf011753b6239309bdb5b50b8c97c4cc3d021dc88acdcbbf2",
+  "kiln": "0x73c94c4bbd4a165e94c0bd7cf3c98eb3efcc3cce3159260c8e472a591f674e09",
+  "launchpad": "0xd7e22b214950484ba63cd3a936a79850fb4ce2368a6de5c4e085d23d34e8800c",
   "steward": "0x85a74f080caabc8a3f38d72f7def00b9d5bd405957a43682f241534ac16a1f79",
-  "premises": "0xd20b90fb3c9e3c1a42ccfef615386e6192ac8fc59a3f650f6cc33d8df4897bdf"
+  "premises": "0xd20b90fb3c9e3c1a42ccfef615386e6192ac8fc59a3f650f6cc33d8df4897bdf",
+  "agentCard": "0xb565e0813a13d3317fc463dad7db54b6c12efe18774a9fbfc24313a5e9521e81",
+  "market": "0xb97880a71ec2dd5b30cee3072a31fd0868ed9f85e0a6a9c14004370867708d47",
+  "roles": "0x55347ae8ec7d347232e54ac726d7370583d3e96505be9a7c8834b4a29cc617ee"
  },
  "reproducible": {
   "factory": false,
@@ -109,6 +120,7 @@
   "reachImpl": true,
   "gripImpl": true,
   "catalogRows": false,
+  "catalogRowsPost": false,
   "catalogText": false,
   "catalogState": false,
   "catalog": false,
@@ -127,17 +139,22 @@
   "kiln": false,
   "launchpad": false,
   "steward": false,
-  "premises": false
+  "premises": false,
+  "agentCard": false,
+  "market": false,
+  "roles": false
  },
  "placeholders": {
   "market": "0xd2ddbb01a0e232549de9f24351d3f643353d5f99",
   "roles": "0x1c2450b8a96781af2a6ec0126fd167ad862ee6f1",
-  "agentCard": "0xe749b64eb8b600482fd0d4a1b218b1a4e4ed5eb9"
+  "agentCard": "0xe749b64eb8b600482fd0d4a1b218b1a4e4ed5eb9",
+  "nameplate": "0xa855540c83793fc01651d405f2eb0f1e08f392d6",
+  "custodian": "0xef7015dbd106ea72221dddb5f9b97aa922e1a584"
  },
  "shipBuild": {
   "build": "diamond",
-  "reason": "Intact 25402 B > 24000; IntactDiamond compiled",
-  "intactBytes": 25402,
+  "reason": "Intact 25364 B > 24000; IntactDiamond compiled",
+  "intactBytes": 25364,
   "threshold": 24000,
   "limit": 24576,
   "solc": "0.8.36+commit.8a079791.Emscripten.clang",
@@ -201,7 +218,7 @@
    },
    "RightsFacet": {
     "address": "0x9fd9e51984be51cc5acae4e4d85256542313318b",
-    "codehash": "0xbe8a7da18b36927584e6aaebf8dfa8dcd62465b5314968d7043b0913130cdcb9",
+    "codehash": "0x3ad049c8021e5078f70d4cc129df5238033cc940127c5d57945b579afcde38b8",
     "selectors": [
      "0x136439dd",
      "0x5b42dc33",
@@ -396,7 +413,7 @@
    "0x86abd9726beb2c4e73a2b6de4c461a43c1238ebe0ddfaf9905552724d038a870",
    "0x802c164931ff1b2bf8404078632628c46f102ff20f3b4ca984130c5b6c93f36a",
    "0xe5e2c6d310d99de7ab63d50031f5ad6440dec4685d612062fefe067ff0fe2359",
-   "0x13c633dd8227de2c63ea66200fbb23eac28b2b48c9b1c611806674ab6fda3e68"
+   "0xacb154cdd991424fd483aa778738a02b345f47ac36e6fea28900de240f012876"
   ],
   "panelHashes": {
    "swap": "0xdc4b1af24cabfa1b16123a32b97d77dab9736ba078d05afb5258114d5e717c54",
@@ -404,7 +421,7 @@
    "launch": "0x9bf63461832fb1c957287f1c26787d749d26eefa38f8aa4b4177adf08e5ae6a3",
    "vault": "0x8375c52d946ebe840762ae3233cbdc1161598f84ed1bcbb43db3935995a17d84",
    "identity": "0xf7df7d9bd4099377128cdaff9ba3d47fa622916ce3c58df0f62a39b0cdbf8f02",
-   "agent": "0xbf79819d13154b8f35cf088438a8fcc699ba77772f05bb4e97d4bfbb58bbe548"
+   "agent": "0x8afdd662e9c6709240a95d9e7237e1894f08b2b22110af266b0fbab332839519"
   },
   "head": [
    "0x75537828f2ce51be7289709686a69cbfdbb714f1"
@@ -446,14 +463,14 @@
    {
     "name": "agent",
     "address": "0xecae6cc78251a4f3b8d70c9bd4de1b3742338489",
-    "hash": "0xbf79819d13154b8f35cf088438a8fcc699ba77772f05bb4e97d4bfbb58bbe548",
-    "gzipHash": "0x13c633dd8227de2c63ea66200fbb23eac28b2b48c9b1c611806674ab6fda3e68"
+    "hash": "0x8afdd662e9c6709240a95d9e7237e1894f08b2b22110af266b0fbab332839519",
+    "gzipHash": "0xacb154cdd991424fd483aa778738a02b345f47ac36e6fea28900de240f012876"
    }
   ],
   "storedBytes": 15519,
   "placeholder": false
  },
- "catalogHash": "0x4ee284ad6d819b5a8f3e872548bc70a6ffb98027f0da1a4c08a140112134b404",
+ "catalogHash": "0xfce12e53ab0d6d54b443535230c870699e91f54d8ee3a63f7e5eb46727aff84b",
  "coinTemplate": {
   "bytes": 4417,
   "keccak": "0x5e0426f5c22671c9c063f5a8871b1d6312ee976df3c4f56733c881ed84a09050"
@@ -470,8 +487,8 @@
   "disposition": "the burner holds the admin; rotation or renunciation only through the Timelock's own 7-day queue"
  },
  "burner": {
-  "nonceAfter": "36",
-  "balanceAfter": "9999860842438938648783"
+  "nonceAfter": "43",
+  "balanceAfter": "9999838132190368195823"
  },
  "venues": null,
  "gas": {
@@ -481,13 +498,14 @@
   "crest": "941945",
   "reachImpl": "4604579",
   "gripImpl": "512860",
-  "catalogRows": "14936948",
-  "catalogText": "4138643",
+  "catalogRows": "15020133",
+  "catalogRowsPost": "5113998",
+  "catalogText": "4716609",
   "catalogState": "3548051",
-  "catalog": "3531823",
-  "renderer": "3588351",
+  "catalog": "3819301",
+  "renderer": "3731710",
   "coreFacet": "2892943",
-  "rightsFacet": "1223341",
+  "rightsFacet": "1215134",
   "mintFacet": "1290948",
   "siteFacet": "2053504",
   "hub": "3386464",
@@ -497,18 +515,21 @@
   "parley": "2273826",
   "locks": "1264731",
   "pool": "2825878",
-  "kiln": "2235002",
-  "launchpad": "3555748",
+  "kiln": "3132007",
+  "launchpad": "3813246",
   "steward": "1986980",
   "premises": "3399149",
   "loadHead": "225757",
   "loadBody": "3344899",
-  "loadPanel": "9180767",
+  "loadPanel": "10066920",
   "setEngineHash": "68557",
-  "freeze": "57857"
+  "freeze": "57857",
+  "agentCard": "3023544",
+  "market": "1647536",
+  "roles": "1524439"
  },
- "gasTotal": "81440766",
- "gasThisRun": "81440766",
+ "gasTotal": "95874720",
+ "gasThisRun": "89679201",
  "toolchain": {
   "solc": "0.8.36+commit.8a079791.Emscripten.clang",
   "optimizerRuns": 800,
@@ -518,11 +539,64 @@
   "eip170": 24576
  },
  "confirmToken": "DEPLOY_INTACT_LOCAL",
- "journal": "deployments/31337.journal.json",
- "writtenAt": "2026-10-12T04:28:24.132Z",
- "block": "36",
+ "journal": "../../../../tmp/claude-0/-home-user-Special/fea042d8-0a8c-55df-998e-e398826870e6/scratchpad/rehearsal/31337.journal.json",
+ "writtenAt": "2026-10-13T17:03:30.813Z",
+ "block": "46",
  "recovered": {
-  "checked": 345,
+  "checked": 383,
   "disagreeing": 0
+ },
+ "satellites": {
+  "agentCard": {
+   "via": "timelock",
+   "op": "0x8c9d5304ed9b0a720e5d9f18188bcc0cf212a105ca8bab57013e3362ad830c78",
+   "queued": {
+    "tx": "0x7e5663ccfb34df25aff2c7e29b6d64d8241a5ccb9e492b60b5f8be353c94f468",
+    "block": "38",
+    "gas": "327180",
+    "by": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+   },
+   "eta": "1792515838",
+   "executed": {
+    "tx": "0xe9e02e62614865e4e7a05c29c4f9a9e3c0193298cb134dc72b30ad50bfb69cc2",
+    "block": "40",
+    "gas": "2696364",
+    "by": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+   }
+  },
+  "market": {
+   "via": "timelock",
+   "op": "0xdd8e2e2a6c99877ba0fd2603d9150ccb1dda6f7b2a0fc0d3308388fabbf950ca",
+   "queued": {
+    "tx": "0x3af6e3242483201790e6e06c867f6c6ed64385c6684e34116e2b12d7bd0d4e49",
+    "block": "41",
+    "gas": "203102",
+    "by": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+   },
+   "eta": "1793120641",
+   "executed": {
+    "tx": "0xeb5fed432d02b6f754126733c6d1a11defc7279366dc9a3e71fad5b7fb79d824",
+    "block": "43",
+    "gas": "1444434",
+    "by": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+   }
+  },
+  "roles": {
+   "via": "timelock",
+   "op": "0xd46ec12b059a7f25e15c7181fd1ae4957f4321f4bcbcdcd1563b0dc3f30790a4",
+   "queued": {
+    "tx": "0x8271f8f8234b4b7c364af50c44dcdfffa5960f8d9dd059419451bcae34f48717",
+    "block": "44",
+    "gas": "188154",
+    "by": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+   },
+   "eta": "1793725444",
+   "executed": {
+    "tx": "0xd15ac161ae80ad9a1b20fa134b0040f7caaf37e93817baac75720e0097147148",
+    "block": "46",
+    "gas": "1336285",
+    "by": "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+   }
+  }
  }
 }

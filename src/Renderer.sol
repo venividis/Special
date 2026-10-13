@@ -146,9 +146,17 @@ contract Renderer {
     ///         the loader that inflates it. `id == 0` is the collection's
     ///         own page (`/`).
     function document(uint256 id) public view returns (bytes memory) {
+        return _document(ICatalog(CATALOG).state(id));
+    }
+
+    /// @dev The document around a state block: `document(id)` reads the
+    ///      block itself (the Premises' /live); face 0 hands in the block
+    ///      rendered from the TokenState it already read, so the satellites
+    ///      are probed once per tokenURI. Same bytes either way.
+    function _document(bytes memory state) internal view returns (bytes memory) {
         return abi.encodePacked(
             IEngine(ENGINE).headBytes(),
-            "<script>window.INTACT=", ICatalog(CATALOG).state(id), "</script>",
+            "<script>window.INTACT=", state, "</script>",
             "<script>self.$INTACT=\"", Base64.encode(IEngine(ENGINE).bodyBytes()), "\";</script>",
             INFLATE
         );
@@ -170,7 +178,7 @@ contract Renderer {
     function _face0(uint256 id) internal view returns (string memory) {
         TokenState memory s = ICatalog(CATALOG).stateOf(id);
         return _json(id, s, abi.encodePacked(
-            '"animation_url":"data:text/html;base64,', Base64.encode(document(id)), '",',
+            '"animation_url":"data:text/html;base64,', Base64.encode(_document(ICatalog(CATALOG).stateFrom(id, s))), '",',
             '"image":"data:image/svg+xml;base64,', Base64.encode(_crest(s)), '",'
         ), 0);
     }

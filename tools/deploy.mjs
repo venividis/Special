@@ -44,7 +44,7 @@
   Order (DESIGN §12, every arrow a hard constraint where a constructor
   inspects code): factory → Timelock → Engine (load head, body, six
   panels; setEngineHash; freeze) → Crest → Reach impl → Grip impl →
-  CatalogRows → CatalogText → CatalogState → Catalog → Renderer → hub (the
+  CatalogRows → CatalogRowsPost → CatalogText → CatalogState → Catalog → Renderer → hub (the
   four facets then IntactDiamond, or the monolith, by out/ship.json) →
   KeyRegistry → Roster → Postage → Parley → Locks → Pool → Coin template
   check → Kiln → Launchpad → Router (only where venues are configured) →
@@ -107,6 +107,7 @@ import { REGISTRY, REGISTRY_RUNTIME, ZERO, PANELS, CONFIG_TYPE, CATALOG_CONFIG_T
     hardhat run deployed everything and then exited with code 13 at the
     recovery step, having published nothing.                             */
 import { recover } from "./recover-record.mjs";
+import { ENS_REGISTRY, ETH_REGISTRAR, NAME_WRAPPER } from "./ens-name.mjs";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -174,11 +175,52 @@ export const saltOf = (key) => kec(Buffer.from(SALT_PREFIX + key, "utf8"));
 /// three post-MVB pins are predicted and codeless on every chain today.
 export const SALTED = [
   "timelock", "crest", "reachImpl", "gripImpl",
-  "catalogRows", "catalogText", "catalogState", "catalog", "renderer",
+  "catalogRows", "catalogRowsPost", "catalogText", "catalogState", "catalog", "renderer",
   "coreFacet", "rightsFacet", "mintFacet", "siteFacet", "hub",
   "keys", "roster", "postage", "parley", "locks", "pool", "kiln", "launchpad", "router", "steward", "premises"
 ];
-export const PLACEHOLDERS = ["market", "roles", "agentCard"];
+export const PLACEHOLDERS = ["market", "roles", "agentCard", "nameplate", "custodian"];
+/// AgentCard, LPCustodian, Market, Roles and the Nameplate land AFTER the
+/// MVB record (DESIGN §12's tail), at the addresses the hub, the Catalog,
+/// the Renderer and the Premises already pin — the same factory, the same
+/// salts — and only through the Timelock's seven-day public queue, since
+/// the factory admits nobody but the burner (destroyed once the MVB record
+/// is written) and the Timelock. The admin queues
+/// `Timelock.execute(factory, 0, deploy(salt, initcode))`; anyone lands it
+/// once ripe. On a rehearsal the burner still holds the admin, so one
+/// command queues, moves the clock and lands it. Every constructor
+/// argument comes from the record's own addresses (`args(world)`), so a
+/// satellite can pin nothing the record does not name; `pins` lists the
+/// record keys it needs, refused up front when absent; `bands`, when set,
+/// restricts a satellite to those bands. Entries are added as the units
+/// land (U14–U18).
+export const SATELLITES = {
+  agentCard: { file: "src/AgentCard.sol", name: "AgentCard", pins: ["hub", "catalog", "premises"],
+               args: (w) => encodeParams("address,address,address", [w.hub, w.catalog, w.premises]) },
+  /// the v4 launch path's custodian (U14): lands only where the venue table
+  /// names a probed PoolManager, PositionManager and Permit2 — contract
+  /// addresses probed for code on a dated commit, never recalled
+  custodian: { file: "src/LPCustodian.sol", name: "LPCustodian", pins: ["hub", "launchpad", "kiln"],
+               admits: (rec) => (rec.venues?.poolManager && rec.venues?.positionManager && rec.venues?.permit2 ? null
+                 : `chain ${rec.chainId} has no probed venue table with a PoolManager, a PositionManager and a Permit2 (VENUES in tools/deploy.mjs) — the custodian seeds v4 positions and lands nowhere without one`),
+               args: (w, rec) => encodeParams("address,address,address,address,address,address",
+                 [w.hub, w.launchpad, w.kiln, rec.venues.poolManager, rec.venues.positionManager, rec.venues.permit2]) },
+  market:    { file: "src/Market.sol", name: "Market", pins: ["hub", "pool"],
+               args: (w) => encodeParams("address,address", [w.hub, w.pool]) },
+  roles:     { file: "src/Roles.sol", name: "Roles", pins: ["hub"],
+               args: (w) => encodeParams("address", [w.hub]) },
+  /// band 0's resolver (U18): the ENS singletons are contract addresses
+  /// (`tools/ens-name.mjs`), never endpoints; a chain with no NameWrapper
+  /// in that table is refused by name before anything is sent
+  nameplate: { file: "src/Nameplate.sol", name: "Nameplate", pins: ["hub", "premises"],
+               admits: (rec) => (NAME_WRAPPER[Number(rec.chainId)] ? null : `chain ${rec.chainId} has no NameWrapper in tools/ens-name.mjs's table — the Nameplate is band 0's (Ethereum, and Sepolia to rehearse)`),
+               args: (w, rec) => encodeParams("address,address,address,address,address,string",
+                 [w.hub, w.premises, ENS_REGISTRY, NAME_WRAPPER[Number(rec.chainId)], ETH_REGISTRAR, "intact"]) }
+};
+/// DESIGN §12's post-MVB order. `admits(rec)`, when present, names why a
+/// chain does not take the satellite (null when it does).
+export const SATELLITE_ORDER = ["agentCard", "custodian", "market", "roles", "nameplate"];
+export const admitsSatellite = (key, rec) => (SATELLITES[key].admits ? SATELLITES[key].admits(rec) : null);
 /// DESIGN §12's order as one list, asserted against the journal before the
 /// record is written: the factory, the Timelock, the Engine (whose loads
 /// are journaled apart), then every salted key. The facets exist only in
@@ -201,7 +243,7 @@ export function predictCreate3(factory, salt) {
   return "0x" + kecHex("d694" + proxy + "01").slice(26);
 }
 
-const DEPLOYED_TOPIC = kec(Buffer.from("Deployed(bytes32,address)", "utf8"));
+export const DEPLOYED_TOPIC = kec(Buffer.from("Deployed(bytes32,address)", "utf8"));
 const PANEL_TOPIC = kec(Buffer.from("PanelLoaded(uint256,address,uint256,bytes32)", "utf8"));
 const LOADED_TOPIC = kec(Buffer.from("Loaded(bool,uint256,address,uint256)", "utf8"));
 
@@ -238,8 +280,13 @@ export function adapt(c) {
     balanceOf: (a) => c.balanceOf(a),
     codeAt: async (addr) => inProcess
       ? bytesToHex(await c.vm.stateManager.getCode(createAddressFromString(addr)))
-      : low(await c.rpc("eth_getCode", [addr, "latest"])),
-    blockNumber: async () => inProcess ? EVM.BLOCK.header.number : BigInt(await c.rpc("eth_blockNumber"))
+      : low(await c.rpc("eth_getCode", [addr, await c.tag()])),   // pinned: a replica behind the receipt answers "header not found" and is retried, never 0x
+    blockNumber: async () => inProcess ? EVM.BLOCK.header.number : BigInt(await c.rpc("eth_blockNumber")),
+    /// the chain's clock (the latest block's timestamp) and any account's nonce
+    timestamp: async () => inProcess ? EVM.BLOCK.header.timestamp : BigInt((await c.rpc("eth_getBlockByNumber", ["latest", false])).timestamp),
+    nonceOf: async (addr) => inProcess
+      ? BigInt((await c.vm.stateManager.getAccount(createAddressFromString(addr)))?.nonce ?? 0n)
+      : BigInt(await c.rpc("eth_getTransactionCount", [addr, "latest"]))
   };
   if (inProcess) {
     ad.setCode = async (addr, codeHex) => {
@@ -247,7 +294,10 @@ export function adapt(c) {
       if (!(await c.vm.stateManager.getAccount(a))) await c.vm.stateManager.putAccount(a, new Account());
       await c.vm.stateManager.putCode(a, hexToBytes(codeHex));
     };
+    /// the clock moves only on a chain that is nobody's: in-process, or hardhat
+    ad.warp = async (t) => { EVM.warp(BigInt(t)); };
   } else if (ad.chainId === 31337) {
+    ad.warp = async (t) => { await c.rpc("evm_setNextBlockTimestamp", [Number(t)]); await c.rpc("evm_mine", []); };
     ad.setCode = (addr, codeHex) => c.rpc("hardhat_setCode", [addr, codeHex]);
   }
   return ad;
@@ -317,7 +367,7 @@ export const PINS = [
   ["catalog", "MARKET()", "market"], ["catalog", "ROLES()", "roles"], ["catalog", "TIMELOCK()", "timelock"],
   ["catalog", "PREMISES()", "premises"], ["catalog", "RENDERER()", "renderer"],
   ["catalog", "TEXT()", "catalogText"], ["catalog", "STATE()", "catalogState"],
-  ["catalogState", "TEXT()", "catalogText"], ["catalogText", "ROWS()", "catalogRows"],
+  ["catalogState", "TEXT()", "catalogText"], ["catalogText", "ROWS()", "catalogRows"], ["catalogText", "ROWS_POST()", "catalogRowsPost"],
   ["renderer", "HUB()", "hub"], ["renderer", "ENGINE()", "engine"], ["renderer", "CREST()", "crest"],
   ["renderer", "CATALOG()", "catalog"], ["renderer", "AGENTCARD()", "agentCard"],
   ["premises", "HUB()", "hub"], ["premises", "RENDERER()", "renderer"], ["premises", "ENGINE()", "engine"],
@@ -331,14 +381,22 @@ export const PINS = [
   ["kiln", "POOL_MANAGER()", "venuePoolManager"],
   ["locks", "HUB()", "hub"], ["steward", "HUB()", "hub"],
   ["router", "HUB()", "hub"], ["router", "POOL()", "pool"],
-  ["router", "SWAP_ROUTER02()", "venueSwapRouter02"], ["router", "POOL_MANAGER()", "venuePoolManager"], ["router", "WETH()", "venueWeth"]
+  ["router", "SWAP_ROUTER02()", "venueSwapRouter02"], ["router", "POOL_MANAGER()", "venuePoolManager"], ["router", "WETH()", "venueWeth"],
+  /// the post-MVB satellites' own pins, read back the moment one lands
+  ["market", "HUB()", "hub"], ["market", "POOL()", "pool"],
+  ["roles", "HUB()", "hub"],
+  ["agentCard", "HUB()", "hub"], ["agentCard", "CATALOG()", "catalog"], ["agentCard", "PREMISES()", "premises"],
+  ["launchpad", "CUSTODIAN()", "custodian"],
+  ["custodian", "HUB()", "hub"], ["custodian", "LAUNCHPAD()", "launchpad"], ["custodian", "KILN()", "kiln"],
+  ["custodian", "POOL_MANAGER()", "venuePoolManager"], ["custodian", "POSITION_MANAGER()", "venuePositionManager"], ["custodian", "PERMIT2()", "venuePermit2"]
 ];
 /// The venue table's addresses as PINS targets (`venue*` keys), so the
 /// Kiln's and the Router's venue immutables are read back like every other
 /// pin: a record that lies about `venues.poolManager` is caught by name,
 /// not only by the Router's codehash. Absent venues pin as address(0).
 export const venueTargets = (venues) => ({
-  venuePoolManager: venues?.poolManager || ZERO, venueSwapRouter02: venues?.swapRouter02 || ZERO, venueWeth: venues?.weth || ZERO
+  venuePoolManager: venues?.poolManager || ZERO, venueSwapRouter02: venues?.swapRouter02 || ZERO, venueWeth: venues?.weth || ZERO,
+  venuePositionManager: venues?.positionManager || ZERO, venuePermit2: venues?.permit2 || ZERO
 });
 /// The Router's bytes32 immutables: [getter, what the chain must say given
 /// the record]. POOL_HASH is the Pool's codehash at construction; the two
@@ -400,7 +458,14 @@ export async function deployIntact(ad, opts = {}) {
   const price = opts.price ?? 10n ** 16n;
   const chainId = ad.chainId;
   const band = opts.band || bandOf(chainId);
-  const venues = opts.venues !== undefined ? opts.venues : (VENUES[chainId] || null);
+  let venues = opts.venues !== undefined ? opts.venues : (VENUES[chainId] || null);
+  /// the Router pins ONE codehash for every launch's hook (DESIGN §6.2): the
+  /// LaunchHook carries no immutable, so the compiled runtime's keccak is
+  /// that number on every band; a venue table that does not name it gets it
+  /// here, and the record carries what the Router was told
+  const hookArt = (() => { try { return artifact(out, "src/LaunchHook.sol", "LaunchHook"); } catch { return null; } })();
+  const hookHash = hookArt ? kecHex(hookArt.deployed) : "0x" + "00".repeat(32);
+  if (venues && !venues.launchHookCodehash && hookArt) venues = { ...venues, launchHookCodehash: hookHash };
   const ship = { ...shipRule(out), limit: LIMIT, solc: toolchain().solc };
   if (ship.build !== "diamond" && ship.build !== "monolith") throw new Error(`the ship rule is ${ship.build}: ${ship.reason}`);
   const from = ad.from;
@@ -667,9 +732,11 @@ export async function deployIntact(ad, opts = {}) {
 
   /*── 7. the Catalog: three companions, then the façade (checks text/state code) ──*/
   const byLetter = [T.hub, T.pool, ZERO, T.parley, T.roster, T.postage, T.keys, T.kiln, T.launchpad, ZERO,
-                    T.locks, T.steward, T.router, ZERO, engine, T.catalog];                 // HPRYTSKNLCOWXEGQ
-  await create3("catalogRows", "src/Catalog.sol", "CatalogRows", encodeParams("address[16]", [byLetter]));
-  await create3("catalogText", "src/Catalog.sol", "CatalogText", encodeParams("address", [got.catalogRows]), [code("catalogRows")]);
+                    T.locks, T.steward, T.router, ZERO, engine, T.catalog,
+                    T.market, T.roles, T.agentCard, ZERO, T.nameplate];                    // HPRYTSKNLCOWXEGQMDAUI
+  await create3("catalogRows", "src/Catalog.sol", "CatalogRows", encodeParams("address[21]", [byLetter]));
+  await create3("catalogRowsPost", "src/Catalog.sol", "CatalogRowsPost", encodeParams("address[21]", [byLetter]));
+  await create3("catalogText", "src/Catalog.sol", "CatalogText", encodeParams("address,address", [got.catalogRows, got.catalogRowsPost]), [code("catalogRows"), code("catalogRowsPost")]);
   await create3("catalogState", "src/Catalog.sol", "CatalogState", encodeParams("address", [got.catalogText]), [code("catalogText")]);
   await create3("catalog", "src/Catalog.sol", "Catalog", encodeParams(CATALOG_CONFIG_TYPE, [[
     T.hub, engine, T.router, T.roster, T.postage, T.keys, T.kiln, T.agentCard,
@@ -715,7 +782,7 @@ export async function deployIntact(ad, opts = {}) {
   const coinTemplate = { bytes: coinCode.length / 2, keccak: kecHex(coinCode) };
 
   await create3("kiln", "src/Kiln.sol", "Kiln", encodeParams("address,address,address", [got.hub, T.launchpad, venues ? venues.poolManager : ZERO]));
-  await create3("launchpad", "src/Launchpad.sol", "Launchpad", encodeParams("address,address,address,address", [got.hub, got.kiln, got.pool, got.locks]));
+  await create3("launchpad", "src/Launchpad.sol", "Launchpad", encodeParams("address,address,address,address,address", [got.hub, got.kiln, got.pool, got.locks, T.custodian]));
 
   /*── 19. Router, only where a probed venue table exists; else pinned zero ──*/
   if (venues) {
@@ -733,7 +800,7 @@ export async function deployIntact(ad, opts = {}) {
     encodeParams("address,address,address,address,address,address", [got.hub, got.renderer, engine, got.catalog, got.crest, T.agentCard]));
 
   /*═══════════════════ post-conditions: refuse to publish on any miss ═══════════════════*/
-  const world = { ...got, factory, market: P.market, roles: P.roles, agentCard: P.agentCard, ...venueTargets(venues) };
+  const world = { ...got, factory, ...Object.fromEntries(PLACEHOLDERS.map((k) => [k, P[k]])), ...venueTargets(venues) };
   if (!venues) world.router = ZERO;
   const fail = (m) => { throw new Error("refusing to publish: " + m); };
 
@@ -842,7 +909,7 @@ export async function deployIntact(ad, opts = {}) {
     contracts,
     codehashes: { factory: journal.steps.factory.codehash, ...codehashes },
     reproducible: { factory: journal.steps.factory.codehash === kecHex(A("src/lib/Create3Factory.sol", "Create3Factory").deployed), ...reproducible },
-    placeholders: { market: P.market, roles: P.roles, agentCard: P.agentCard },
+    placeholders: Object.fromEntries(PLACEHOLDERS.map((k) => [k, P[k]])),
     shipBuild: { build: ship.build, reason: ship.reason, intactBytes: ship.intactBytes, threshold: ship.threshold, limit: ship.limit, solc: ship.solc,
                  facets: facetRecord, cut: cut ? cut.map((x) => ({ facet: low(x.facetAddress), selectors: x.functionSelectors.map(low) })) : null },
     engine: {
@@ -884,6 +951,154 @@ export async function deployIntact(ad, opts = {}) {
   return record;
 }
 
+/*═══════════════════ landing a post-MVB satellite ═══════════════════*/
+
+/// The chain's clock, for the Timelock's eta.
+async function chainTime(ad) {
+  if (!ad.timestamp) throw new Error("the adapter cannot read the chain's clock");
+  return BigInt(await ad.timestamp());
+}
+
+/// Land one satellite for a recorded deployment and return the record with
+/// it added — or `{queued: true, eta, …}` when the Timelock's delay has not
+/// run and the adapter cannot move the clock (a public chain: run the same
+/// command again once `eta` has passed; anyone may). `rec` is the record
+/// `deployIntact` wrote; `opts.recordPath` writes the updated one; the
+/// updated record is recovered in-process before it is written, as the
+/// MVB's was. Nothing here touches the MVB's journal: a satellite's
+/// evidence is the Timelock's queue and the factory's `Deployed` event,
+/// both public, and the record carries the transactions that made them.
+export async function deploySatellite(ad, rec, key, opts = {}) {
+  const log = opts.log || (() => {});
+  const out = opts.out || compile({ quiet: true });
+  const sat = SATELLITES[key];
+  if (!sat) throw new Error(`${key} is not a post-MVB satellite; the satellites are ${SATELLITE_ORDER.join(", ")}`);
+  if (Number(rec.chainId) !== ad.chainId) throw new Error(`the record is chain ${rec.chainId}, the node is chain ${ad.chainId}; refusing`);
+  const why = admitsSatellite(key, rec); if (why) throw new Error(`${key}: ${why}; refusing`);
+  if (!rec.factory || !rec.contracts?.timelock) throw new Error("the record names no factory or no Timelock; the MVB must land first");
+  const factory = low(rec.factory);
+  const timelock = low(rec.contracts.timelock);
+  const salt = low(rec.salts?.[key] || saltOf(key));
+  if (salt !== saltOf(key)) throw new Error(`the record's salt for ${key} is not keccak("intact.v1.${key}"); refusing`);
+  const want = predictCreate3(factory, salt);
+  if (rec.placeholders?.[key] && low(rec.placeholders[key]) !== want) throw new Error(`the record's placeholder for ${key} is ${rec.placeholders[key]}, the salt predicts ${want}; refusing`);
+  if (rec.contracts?.[key] && low(rec.contracts[key]) !== want) throw new Error(`the record's ${key} is ${rec.contracts[key]}, the salt predicts ${want}; refusing`);
+  const onChain = low(decAddr(await ad.read(factory, "predict(bytes32)", [salt])));
+  if (onChain !== want) throw new Error(`the factory predicts ${onChain} for ${key}, the arithmetic ${want} — a contradiction; refusing`);
+  const world = { ...(rec.placeholders || {}), ...(rec.contracts || {}) };
+  for (const p of sat.pins) if (!world[p]) throw new Error(`the record has no ${p}, which ${key}'s constructor pins; refusing`);
+  /// every holder that pinned this satellite at the MVB pinned THIS address
+  for (const [holder, getter, target] of PINS) {
+    if (target !== key || !rec.contracts?.[holder]) continue;
+    const have = low(decAddr(await ad.read(rec.contracts[holder], getter)));
+    if (have !== want) throw new Error(`the ${holder}'s ${getter.replace("()", "")} is ${have}, the ${key} salt predicts ${want}; refusing`);
+  }
+  const art = artifact(out, sat.file, sat.name);
+  const init = art.bytecode + sat.args(world, rec).replace(/^0x/, "");
+  if ((init.length - 2) / 2 > 49_152) throw new Error(`${key}'s initcode is ${(init.length - 2) / 2} bytes, over EIP-3860's 49,152`);
+  const data = enc("deploy(bytes32,bytes)", [salt, init]);
+  const op = low(await ad.read(timelock, "opHash(address,uint256,bytes,bytes32)", [factory, 0, data, salt]));
+  const capped = (label, r) => {
+    if (BigInt(r.gas || 0n) > TX_GAS_CAP) throw new Error(`${label} used ${r.gas} gas, over the 2^24 transaction cap`);
+    return r;
+  };
+  let landed = rec.satellites?.[key] ? { ...rec.satellites[key] } : null;
+  let spent = 0n;                                   // gas this run sent, never a re-count of a recorded step
+  if ((await ad.codeAt(want)) !== "0x") {
+    /// code is already there: only the burner or the Timelock could have
+    /// put it — a run this record does not know, or one it does. It is
+    /// adopted only if every immutable it pins reads back as the record's.
+    if (!landed) landed = { via: "unrecorded", op, queued: null, eta: null, executed: null };
+    log(`  ${key.padEnd(13)} ${want}  already has code${rec.contracts?.[key] ? " (recorded)" : " — adopted if its pins read back"}`);
+  } else {
+    const admin = low(decAddr(await ad.read(timelock, "admin()")));
+    let eta = decUint(await ad.read(timelock, "eta(bytes32)", [op]));
+    if (eta === 0n) {
+      if (ad.from !== admin) {
+        throw new Error(`the Timelock's admin is ${admin} and this key is ${ad.from}: the admin must queue\n` +
+                        `    Timelock(${timelock}).queue(${factory}, 0, deploy(${salt}, <${key} initcode, ${(init.length - 2) / 2} bytes>), ${salt})\n` +
+                        `  (op ${op}); once the delay has passed, anyone runs this command again to land it`);
+      }
+      const q = capped(`queue ${key}`, await ad.exec(timelock, "queue(address,uint256,bytes,bytes32)", [factory, 0, data, salt], { label: `queue ${key}` }));
+      await awaitBlock(ad, q.block);
+      eta = decUint(await ad.read(timelock, "eta(bytes32)", [op]));
+      if (eta === 0n) throw new Error(`the Timelock did not queue ${key} (eta is 0 after the receipt)`);
+      landed = { via: "timelock", op, queued: { tx: q.hash, block: q.block.toString(), gas: q.gas.toString(), by: ad.from }, eta: eta.toString(), executed: null };
+      spent += BigInt(q.gas || 0);
+      log(`  ${key.padEnd(13)} queued on the Timelock (op ${op}); executable at ${eta}`);
+    } else {
+      landed = { ...(landed || { via: "timelock", queued: null }), op, eta: eta.toString(), executed: null };
+      log(`  ${key.padEnd(13)} already queued (op ${op}); executable at ${eta}`);
+    }
+    const now = await chainTime(ad);
+    if (now < eta) {
+      if (!ad.warp) {
+        /// a public chain: the queue transaction is recorded now, under
+        /// `satellites.<key>` with no `executed`, so the run that lands it
+        /// a week later carries both halves; the record stays recoverable
+        /// (the salt is still a codeless placeholder until then)
+        const pending = JSON.parse(JSON.stringify(rec, (k, v) => (typeof v === "bigint" ? v.toString() : v)));
+        delete pending.path;
+        pending.satellites = { ...(pending.satellites || {}), [key]: landed };
+        if (spent) { pending.gas = { ...pending.gas, [key]: (BigInt(pending.gas?.[key] || 0) + spent).toString() }; pending.gasTotal = (BigInt(pending.gasTotal || 0) + spent).toString(); }
+        pending.writtenAt = new Date().toISOString();
+        if (opts.recordPath) { fs.writeFileSync(opts.recordPath, JSON.stringify(pending, null, 1) + "\n"); pending.path = path.relative(ROOT, opts.recordPath); }
+        return { queued: true, key, op, eta, address: want, record: pending, satellite: landed };
+      }
+      await ad.warp(eta + 1n);
+      log(`  the clock moved to ${eta + 1n} (a rehearsal; a band waits the seven days)`);
+    }
+    const grace = decUint(await ad.read(timelock, "GRACE()"));
+    if ((await chainTime(ad)) > eta + grace) throw new Error(`the queued ${key} expired (eta ${eta}, grace ${grace}); the admin must queue it again`);
+    const ex = capped(`execute ${key}`, await ad.exec(timelock, "execute(address,uint256,bytes,bytes32)", [factory, 0, data, salt], { label: `execute ${key}` }));
+    await awaitBlock(ad, ex.block);
+    const ev = logsBy(ex.logs, factory, DEPLOYED_TOPIC).filter((l) => l.topics[1] === salt);
+    if (ev.length !== 1) throw new Error(`${key}: expected one Deployed event from the factory, saw ${ev.length}`);
+    const at = "0x" + ev[0].topics[2].slice(26);
+    if (at !== want) throw new Error(`a prediction missed: ${key} predicted ${want}, landed ${at}`);
+    landed.executed = { tx: ex.hash, block: ex.block.toString(), gas: ex.gas.toString(), by: ad.from };
+    spent += BigInt(ex.gas || 0);
+    log(`  ${key.padEnd(13)} ${want}  landed through the Timelock, ${(Number(ex.gas) / 1e6).toFixed(2)}M gas`);
+  }
+  /// read-back before anything is recorded: the satellite's own pins
+  for (const [holder, getter, target] of PINS) {
+    if (holder !== key) continue;
+    const have = low(decAddr(await ad.read(want, getter)));
+    if (have !== low(world[target] ?? ZERO)) throw new Error(`refusing to record: the ${key}'s ${getter.replace("()", "")} is ${have}, the record's ${target} is ${world[target]}`);
+  }
+  const code = await ad.codeAt(want);
+  const next = JSON.parse(JSON.stringify(rec, (k, v) => (typeof v === "bigint" ? v.toString() : v)));
+  delete next.path;
+  next.contracts = { ...next.contracts, [key]: want };
+  next.codehashes = { ...next.codehashes, [key]: kecHex(code) };
+  next.reproducible = { ...next.reproducible, [key]: kecHex(code) === kecHex(art.deployed) };
+  next.satellites = { ...(next.satellites || {}), [key]: landed };
+  /// the gas this run spent is added once; a resumed or repeated run adds nothing for what it skipped
+  if (spent) {
+    next.gas = { ...next.gas, [key]: (BigInt(next.gas?.[key] || 0) + spent).toString() };
+    next.gasTotal = (BigInt(next.gasTotal || 0) + spent).toString();
+  }
+  const admin = low(decAddr(await ad.read(timelock, "admin()")));
+  next.timelock = { ...next.timelock, admin,
+    disposition: admin === low(rec.deployer) ? "the burner holds the admin; rotation or renunciation only through the Timelock's own 7-day queue"
+               : admin === ZERO ? "renounced" : `rotated to ${admin} (through the queue; the burner no longer holds it)` };
+  if (ad.nonceOf) next.burner = { nonceAfter: (await ad.nonceOf(rec.deployer)).toString(), balanceAfter: (await ad.balanceOf(rec.deployer)).toString() };
+  next.writtenAt = new Date().toISOString();
+  next.block = (await ad.blockNumber()).toString();
+  const rr = await recover(ad, next, { out });
+  if (rr.disagreements.length) {
+    throw new Error(`refusing to record ${key}: recover-record disagrees on ${rr.disagreements.length} field(s): ` +
+                    rr.disagreements.map((d) => `${d.field} (record ${d.want}, chain ${d.have})`).join("; "));
+  }
+  next.recovered = { checked: rr.checked, disagreeing: 0 };
+  if (opts.recordPath) {
+    fs.mkdirSync(path.dirname(opts.recordPath), { recursive: true });
+    fs.writeFileSync(opts.recordPath, JSON.stringify(next, null, 1) + "\n");
+    next.path = path.relative(ROOT, opts.recordPath);
+  }
+  return next;
+}
+
 /*═══════════════════ the CLI ═══════════════════*/
 
 export function parseArgs(argv) {
@@ -898,7 +1113,7 @@ export function parseArgs(argv) {
   return o;
 }
 
-export const CLI_OPTIONS = ["chain", "confirm", "rpc", "journal", "record", "price"];
+export const CLI_OPTIONS = ["chain", "confirm", "rpc", "journal", "record", "price", "satellite"];
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = parseArgs(process.argv.slice(2));
@@ -947,6 +1162,28 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const journalPath = args.journal ? path.resolve(ROOT, args.journal) : path.join(ROOT, "deployments", `${chainId}.journal.json`);
   const recordPath = args.record ? path.resolve(ROOT, args.record) : path.join(ROOT, "deployments", `${chainId}.json`);
   const resuming = fs.existsSync(journalPath);
+
+  /*── --satellite <key[,key]|all>: land post-MVB satellites for the recorded deployment ──*/
+  if (args.satellite) {
+    if (!fs.existsSync(recordPath)) { console.error(`  no record at ${path.relative(ROOT, recordPath)}: the MVB must land first`); process.exit(2); }
+    let rec = JSON.parse(fs.readFileSync(recordPath, "utf8"));
+    const keys = args.satellite === "all"
+      ? SATELLITE_ORDER.filter((k) => !admitsSatellite(k, rec))
+      : String(args.satellite).split(",");
+    for (const key of keys) {
+      console.log(`\n  satellite ${key}`);
+      let r;
+      try { r = await deploySatellite(ad, rec, key, { out, recordPath, log: (s) => console.log(s) }); }
+      catch (e) { console.error(`\n  \x1b[31m${e.message}\x1b[0m\n  the record was not changed`); process.exit(1); }
+      if (r.queued) {
+        console.log(`  queued; executable at ${r.eta} (${new Date(Number(r.eta) * 1000).toISOString()}) — run this command again then; anyone may`);
+        process.exit(0);
+      }
+      rec = r;
+      console.log(`  recover-record: ${rec.recovered.checked} fields checked, 0 disagreeing\n  wrote ${rec.path}`);
+    }
+    process.exit(0);
+  }
 
   // preflight: the burner, its balance, and what the run needs
   const nonce = await c.nonceNow();

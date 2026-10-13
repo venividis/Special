@@ -138,10 +138,30 @@ after wave 0: a change is additive only and goes in
   public RPC's replica can lag the receipt; `mint` returns the id from the
   receipt's log (tools/site.mjs `mint`), and the deployer waits for code
   before a constructor inspects a fresh deployment.
+- **Every read over the wire is pinned to a block.** A load-balanced public
+  endpoint answers each request from whichever replica the balancer picks,
+  and a replica a block behind answers a read at `latest` from before the
+  receipt: the first Base Sepolia rehearsal (2026-10-13) lost its campaign
+  at the exact-in swap — the swap landed, `balanceOf` read 0. `RpcChain`
+  (tools/rpc.mjs) pins every `eth_call`, `eth_getBalance`, `eth_getCode`
+  and `eth_estimateGas` to the highest of the receipts' blocks and the
+  latest block the endpoint reports (`tag()`, shared by every `as()` key),
+  and `call` retries "header not found" for up to a minute as lag, never as
+  an answer. A campaign that stops keeps its key for `--resume`.
 - **hardhat must run cancun.** Left to default it runs Osaka, where
   EIP-7825 caps a transaction at 2^24 gas and applies that cap to
   `eth_call` too, so `tokenURI` fails with a bare revert while every
   transaction lands. `hardhat.config.cjs` pins `hardfork: "cancun"`.
+- **`CatalogRows.SERVICES` is at 89 % of the transaction cap.** Rendering
+  and storing the MVB table costs 14.94 M gas of the 16.78 M a Fusaka
+  chain admits per transaction (EIP-7825); a row appended there could make
+  the deployment un-includable. Post-MVB rows go in
+  `CatalogRowsPost.SERVICES` — the second table, its own transaction —
+  under their own letters (`M` market, `D` roles, `A` the agent card, `U`
+  the custodian, `I` the nameplate); the text layer serves both as one
+  `sel` map and one `services` array, and the drift gate in
+  `tools/verify.mjs` holds a row to its contract's interface until the
+  contract lands, then to both.
 - **The shell is 45 B under its gzip ceiling** (14,955 of 15,000) and the
   vault panel 26 B under its own; any fix to either pays in cuts first.
 - **The monolith is over EIP-170** (25,402 B); the diamond ships. Both
@@ -158,6 +178,11 @@ after wave 0: a change is additive only and goes in
   a cheatcode precompile and a 3-byte-REVERT self-check that must burn gas;
   no invariant campaigns, no coverage, no traces. `expectRevert` matches
   an error name or any 4-byte selector of that name.
+- **`expectRevert(bytes)` matches any revert in this runner**, and there is
+  no `expectEmit` or log capture: an exact refusal (its selector and its
+  arguments) is asserted through a raw call that returns the data, and an
+  event through the state it changed (or a verifier reading
+  `Chain.send().logs`), never through those two cheats.
 - **A `view` call inside a pranked statement's arguments consumes the
   prank** (forge and this runner agree): compute keys before `vm.prank`.
 - **`block.number` is read once per transaction by the optimiser**, so a

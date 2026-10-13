@@ -36,7 +36,8 @@ import os from "node:os";
 import { Chain, warp, BLOCK, encodeParams, enc, decAddr, decUint, decBool } from "./evm.mjs";
 import { compile, shipRule, artifact } from "./compile.mjs";
 import { ROOT, adapt, deployIntact, predictCreate3, saltOf, SALTED, PLACEHOLDERS, RECORD_KEYS, PINS, DEPLOY_ORDER,
-         PROXY_INITCODE_HASH, bandOf, assertTiles, BANDS, COLLECTION, kec, parseArgs, readDist, atomicWrite, CLI_OPTIONS, decWords } from "./deploy.mjs";
+         PROXY_INITCODE_HASH, bandOf, assertTiles, BANDS, COLLECTION, kec, parseArgs, readDist, atomicWrite, CLI_OPTIONS, decWords,
+         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite } from "./deploy.mjs";
 import { recover } from "./recover-record.mjs";
 import { predictCreate, PANELS } from "./site.mjs";
 
@@ -351,8 +352,55 @@ eq("schema", rec.schema, "intact.deployment/1");
 const written = JSON.parse(fs.readFileSync(recordPath, "utf8"));
 eq("the file on disk is the record (minus the path it was written to)", JSON.stringify({ ...written }), JSON.stringify((({ path: _p, ...r }) => r)(rec)));
 eq("RECORD_KEYS names the factory, the engine and every salted key", RECORD_KEYS.length, SALTED.length + 2);
-ok("the CLI options are the header's five plus --chain", CLI_OPTIONS.join(",") === "chain,confirm,rpc,journal,record,price");
+ok("the CLI options are the header's five plus --chain and --satellite", CLI_OPTIONS.join(",") === "chain,confirm,rpc,journal,record,price,satellite");
 ok("has burner (nonce and balance after the run)", "burner" in rec && "nonceAfter" in rec.burner);
+
+/*──────────────── the post-MVB satellites ────────────────*/
+head("a post-MVB satellite lands through the Timelock, and the record follows it");
+const hasArtifact = (f, n) => { try { artifact(out, f, n); return true; } catch { return false; } };
+const present = SATELLITE_ORDER.filter((k) => hasArtifact(SATELLITES[k].file, SATELLITES[k].name) && !admitsSatellite(k, rec));
+if (!present.length) note("no satellite contract is compiled in this tree; the sentences below run once one lands (U14–U18)");
+let follow = rec;
+const stranger1 = adapt(await c1.as("0x" + "66".repeat(32)));
+for (const key of present) {
+  const at = low(follow.placeholders[key]);
+  const sq = await throwsWith(() => stranger1.exec(follow.contracts.timelock, "queue(address,uint256,bytes,bytes32)", [follow.factory, 0, "0x", saltOf(key)], { label: "strangerQueue" }), /revert/);
+  ok(`${key}: a stranger cannot queue it (NotAdmin)`, sq && !sq.startsWith("wrong"), sq);
+  const q = await deploySatellite({ ...ad1, warp: undefined }, follow, key, { out });
+  ok(`${key}: the burner queues it on the Timelock, and nothing lands before the delay`, q.queued === true && (await ad1.codeAt(at)) === "0x", JSON.stringify(q.satellite));
+  const landed = await deploySatellite(stranger1, q.record, key, { out, recordPath });
+  eq(`${key}: a week later a stranger lands it where the hub pinned it`, landed.contracts[key], at);
+  ok(`${key}: the record lists it under contracts, codehashes, reproducible and satellites`,
+     landed.codehashes[key] && key in landed.reproducible && landed.satellites[key].executed && landed.satellites[key].queued, JSON.stringify(landed.satellites[key]));
+  eq(`${key}: its via is the Timelock`, landed.satellites[key].via, "timelock");
+  const rr = await recover(ad1, landed, { out });
+  eq(`${key}: recover-record on the updated record: 0 disagreeing`, rr.disagreements.length, 0);
+  ok(`${key}: and it checks the Timelock's clear queue and the factory's Deployed event besides the pins`, rr.checked > follow.recovered.checked + 2, `${rr.checked} vs ${follow.recovered.checked}`);
+  for (const [label, mutate, re] of [
+    [`${key}: a wrong satellite codehash is caught by name`, (t) => { t.codehashes[key] = "0x" + "11".repeat(32); }, new RegExp(`codehashes\\.${key}`)],
+    [`${key}: a wrong landing block is caught (no Deployed event there)`, (t) => { t.satellites[key].executed.block = "1"; }, new RegExp(`satellites\\.${key}\\.executed\\.block`)],
+    [`${key}: a record claiming the satellite without its evidence is caught`, (t) => { delete t.satellites[key]; }, new RegExp(`^satellites\\.${key}$`)]
+  ]) {
+    const t = clone(landed); mutate(t);
+    const r = await recover(ad1, t, { out });
+    ok(label, !!r.disagreements.find((d) => re.test(d.field)), r.disagreements.map((d) => d.field).slice(0, 5).join(", ") || "0 disagreeing");
+  }
+  const again = await deploySatellite(ad1, landed, key, { out });
+  eq(`${key}: running it again sends nothing and keeps the record`, JSON.stringify(again.contracts) + again.gasTotal, JSON.stringify(landed.contracts) + landed.gasTotal);
+  follow = landed;
+}
+if (present.length) {
+  const k0 = present[0];
+  const wrong = clone(rec); wrong.placeholders[k0] = "0x" + "12".repeat(20);
+  const rp = await throwsWith(() => deploySatellite(ad1, wrong, k0, { out }), /the salt predicts/);
+  ok("a record whose placeholder is not where the salt predicts is refused before anything is sent", rp && !rp.startsWith("wrong"), rp);
+  const rc = await throwsWith(async () => deploySatellite(adapt(await Chain.open({ chainId: 8453 })), follow, k0, { out }), /the node is chain/);
+  ok("a record for another chain is refused", rc && !rc.startsWith("wrong"), rc);
+  const rk = await throwsWith(() => deploySatellite(ad1, follow, "nothing", { out }), /is not a post-MVB satellite/);
+  ok("an unknown satellite is refused by name", rk && !rk.startsWith("wrong"), rk);
+  const holder = { market: ["hub", "MARKET()"], roles: ["hub", "ROLES()"], agentCard: ["premises", "AGENTCARD()"] }[k0];
+  if (holder) eq(`the ${holder[0]}'s ${holder[1]} is the landed ${k0}`, low(decAddr(await ad1.read(follow.contracts[holder[0]], holder[1]))), follow.contracts[k0]);
+}
 
 fs.rmSync(scratch, { recursive: true, force: true });
 console.log(`\n  ${pass} passed, ${fail} failed\n`);

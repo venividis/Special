@@ -99,7 +99,8 @@ import { spawn } from "node:child_process";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { compile, artifact, shipRule } from "./compile.mjs";
 import { enc, sel, decAddr, decUint, decBool, decString } from "./evm.mjs";
-import { adapt, deployIntact, bandOf, CONFIRM, SALTED, atomicWrite, parseArgs, readDist, awaitBlock, awaitCode, logsBy, ROOT } from "./deploy.mjs";
+import { adapt, deployIntact, bandOf, CONFIRM, SALTED, atomicWrite, parseArgs, readDist, awaitBlock, awaitCode, logsBy, ROOT,
+         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite } from "./deploy.mjs";
 import { recover } from "./recover-record.mjs";
 import { encRequest, decResponse, ZERO } from "./site.mjs";
 
@@ -145,6 +146,13 @@ export const CAMPAIGN_GAS = {
   families: { fund: 42000n, mint: 595922n, launch: 1090563n, execute: 124234n, market: 364028n, swap: 224284n, speak: 180330n, social: 1012549n, raise: 1076687n, lock: 289104n, session: 332810n, seal: 46898n, panic: 116177n, steward: 280947n, clock: 0n, sale: 125635n }
 };
 export const CAMPAIGN_BUDGET_GAS = 30_000_000n;
+/// The post-MVB satellites' budget: each is one `queue` and one `execute`
+/// through the Timelock, the execute carrying the satellite's initcode
+/// (deployments/README.md). Measured on the 31337 rehearsal of 2026-10-13
+/// (the wave-4 integration tree): the card 3,023,544 gas (327,180 to queue,
+/// 2,696,364 to land), the Market 1,647,536, the Roles 1,524,439; the
+/// budget sits over the largest.
+export const SATELLITE_BUDGET_GAS = 3_500_000n;
 
 /*═══════════════════ signatures and topics ═══════════════════*/
 
@@ -360,8 +368,11 @@ async function main() {
   const price = args.price && args.price !== true ? BigInt(args.price) : (skipDeploy ? decUint(await c.read(JSON.parse(fs.readFileSync(RECORD, "utf8")).contracts.hub, "price()")) : 10n ** 16n);
   const secondFund = (secondGas * gasPrice * 15n) / 10n + l1PerStep * 12n + SECOND_SPEND + 2n * 27_300n * gasPrice;
   const campaignNeed = (campaignGas * gasPrice * 15n) / 10n + l1PerStep * steps + HOLDER_SPEND + 2n * price + secondFund;
-  const need = deployNeed + campaignNeed;
-  ok(bal >= need, `preflight · balance ${eth(bal)} ETH covers ${eth(need)} ETH: the deploy ${eth(deployNeed)} (120M gas × ${gasPrice} wei × 1.5 + L1) plus the campaign ${eth(campaignNeed)} (${campaignGas} gas ${measured ? `measured on ${CAMPAIGN_GAS.measuredOn}` : "BUDGET: no wire run measured yet"} × 1.5, two mints at ${eth(price)} ETH, ${eth(HOLDER_SPEND)} ETH the holder spends, ${eth(secondFund)} ETH funding the second key)`,
+  const hasArtifact = (f, n) => { try { artifact(out, f, n); return true; } catch { return false; } };
+  const satelliteKeys = SATELLITE_ORDER.filter((k) => !admitsSatellite(k, { chainId, band: { band: band.band } }) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
+  const satelliteNeed = (BigInt(satelliteKeys.length) * SATELLITE_BUDGET_GAS * gasPrice * 15n) / 10n + l1PerStep * 2n * BigInt(satelliteKeys.length);
+  const need = deployNeed + campaignNeed + satelliteNeed;
+  ok(bal >= need, `preflight · balance ${eth(bal)} ETH covers ${eth(need)} ETH: the deploy ${eth(deployNeed)} (120M gas × ${gasPrice} wei × 1.5 + L1) plus the campaign ${eth(campaignNeed)} (${campaignGas} gas ${measured ? `measured on ${CAMPAIGN_GAS.measuredOn}` : "BUDGET: no wire run measured yet"} × 1.5, two mints at ${eth(price)} ETH, ${eth(HOLDER_SPEND)} ETH the holder spends, ${eth(secondFund)} ETH funding the second key)${satelliteKeys.length ? ` plus the satellites ${eth(satelliteNeed)} (${satelliteKeys.join(", ")}: ${SATELLITE_BUDGET_GAS} gas each, a budget, × 1.5)` : ""}`,
      `fund ${me} with at least ${eth(need - bal)} ETH more`);
   if (bal < need) throw refuse(`underfunded: ${eth(need)} ETH needed, ${eth(bal)} ETH held`);
   const preflight = { rpcChainId: c.chainId, blockA: blockA.toString(), blockB: blockB.toString(), latestTimestamp: String(BigInt(latest.timestamp)), wallClock: wall.toString(), skewSeconds: skew.toString(),
@@ -394,6 +405,27 @@ async function main() {
        `deploy · the record was written by deployIntact with ${record.recovered && record.recovered.checked} fields checked and 0 disagreeing: ${rel(RECORD)} (${M(record.gasTotal)} gas in all, ${M(record.gasThisRun)} this run, ${((Date.now() - tDeploy) / 1000).toFixed(0)} s)`);
     note(`door  web3://${record.contracts.premises}:${chainId}/`);
   }
+  /*═══════════════════ satellites (post-MVB, through the Timelock) ═══════════════════*/
+  head("satellites (the post-MVB contracts, through the Timelock's queue)");
+  if (!satelliteKeys.length) note("no satellite contract is compiled in this tree; the phase runs once one lands (U14–U18)");
+  for (const key of satelliteKeys) {
+    try {
+      const r = await deploySatellite(ad, record, key, { out, recordPath: RECORD, log: (s) => console.log("    " + s.trim()) });
+      if (r.queued) {
+        record = r.record;
+        ok(true, `satellites · ${key} queued on the Timelock (op ${r.op}), executable at ${r.eta}: this chain waits the seven days — land it then with tools/deploy.mjs --satellite ${key} (anyone may)`);
+      } else {
+        record = r;
+        ok(Boolean(record.contracts[key] && record.satellites[key].executed),
+           `satellites · ${key} landed at ${record.contracts[key]} through the Timelock's queue (${M(record.satellites[key].executed.gas)} gas to land it) and the record recovered with ${record.recovered.checked} fields, 0 disagreeing`);
+      }
+    } catch (e) { ok(false, `satellites · ${key}: ${e.message}`); }
+  }
+  for (const key of SATELLITE_ORDER) {
+    const why = admitsSatellite(key, { chainId, band: { band: band.band } });
+    if (why && hasArtifact(SATELLITES[key].file, SATELLITES[key].name)) note(`${key}: not landed on ${chainId} — ${why}`);
+  }
+
   const S = record.contracts;
   const HUB = S.hub, POOL = S.pool, PARLEY = S.parley, POSTAGE = S.postage, KEYS = S.keys, KILN = S.kiln, PAD = S.launchpad, LOCKS = S.locks, STEWARD = S.steward, PREMISES = S.premises;
 
@@ -432,7 +464,8 @@ async function main() {
     let r;
     try { r = await run(); }
     catch (e) {
-      camp.steps.push({ i: camp.steps.length + 1, label, family, actor, status: "failed", notes: String(e.message).slice(0, 400), at: new Date().toISOString() }); save();
+      camp.steps.push({ i: camp.steps.length + 1, label, family, actor, status: "failed", notes: String(e.message).slice(0, 400),
+                        txHash: e.r ? e.r.hash : null, block: e.r ? e.r.block.toString() : null, gasUsed: e.r ? e.r.gas.toString() : null, at: new Date().toISOString() }); save();
       ok(false, `${family} · ${label}`, e.message); throw e;
     }
     const rec = { i: camp.steps.length + 1, label, family, actor, fn: r.fn || null, to: r.to ? low(r.to) : null,
@@ -526,7 +559,8 @@ async function main() {
       const before = decUint(await read(COIN, "balanceOf(address)", [second]));
       const r = await ad2.exec(POOL, SIG.swapIn, [A, false, AMOUNTS.swapIn, minOut, second, await deadline()], { value: AMOUNTS.swapIn, label: "swapExactIn" });
       const got = decUint(await read(COIN, "balanceOf(address)", [second])) - before;
-      if (got < minOut) throw new Error(`the swap paid ${got}, under its floor ${minOut}`);
+      // a landed transaction stays in the record even when the check after it fails
+      if (got < minOut) throw Object.assign(new Error(`the swap paid ${got}, under its floor ${minOut}`), { r });
       return { fn: SIG.swapIn, to: POOL, r, notes: `${eth(AMOUNTS.swapIn)} ETH in, ${got} coin units out (floor ${minOut}); deadline from the chain's clock` };
     });
     await step("approve the Pool for the exact-out swap's maximum", "swap", "second", async () => {
@@ -843,7 +877,15 @@ async function main() {
   ok(true, `disposition · Timelock admin ${admin}: ${disposition}`);
   ok(true, `disposition · the burner ${me} ends at nonce ${finalNonce} with ${eth(finalBal)} ETH; the second key ${second} keeps ${eth(secondBal)} ETH`);
   save();
-  if (args["key-file"] && args["key-file"] !== true) {
+  if (args["key-file"] && args["key-file"] !== true && campaignFailed && !KEEP) {
+    /*  A campaign that stopped is resumed with --resume by the same key:
+        destroying it now would strand the deployment's holder, its tokens
+        and the burner's remainder (the first Base Sepolia rehearsal did).
+        The operator destroys it by hand once the campaign is complete. */
+    camp.disposition.keyFile = "kept: the campaign stopped, resume it with --resume";
+    note(`the campaign stopped, so the key file ${path.relative(ROOT, path.resolve(ROOT, String(args["key-file"])))} is KEPT for --resume (the same command again); destroy it by hand once the campaign is complete — overwrite with zeros, then unlink`);
+    ok(true, "disposition · the key is kept for --resume because the campaign stopped; it is destroyed when a run completes");
+  } else if (args["key-file"] && args["key-file"] !== true) {
     const kf = path.resolve(ROOT, String(args["key-file"]));
     try { destroyKeyFile(kf); camp.disposition.keyFile = "overwritten and unlinked"; ok(true, `disposition · the key file ${path.relative(ROOT, kf)} was overwritten with zeros and unlinked, after both records were written`); }
     catch (e) { camp.disposition.keyFile = "NOT destroyed: " + e.message; ok(false, `disposition · the key file could not be destroyed: ${e.message}`); }

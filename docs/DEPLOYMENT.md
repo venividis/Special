@@ -99,7 +99,11 @@ sends only what the chain lacks and refuses code it did not put there
 (`deployments/README.md`, "The journal"). The campaign resumes from its own
 record with `--resume`: a step whose receipt is recorded is never sent
 twice, and the values earlier steps learned from their logs (the ids, the
-coin, the launch, the lock) are read back from the record.
+coin, the launch, the lock) are read back from the record. A campaign that
+stops keeps the key file for exactly this: it is destroyed only when a run
+completes (or never, with `--keep`). The first Base Sepolia rehearsal
+destroyed it on a stopped campaign, which is why `deployments/84532.first.campaign.json`
+ends at its ninth step and that deployment's holder is gone.
 
 ```sh
 RPC_URL=… node tools/testnet.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --key-file .testnet-key --resume
@@ -149,6 +153,81 @@ the prefix being whatever the gateway puts before the route). A
 the door, and `Premises.resolveMode()` answers `5219`. DESIGN §13 makes
 this diff the nightly: against the self-hosted gateway on Base Sepolia,
 and against `w3link.io` on Base mainnet once live.
+
+## The post-MVB satellites
+
+AgentCard, Market, Roles and the Nameplate — and LPCustodian as its unit
+lands — are not part of the MVB record: the hub, the Catalog, the
+Renderer and the Premises pin their CREATE3 addresses at the MVB, and
+those addresses stay codeless until each lands through the Timelock's
+seven-day public queue, the only caller the factory admits once the
+burner is gone (`deployments/README.md`, "The burner"). One command per
+satellite, run twice on a public chain:
+
+```sh
+RPC_URL=… node tools/deploy.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --satellite market
+#   the admin's key queues it; the record gains `satellites.market` with the queue transaction and the eta
+#   … seven days …
+RPC_URL=… node tools/deploy.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --satellite market
+#   anyone's key lands it; the record gains `contracts.market`, its codehash and `satellites.market.executed`
+```
+
+`--satellite all` takes every satellite the band admits in DESIGN §12's
+order; `--satellite a,b` a chosen few, in that order. Before anything is
+sent the command refuses a record for another chain, a salt or a
+placeholder that is not where the arithmetic predicts, a holder whose
+pin is not the predicted address, a constructor argument the record
+lacks, an unknown key, and a queue the key may not make — then it prints
+the exact `queue` call for the admin to make by hand (a band's admin is
+the multisig). After landing it reads every pin of the new contract
+back, recovers the whole record in-process and writes it only on 0
+disagreeing; a repeated run sends nothing and changes nothing. On 31337
+and in-process the clock is moved past the eta, so one run queues, lands
+and records; `tools/verify-recover.mjs` proves the path on the in-process
+EVM — the burner queues, nothing lands before the delay, a stranger lands
+it a week later where the hub pinned it, the record follows it and
+recovers, and a tampered codehash, a wrong landing block or a missing
+queue is caught by name.
+
+### Band 0: the name
+
+The Nameplate (`src/Nameplate.sol`, U18) is one more satellite, admitted
+only on a chain with a NameWrapper in `tools/ens-name.mjs`'s table
+(Ethereum, and Sepolia to rehearse): `--satellite nameplate` lands it at
+`keccak("intact.v1.nameplate")` with the ENS registry, the NameWrapper,
+the .eth BaseRegistrar and the label `intact` as its constructor
+arguments (contract addresses, never endpoints); its constructor refuses
+a codeless pin, a registrar the registry does not name at `namehash("eth")`
+and a bad label. The binding is custody, so the rest is the operator's
+wallet's, not the burner's, in this order: own `intact.eth` wrapped
+(`registry.owner(node) == NameWrapper`, the registrant a durable key);
+land the Nameplate; mint the home token, id 3073; `NameWrapper.setResolver(node, nameplate)`
+by the wrapped owner (and, one-way if wanted, `setFuses(node, CANNOT_UNWRAP | CANNOT_SET_RESOLVER)`);
+`NameWrapper.safeTransferFrom(registrant, hub.account(3073), uint256(node), 1, "")`
+— into the Reach, or into `hub.grip(3073)` for permanence — from which
+block the apex and every `<id>.intact.eth` of the band answer, and before
+which nothing does. Verify with reads only:
+`RPC_URL=… node tools/ens-name.mjs --custody intact.eth --nameplate <addr>`
+and `RPC_URL=… node tools/ens-name.mjs web3://intact.eth/token/3073/live`.
+Renewal is anyone's through the public controller; from the registrar's
+expiry second the resolver answers nothing (`nameplate.expiry(keccak("intact"))`),
+the wrapper still names the account for ninety days, and past those the
+name must be registered anew. `tools/verify-plate.mjs` walks every one of
+these paths on a local ENS fixture.
+
+### The custodian and the venue table
+
+`LPCustodian` (U14) lands like the others (`--satellite custodian`, salt
+`keccak("intact.v1.custodian")`, the address the Launchpad pinned as its
+fifth constructor argument at the MVB) but only on a chain whose venue
+table (`VENUES` in `tools/deploy.mjs`) names a PoolManager, a
+PositionManager and a Permit2 — contract addresses probed for code on a
+dated commit, never recalled; it seeds every v4 launch's position through
+them. No chain has a probed row yet, so on every rehearsal the custodian
+is refused by name and `Target.UniswapV4` stays `NotYet` (the owned-pool
+path is unaffected). The Router's `LAUNCH_HOOK_CODEHASH` is the keccak of
+`LaunchHook`'s compiled runtime, which the deployer writes into the venue
+table it records when the table does not name it.
 
 ## What a run leaves behind
 
@@ -208,34 +287,53 @@ chain's clock (five-second polls, up to five minutes).
 ## Measured
 
 From `node tools/testnet.mjs --chain 31337 --confirm DEPLOY_INTACT_LOCAL`
-over `npx hardhat node --port 8547` (cancun), 2026-10-13, this tree: 56
-sentences passed, 0 failed, 101 s in all; every number below is from that
-run's records (`/tmp/wave3/u13/31337.json`, `/tmp/wave3/u13/31337.campaign.json`
-during the build; the fixture committed as `deployments/31337.json` is
-U10's, from the same sources).
+over `npx hardhat node --port 8547` (cancun), 2026-10-13, the wave-4
+integration tree: 59 sentences passed, 0 failed, 72 s in all; every number
+below is from that run's records, committed as `deployments/31337.json`
+and `deployments/31337.campaign.json` (the nameplate and the custodian
+were refused by name: 31337 has no NameWrapper and no probed venue table).
+The Base Sepolia column is from `node tools/testnet.mjs --chain 84532
+--confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --key-file .testnet-key --endpoints
+<three>` over `https://sepolia.base.org` on 2026-10-13 from this tree, the
+second live run: 59 sentences passed, 1 failed, 327 s — the failure is the
+third endpoint's rate limit on the `tokenURI` measurement, nothing of the
+deployment's; its records are committed as `deployments/84532.json` and
+`deployments/84532.campaign.json`. The first live run, an hour earlier from
+the same tree, deployed and queued the same way (`deployments/84532.first.json`)
+and stopped its campaign at the tenth step, the exact-in swap, when the
+read after the receipt was answered by a replica a block behind it (the
+swap had landed: block 48,081,907, 91,904 gas, the second key holding the
+full output when read at the chain's head afterwards), and the run's
+disposition then destroyed the key, so that campaign could not resume
+(`deployments/84532.first.campaign.json` ends at its ninth step). Between
+the two runs every read over the wire was pinned to a block (`CLAUDE.md`,
+the traps), a stopped campaign was made to keep its key, and the gateway
+verifier learned to take its hash check as one snapshot; 31337 proved the
+change first (59 sentences, 0 failed).
 
 | What | Measured on 31337 | Base Sepolia (84532) | Sepolia (11155111) |
 |---|---|---|---|
-| deploy, in all | 81,440,766 gas, 26 contracts, 41 s; the record recovered in-run: 345 fields, 0 disagreeing | awaiting a funded burner | awaiting a funded burner |
-| deploy, the largest steps | catalogRows 14.94 M · loadPanel (six) 9.18 M · reachImpl 4.60 M · catalogText 4.14 M · renderer 3.59 M · launchpad 3.56 M · catalogState 3.55 M · catalog 3.53 M | — | — |
-| campaign, in all | 5,902,168 gas over 39 transactions (40 steps, one of them the clock); the second key's share 1,445,791 | awaiting a funded burner | awaiting a funded burner |
-| fund (2) | 42,000 | | |
-| mint (2) | 595,922 | | |
-| launch (1) | 1,090,563 | | |
-| execute (1) | 124,234 | | |
-| market: openMarket, approve, deposit (3) | 364,028 | | |
-| swap: exact-in, approve, exact-out (3) | 224,284 | | |
-| speak (1) | 180,330 | | |
-| social: two keys, two bindings, the inbox, the stamped whisper, the reply, claimSettled (8) | 1,012,549 | | |
-| raise: create, three buys, graduate, claim, a sealed trade, collect (8) | 1,076,687 | | |
-| lock: lock, release (2) | 289,104 | | |
-| session: grant, act (2) | 332,810 | | |
-| seal (1) | 46,898 | | |
-| panic (1) | 116,177 | | |
-| steward: arrange, summon, cancel (3) | 280,947 | | |
-| sale: transferFrom (1) | 125,635 | | |
-| `tokenURI(1)` | `eth_estimateGas` 7,914,549 gas (16.2 s for the estimate's search on hardhat); a plain `eth_call` answers 72,989 bytes in 2.4 s | awaiting a funded burner (three public endpoints, `--endpoints`) | awaiting a funded burner |
-| `verify-gateway` against `tools/gateway.mjs` | 240 passed, 0 failed over 33 routes for ids 1 and 2; the tamper fixture: 243 passed, 0 failed (the appended script, the Set-Cookie and the rewritten ETag each caught by name) | awaiting a self-hosted `web3url-gateway` and a funded burner | — |
+| deploy, in all | 89,680,000 gas (`89.68M` as the run prints it) for the 27 MVB contracts in 45 s, 95,874,720 with the three satellites; the record recovered in-run: 362 fields, 0 disagreeing after the MVB, 383 after the satellites | the same 27 contracts for the same 89.68 M gas in 105 s at 0.006 gwei, from block 48,082,395 (the first run: 91 s from 48,081,889); the record recovered in-run: 362 fields, 0 disagreeing | awaiting a funded burner |
+| satellites, through the Timelock's queue | the card queued for 327,180 and landed for 2,696,364 gas at the address the hub pinned; the Market 203,102 + 1,444,434; the Roles 188,154 + 1,336,285; each landing followed by a recover of the whole record, 0 disagreeing | queued only, as a public chain must: the card (456,590 gas, op `0x72b5b3e0…`), the Market (268,260, op `0x694ffb72…`) and the Roles (243,390, op `0x50f36dd6…`), executable from Unix time 1,792,537,900 (2026-10-20): `node tools/deploy.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --satellite all` lands them, by any funded key (the first run's three ops, on its own Timelock, ripen twenty minutes earlier) | awaiting a funded burner |
+| deploy, the largest steps | catalogRows 15.02 M · loadPanel (six) 10.07 M · catalogRowsPost 5.11 M · catalogText 4.72 M · reachImpl 4.60 M · catalog 3.82 M · launchpad 3.81 M · renderer 3.73 M · catalogState 3.55 M · premises 3.40 M | the same, step for step (the gas is the code's, not the chain's) | — |
+| campaign, in all | 5,907,685 gas over 39 transactions (40 steps, one of them the clock) | 5,816,607 gas over 38 transactions (40 steps: two refusals proved by their selectors and nothing sent; a public chain's clock cannot be moved, so the steward's summon is refused as `StillSpeaking` instead of walked); the second key's share 1,373,166; the lock released when due after a real two-minute wait | awaiting a funded burner |
+| fund (2) | 42,000 | 42,000 | |
+| mint (2) | 595,922 | 595,922 | |
+| launch (1) | 1,090,585 | 1,090,585 | |
+| execute (1) | 124,234 | 124,234 | |
+| market: openMarket, approve, deposit (3) | 364,028 | 364,016 | |
+| swap: exact-in, approve, exact-out (3) | 224,284 | 224,272 | |
+| speak (1) | 180,330 | 180,330 | |
+| social: two keys, two bindings, the inbox, the stamped whisper, the reply, claimSettled (8) | 1,012,549 | 1,012,549 | |
+| raise: create, three buys, graduate, claim, a sealed trade, collect (8) | 1,082,182 | 1,082,182 | |
+| lock: lock, release (2) | 289,104 | 289,116 | |
+| session: grant, act (2) | 332,810 | 332,810 | |
+| seal (1) | 46,898 | 46,898 | |
+| panic (1) | 116,177 | 116,177 | |
+| steward: arrange, summon, cancel (3) | 280,947 | 189,881 for arrange and stillHere; summon and cancel refused by `StillSpeaking(uint64)` and `NotCalled()`, proved by their selectors with nothing sent | |
+| sale: transferFrom (1) | 125,635 | 125,635 | |
+| `tokenURI(1)` | `eth_estimateGas` 3,779,242 gas (1.4 s for the estimate's search on hardhat); a plain `eth_call` answers 78,109 bytes in 0.11 s | `eth_estimateGas` 3,720,125 gas on `https://sepolia.base.org` (59 ms) and on `https://base-sepolia-rpc.publicnode.com` (73 ms), a plain `eth_call` answering 78,137 bytes in 135 ms and 174 ms; `https://base-sepolia.gateway.tenderly.co` estimated the same 3,720,125 and rate-limited the call (the run's one failed sentence; a 78 KB answer is over its free tier) | awaiting a funded burner |
+| `verify-gateway` against `tools/gateway.mjs` | 240 passed, 0 failed over 33 routes for ids 1 and 2; the tamper fixture: 243 passed, 0 failed (the appended script, the Set-Cookie and the rewritten ETag each caught by name) | 240 passed, 0 failed over 33 routes for ids 1 and 2 (the second pass over this deployment; the first read 238 passed, 2 failed when `/token/1/live` was fetched a block after the chain's own answer, so the verifier now brackets every route's pair between two chain answers and redraws while the chain moves) against `tools/gateway.mjs` hosted here over `https://sepolia.base.org`, run by hand after the rehearsal (the gateway phase is skipped on a public chain); on the first run's deployment the same diff read 237 passed, 3 failed when `/token/2/hash` and `/token/2/live` were fetched in different blocks, and 240, 0 once the verifier took the three as one snapshot bracketed by two equal `/hash` bodies; the tamper fixture is a local gateway's, run on 31337 | — |
 
 The read-only preflight against `https://sepolia.base.org` on 2026-10-13,
 with a freshly generated, unfunded throwaway key, nothing sent: chain
@@ -249,16 +347,17 @@ the campaign 0.026866 ETH, of which two mints at the default 0.01 ETH
 price are 0.020 and the second key's funding 0.001713 — and the run ended
 with "fund `<address>` with at least 0.027946 ETH more", exit 1.
 
-The hub's `tokenURI` budget in CI is 8,000,000 (`tools/gas.mjs`, 7.64 M
-measured cold in the battery); the 7.91 M the node estimates is the
+The hub's `tokenURI` budget in CI is 8,000,000 (`tools/gas.mjs`, 3.62 M
+measured cold in the battery on the landed shape, after the encoder's
+rewrite — DESIGN §15, decision 39); the 3.78 M the node estimates is the
 estimate's own margin over the execution, not a different measurement.
 
 ## The key, when the run is done
 
 The burner holds the Timelock's admin at the end of a rehearsal (the
 record's `timelock.disposition` says so, read from the chain, and the
-campaign record's `disposition` reads it again). On a rehearsal chain the
-key is then destroyed: with `--key-file` the file is overwritten with
+campaign record's `disposition` reads it again). On a rehearsal chain whose
+campaign completed the key is then destroyed: with `--key-file` the file is overwritten with
 zeros, fsynced and unlinked after both records are written, and the run
 says so; a key from `PRIVATE_KEY` is the operator's to destroy, and the
 run prints the exact steps — `unset PRIVATE_KEY`, remove the line that set

@@ -214,7 +214,7 @@ contract LaunchWiring {
         locks = new LaunchLocks();
         pool = new LaunchPool(predicted, poolShortBy);
         kiln = new Kiln(hub, predicted, poolManager);
-        pad = new Launchpad(hub, address(kiln), address(pool), address(locks));
+        pad = new Launchpad(hub, address(kiln), address(pool), address(locks), address(0));   // no custodian: UniswapV4 is NotYet here
         if (address(pad) != predicted) revert Mispredicted(predicted, address(pad));
     }
 

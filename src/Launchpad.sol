@@ -16,6 +16,7 @@ import {IIntact} from "./interfaces/IIntact.sol";
 import {IPool, Market} from "./interfaces/IPool.sol";
 import {ILocks} from "./interfaces/ILocks.sol";
 import {ICoin} from "./interfaces/IKiln.sol";
+import {ILPCustodian, HookTerms} from "./interfaces/ILPCustodian.sol";
 import {Rights, IRightsHub} from "./lib/Rights.sol";
 import {Transient} from "./lib/Transient.sol";
 import {ExactERC20, IERC20Exact} from "./lib/ExactERC20.sol";
@@ -115,9 +116,12 @@ contract Launchpad is ILaunchpad {
     address public immutable KILN;
     address public immutable POOL;
     address public immutable LOCKS;
-    /// @notice `Target.UniswapV4` lands in an LPCustodian (DESIGN.md §8.4);
-    ///         none exists in the MVB, so that target is `NotYet`.
-    address public constant CUSTODIAN = address(0);
+    /// @notice `Target.UniswapV4` lands in an LPCustodian (DESIGN.md §8.4).
+    ///         Pinned at construction like POOL — predicted on a band where
+    ///         it is deployed later (CREATE3 settles its address up front) —
+    ///         and address(0) on a band without one, where that target is
+    ///         `NotYet`.
+    address public immutable CUSTODIAN;
 
     /*  `NotKiln`, `NotEnoughCredit` and `Insolvent` were this contract's own
         until the wave-1 integration moved them into ILaunchpadEvents, so the
@@ -155,11 +159,12 @@ contract Launchpad is ILaunchpad {
     ///         frozen, and this is the one term it does not carry.
     mapping(uint256 => uint128) public graduationTargetOf;
 
-    constructor(address hub, address kiln, address pool, address locks) {
+    constructor(address hub, address kiln, address pool, address locks, address custodian) {
         HUB = hub;
         KILN = kiln;
         POOL = pool;
         LOCKS = locks;
+        CUSTODIAN = custodian;
     }
 
     /*═══════════════════ the clock (called by the Kiln) ═══════════════════*/
@@ -215,7 +220,43 @@ contract Launchpad is ILaunchpad {
     /*═══════════════════ create ═══════════════════*/
 
     function create(LaunchParams calldata p) external returns (uint256 launchId) {
-        return _create(p);
+        return _checked(p, termsHash(p));
+    }
+
+    /// @notice A raise that graduates into Uniswap v4 (DESIGN.md §8.3–8.4):
+    ///         the same curve, and at graduation the LPCustodian seeds a pool
+    ///         keyed to the launch's own hook. The hook's terms and the salt
+    ///         that places it (mined through `Kiln.mine`, a view) are pinned
+    ///         here, once, beside the launch — no later change can touch them.
+    function createV4(LaunchParams calldata p, HookTerms calldata h, bytes32 hookSalt) external returns (uint256 launchId) {
+        return _createV4(p, h, hookSalt);
+    }
+
+    /// @notice `createV4`, refusing unless the terms, the hook terms and the
+    ///         salt are the ones the page showed.
+    function createV4Checked(LaunchParams calldata p, HookTerms calldata h, bytes32 hookSalt, bytes32 expectedTermsHash)
+        external returns (uint256 launchId)
+    {
+        bytes32 actual = v4TermsHash(p, h, hookSalt);
+        if (actual != expectedTermsHash) revert TermsMoved(expectedTermsHash, actual);
+        return _createV4(p, h, hookSalt);
+    }
+
+    function _createV4(LaunchParams calldata p, HookTerms calldata h, bytes32 hookSalt) private returns (uint256 launchId) {
+        if (p.target != Target.UniswapV4) revert WrongTarget();
+        if (CUSTODIAN == address(0)) revert NotYet();
+        launchId = _create(p);
+        ILPCustodian(CUSTODIAN).register(launchId, p.id, p.coin, h, hookSalt);
+    }
+
+    /// @dev `create` and `createChecked` are the owned-pool doors: the v4
+    ///      target is reached only through `createV4`, which carries the
+    ///      hook terms — and on a band with no custodian pinned, not at all.
+    function _owned(LaunchParams calldata p) private view {
+        if (p.target != Target.OwnedPool) {
+            if (CUSTODIAN == address(0)) revert NotYet();
+            revert WrongTarget();
+        }
     }
 
     /// @notice `create`, refusing to proceed unless the terms are the ones
@@ -224,15 +265,23 @@ contract Launchpad is ILaunchpad {
     ///         forwarding a form, a wallet that re-encoded it) is caught
     ///         before anything is written.
     function createChecked(LaunchParams calldata p, bytes32 expectedTermsHash) external returns (uint256 launchId) {
+        return _checked(p, expectedTermsHash);
+    }
+
+    /*  `create` and `createChecked` share this one path: the optimiser
+        copies `_create` once per call site, and two sites measured two
+        kilobytes over three (U14's size ladder) — so the owned-pool doors
+        meet here, and the v4 door is the only other caller.             */
+    function _checked(LaunchParams calldata p, bytes32 expectedTermsHash) private returns (uint256 launchId) {
         bytes32 actual = termsHash(p);
         if (actual != expectedTermsHash) revert TermsMoved(expectedTermsHash, actual);
+        _owned(p);
         return _create(p);
     }
 
     function _create(LaunchParams calldata p) private returns (uint256 launchId) {
         Transient.enter(Transient.LAUNCHPAD_LOCK);
         if (!Rights.acts(HUB, p.id, msg.sender)) revert NotActor();
-        if (p.target != Target.OwnedPool) revert NotYet();
 
         uint256 share = _pending[p.coin];
         if (share == 0 || _coinOf[p.coin] != p.id) revert WrongCoin(p.coin);
@@ -456,7 +505,6 @@ contract Launchpad is ILaunchpad {
         if (l.state == LaunchState.Graduated) revert AlreadyGraduated(launchId);
         if (l.state != LaunchState.Live) revert NotLive(launchId);
         if (!_graduatable(launchId, l)) revert NotGraduatable(launchId);
-        if (l.target != Target.OwnedPool) revert NotYet();
 
         l.state = LaunchState.Graduated;
         Fees memory f = _fees[launchId];
@@ -477,11 +525,25 @@ contract Launchpad is ILaunchpad {
             on the next launch's share, and a pool that pulled a different
             amount than it was told would price the market off the curve. */
         uint256 before = IERC20Exact(coin).balanceOf(address(this));
-        coin.approveExact(POOL, amountBase);
-        uint256 key = IPool(POOL).openSealed{value: raised}(
-            _launchKey(launchId), coin, address(0), SEALED_FEE_BPS, amountBase, l.id
-        );
-        coin.approveExact(POOL, 0);
+        uint256 key;
+        uint256 spot;
+        if (l.target == Target.UniswapV4) {
+            /*  DESIGN.md §8.3: the custodian initialises the v4 pool keyed to
+                the launch's hook at the terminal price — sqrt(coin per wei)
+                in Q64.96, which it derives from the two amounts the position
+                is made of — and mints the full-range position to itself.
+                `key` is the pool id; the spot is the pool's own, after.   */
+            coin.approveExact(CUSTODIAN, amountBase);
+            (key, spot) = ILPCustodian(CUSTODIAN).seed{value: raised}(launchId, amountBase);
+            coin.approveExact(CUSTODIAN, 0);
+        } else {
+            coin.approveExact(POOL, amountBase);
+            key = IPool(POOL).openSealed{value: raised}(
+                _launchKey(launchId), coin, address(0), SEALED_FEE_BPS, amountBase, l.id
+            );
+            coin.approveExact(POOL, 0);
+            spot = _spotOf(key);
+        }
         if (before - IERC20Exact(coin).balanceOf(address(this)) != amountBase) revert TransferFailed();
         l.marketKey = key;
 
@@ -494,7 +556,7 @@ contract Launchpad is ILaunchpad {
         _solvent();
 
         launchRoot[l.id] = keccak256(abi.encode(launchRoot[l.id], launchId, LaunchState.Graduated, key));
-        emit Graduated(launchId, key, Mul.mulDivDown(q, ONE, b), _spotOf(key));
+        emit Graduated(launchId, key, Mul.mulDivDown(q, ONE, b), spot);
         Transient.exit(Transient.LAUNCHPAD_LOCK);
     }
 
@@ -585,6 +647,12 @@ contract Launchpad is ILaunchpad {
         return keccak256(abi.encode(p));
     }
 
+    /// @notice What the page hashes to pin a v4 form: the struct, the hook
+    ///         terms and the salt, together.
+    function v4TermsHash(LaunchParams calldata p, HookTerms calldata h, bytes32 hookSalt) public pure returns (bytes32) {
+        return keccak256(abi.encode(p, h, hookSalt));
+    }
+
     function quoteBuy(uint256 launchId, uint256 quoteIn)
         external view returns (uint256 baseOut, uint256 fee, uint256 snipe)
     {
@@ -659,8 +727,6 @@ contract Launchpad is ILaunchpad {
         if (!ok) revert TransferFailed();
     }
 
-    /// @dev Isolation, asserted: this contract can never hold less than the
-    ///      sum of what it holds for every launch.
     function _solvent() private view {
         if (address(this).balance < totalHeld) revert Insolvent();
     }

@@ -58,7 +58,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decAddr, decUint, decBool } from "./evm.mjs";
 import { REGISTRY, REGISTRY_RUNTIME, ZERO, PANELS, predictCreate, encRequest, decResponse } from "./site.mjs";
-import { PINS, BAND_GETTERS, SALTED, PLACEHOLDERS, RECORD_KEYS, ROUTER_HASHES, venueTargets,
+import { PINS, BAND_GETTERS, SALTED, PLACEHOLDERS, RECORD_KEYS, ROUTER_HASHES, venueTargets, DEPLOYED_TOPIC,
          saltOf, predictCreate3, kec, decWords, decAddrs, decBytes4s, adapt } from "./deploy.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -78,10 +78,11 @@ function compiled(out, name, which = "deployedBytecode") {
 }
 const ARTIFACT = {
   factory: "Create3Factory", engine: "Engine", timelock: "Timelock", crest: "Crest", reachImpl: "Reach", gripImpl: "Grip",
-  catalogRows: "CatalogRows", catalogText: "CatalogText", catalogState: "CatalogState", catalog: "Catalog", renderer: "Renderer",
+  catalogRows: "CatalogRows", catalogRowsPost: "CatalogRowsPost", catalogText: "CatalogText", catalogState: "CatalogState", catalog: "Catalog", renderer: "Renderer",
   coreFacet: "CoreFacet", rightsFacet: "RightsFacet", mintFacet: "MintFacet", siteFacet: "SiteFacet",
   keys: "KeyRegistry", roster: "Roster", postage: "Postage", parley: "Parley", locks: "Locks", pool: "Pool", kiln: "Kiln",
-  launchpad: "Launchpad", router: "Router", steward: "Steward", premises: "Premises"
+  launchpad: "Launchpad", router: "Router", steward: "Steward", premises: "Premises",
+  market: "Market", roles: "Roles", agentCard: "AgentCard", nameplate: "Nameplate", custodian: "LPCustodian"
 };
 
 /**
@@ -134,6 +135,24 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
     }
   }
   const predictedOnChain = {};
+  /*── a satellite that landed after the MVB (deploy.mjs `deploySatellite`):
+       the record carries the Timelock op that queued it and the transaction
+       that landed it; the queue must be clear now, and the factory's own
+       `Deployed` event at the recorded block must name this address ──*/
+  const satelliteEvidence = async (key, salt, predicted) => {
+    const s = rec.satellites?.[key];
+    if (!s) { checked++; D.push({ field: `satellites.${key}`, want: "the queue op and the transaction that landed it", have: "(unrecorded)", kind: "drift" }); return; }
+    if (s.op && C.timelock) say(`satellites.${key}: the Timelock's queue for its op is clear`, "0", or(await uintOf(C.timelock, "eta(bytes32)", [s.op])));
+    if (s.executed?.block) {
+      let logs = null;
+      try {
+        const b = "0x" + BigInt(s.executed.block).toString(16);
+        logs = await ad.getLogs({ address: rec.factory, fromBlock: b, toBlock: b, topics: [DEPLOYED_TOPIC, salt] });
+      } catch { logs = null; }
+      const named = (logs || []).map((l) => "0x" + String(l.topics[2]).slice(26).toLowerCase());
+      say(`satellites.${key}.executed.block: the factory's Deployed event names it`, predicted, named.length === 1 ? named[0] : named.length ? `(${named.length} events)` : NO);
+    }
+  };
   for (const key of [...SALTED, ...PLACEHOLDERS]) {
     const salt = rec.salts?.[key];
     if (!salt) continue;
@@ -142,8 +161,10 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
     const onChain = await addrOf(rec.factory, "predict(bytes32)", [salt]);
     predictedOnChain[key] = onChain;
     say(`factory.predict(salts.${key})`, predicted, or(onChain));
-    if (C[key]) say(`contracts.${key} = CREATE3(factory, salt)`, C[key], predicted);
-    else if (PLACEHOLDERS.includes(key)) {
+    if (C[key]) {
+      say(`contracts.${key} = CREATE3(factory, salt)`, C[key], predicted);
+      if (PLACEHOLDERS.includes(key)) await satelliteEvidence(key, salt, predicted);
+    } else if (PLACEHOLDERS.includes(key)) {
       say(`placeholders.${key}`, rec.placeholders?.[key] ?? "(unrecorded)", predicted);
       say(`placeholders.${key} is codeless`, "0x", await ad.codeAt(predicted));
     }

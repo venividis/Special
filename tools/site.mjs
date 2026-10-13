@@ -38,6 +38,7 @@ export const PANELS = ["swap", "social", "launch", "vault", "identity", "agent"]
 export const MARKET_PLACEHOLDER = "0x0000000000000000000000000000000000A2CE70";
 export const ROLES_PLACEHOLDER = "0x0000000000000000000000000000000000A01E50";
 export const AGENTCARD_PLACEHOLDER = "0x000000000000000000000000000000000A6E7CA0";
+export const NAMEPLATE_PLACEHOLDER = "0x00000000000000000000000000000000A3E97A7E";
 
 export const CONFIG_TYPE =
   "(address,address,uint8,uint256,uint256,address,address,address,address,address,address,address,address,address,address,address)";
@@ -140,35 +141,58 @@ export async function deploySite(c, out, opts = {}) {
   const n0 = await c.nonceNow();
   const at = (k) => predictCreate(from, n0 + BigInt(k));
   const P = {
-    catalogRows: at(0), catalogText: at(1), catalogState: at(2), catalog: at(3), renderer: at(4), premises: at(5),
-    coreFacet: at(6), rightsFacet: at(7), mintFacet: at(8), siteFacet: at(9), hub: at(10),
-    locks: at(11), steward: at(12), postage: at(13), parley: at(14), roster: at(15),
-    pool: at(16), kiln: at(17), launchpad: at(18)
+    catalogRows: at(0), catalogRowsPost: at(1), catalogText: at(2), catalogState: at(3), catalog: at(4), renderer: at(5), premises: at(6),
+    coreFacet: at(7), rightsFacet: at(8), mintFacet: at(9), siteFacet: at(10), hub: at(11),
+    locks: at(12), steward: at(13), postage: at(14), parley: at(15), roster: at(16),
+    pool: at(17), kiln: at(18), launchpad: at(19)
   };
+  /*  U17 (additive): `deployAgentCard` deploys src/AgentCard.sol as the LAST
+      CREATE of the run, at the address the Catalog, the Renderer and the
+      Premises are pinned to before it exists — the card takes their
+      addresses as constructor arguments, so it must come after them and is
+      predicted like everything else. Without the option the pin stays the
+      codeless placeholder and every agent route is a 404, which is what
+      the other verifiers measure.                                         */
+  if (opts.deployAgentCard) P.agentCard = at(20);
+  /*  Wave 4 (additive): `deployMarket` and `deployRoles` deploy src/Market.sol
+      and src/Roles.sol after the card, at the addresses the hub's and the
+      Catalog's configurations pin before they exist — predicted like
+      everything else — so a lane or a verifier can exercise the real
+      satellites. Without the options the pins stay the codeless
+      placeholders and the "not reported" paths are what the run measures. */
+  let next = opts.deployAgentCard ? 21 : 20;
+  if (opts.deployMarket) P.market = at(next++);
+  if (opts.deployRoles) P.roles = at(next++);
+  const market = opts.deployMarket ? P.market : MARKET_PLACEHOLDER;
+  const roles = opts.deployRoles ? P.roles : ROLES_PLACEHOLDER;
+  const nameplate = opts.nameplate || NAMEPLATE_PLACEHOLDER;      // band 0 only; deployed beside the site by tools/verify-plate.mjs
   const router = opts.router || ZERO;
-  const agentCard = opts.agentCard || AGENTCARD_PLACEHOLDER;
+  const agentCard = opts.deployAgentCard ? P.agentCard : (opts.agentCard || AGENTCARD_PLACEHOLDER);
 
   // the Catalog's three companions, before it (EIP-3860 keeps them out of its
   // initcode; EIP-7825 keeps the two table renderings in two transactions);
   // the rows carry every contract's address, so they take the predictions by letter
   const byLetter = [P.hub, P.pool, ZERO, P.parley, P.roster, P.postage, keys, P.kiln, P.launchpad, ZERO,
-                    P.locks, P.steward, router, ZERO, engine, P.catalog];           // HPRYTSKNLCOWXEGQ
+                    P.locks, P.steward, router, ZERO, engine, P.catalog,
+                    market, roles, agentCard, ZERO, nameplate];                      // HPRYTSKNLCOWXEGQMDAUI
   const catalogRows = await c.deploy(A("src/Catalog.sol", "CatalogRows").bytecode,
-    encodeParams("address[16]", [byLetter]), "CatalogRows");
+    encodeParams("address[21]", [byLetter]), "CatalogRows");
+  const catalogRowsPost = await c.deploy(A("src/Catalog.sol", "CatalogRowsPost").bytecode,
+    encodeParams("address[21]", [byLetter]), "CatalogRowsPost");
   const catalogText = await c.deploy(A("src/Catalog.sol", "CatalogText").bytecode,
-    encodeParams("address", [catalogRows]), "CatalogText");
+    encodeParams("address,address", [catalogRows, catalogRowsPost]), "CatalogText");
   const catalogState = await c.deploy(A("src/Catalog.sol", "CatalogState").bytecode, encodeParams("address", [catalogText]), "CatalogState");
   const catalog = await c.deploy(A("src/Catalog.sol", "Catalog").bytecode,
     encodeParams(CATALOG_CONFIG_TYPE, [[
       P.hub, engine, router, P.roster, P.postage, keys, P.kiln, agentCard,
-      reachImpl, gripImpl, P.pool, P.parley, P.launchpad, P.locks, P.steward, MARKET_PLACEHOLDER, ROLES_PLACEHOLDER,
+      reachImpl, gripImpl, P.pool, P.parley, P.launchpad, P.locks, P.steward, market, roles,
       timelock, P.premises, P.renderer, band, lo, hi, catalogText, catalogState]]), "Catalog");
   const renderer = await c.deploy(A("src/Renderer.sol", "Renderer").bytecode,
     encodeParams("address,address,address,address,address", [P.hub, engine, crest, catalog, agentCard]), "Renderer");
   const premises = await c.deploy(A("src/Premises.sol", "Premises").bytecode,
     encodeParams("address,address,address,address,address,address", [P.hub, renderer, engine, catalog, crest, agentCard]), "Premises");
 
-  const config = [reachImpl, gripImpl, band, lo, hi, P.steward, MARKET_PLACEHOLDER, ROLES_PLACEHOLDER, P.pool, P.parley,
+  const config = [reachImpl, gripImpl, band, lo, hi, P.steward, market, roles, P.pool, P.parley,
                   P.launchpad, P.locks, renderer, catalog, premises, timelock];
   const cfg = encodeParams(CONFIG_TYPE, [config]);
   const facets = {};
@@ -188,11 +212,17 @@ export async function deploySite(c, out, opts = {}) {
   const pool = await c.deploy(A("src/Pool.sol", "Pool").bytecode, encodeParams("address,address", [hub, P.launchpad]), "Pool");
   const kiln = await c.deploy(A("src/Kiln.sol", "Kiln").bytecode, encodeParams("address,address,address", [hub, P.launchpad, ZERO]), "Kiln");
   const launchpad = await c.deploy(A("src/Launchpad.sol", "Launchpad").bytecode,
-    encodeParams("address,address,address,address", [hub, kiln, pool, locks]), "Launchpad");
+    encodeParams("address,address,address,address,address", [hub, kiln, pool, locks, ZERO]), "Launchpad");   // no custodian in the harness world: Target.UniswapV4 stays NotYet
 
-  const got = { catalogRows, catalogText, catalogState, catalog, renderer, premises, coreFacet: facets.CoreFacet, rightsFacet: facets.RightsFacet,
+  const got = { catalogRows, catalogRowsPost, catalogText, catalogState, catalog, renderer, premises, coreFacet: facets.CoreFacet, rightsFacet: facets.RightsFacet,
                 mintFacet: facets.MintFacet, siteFacet: facets.SiteFacet, hub, locks, steward, postage, parley, roster,
                 pool, kiln, launchpad };
+  if (opts.deployAgentCard) {
+    got.agentCard = await c.deploy(A("src/AgentCard.sol", "AgentCard").bytecode,
+      encodeParams("address,address,address", [hub, catalog, premises]), "AgentCard");
+  }
+  if (opts.deployMarket) got.market = await c.deploy(A("src/Market.sol", "Market").bytecode, encodeParams("address,address", [hub, pool]), "Market");
+  if (opts.deployRoles) got.roles = await c.deploy(A("src/Roles.sol", "Roles").bytecode, encodeParams("address", [hub]), "Roles");
   const missed = Object.keys(P).filter((k) => P[k].toLowerCase() !== got[k].toLowerCase());
   if (missed.length) throw new Error("a prediction missed: " + missed.map((k) => `${k} ${P[k]} vs ${got[k]}`).join(", "));
 
@@ -213,7 +243,7 @@ export async function deploySite(c, out, opts = {}) {
   return {
     plan, price, band, lo, hi, gasLog,
     registry: REGISTRY, reachImpl, gripImpl, engine, crest, keys, timelock, router, agentCard,
-    market: MARKET_PLACEHOLDER, roles: ROLES_PLACEHOLDER, ...got, facets
+    market, roles, nameplate, ...got, facets
   };
 }
 

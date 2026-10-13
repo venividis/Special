@@ -811,8 +811,8 @@ async function groupSession(t, ctx) {
     t.ok((await pg.body()).mode === "session" && /acts as key 0x/.test(st) && /for #1\D/.test(st) && (await pg.body()).rights === "128", "?as=<key> opens session mode: #session names the key and the token, and the body's rights are the SESSION bit alone", `${(await pg.body()).mode} rights ${(await pg.body()).rights} "${st.slice(0, 120)}"`);
     t.ok(W.callsTo(S1.reach, sel("sessionOf(address)")).length >= 1 && W.callsTo(S1.reach, sel("sessionExposure(address)")).length >= 1 && /expires/.test(st) && /native cap/.test(st) && /SESSION right: yes/.test(st), "the key's grant is read in words: sessionOf, sessionExposure, and whether rightsOf carries SESSION", st.slice(0, 300));
     for (const n of Object.keys(S1.panels)) await pg.lane(n);
-    t.ok(await pg.count("[data-act]") === 0 && await pg.count("[data-go]") === 0 && await pg.count("textarea") === 0 && /no executeAsSession composer until U17/.test(await pg.text("#lane-agent")),
-      "every holder control is hidden in every lane, and the agent lane says what is missing", `acts ${await pg.count("[data-act]")} agent "${(await pg.text("#lane-agent")).slice(0, 100)}"`);
+    t.ok(await pg.count("[data-act]") === 0 && await pg.count("[data-go]") === 0 && await pg.count("textarea") === 0 && /this page reads only: the act is offered in the console/.test(await pg.text("#lane-agent")),
+      "every holder control is hidden in every lane, and the agent lane says where the act is", `acts ${await pg.count("[data-act]")} agent "${(await pg.text("#lane-agent")).slice(0, 100)}"`);
     await pg.close();
   }
   {

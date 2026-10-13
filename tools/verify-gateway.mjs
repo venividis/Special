@@ -153,10 +153,23 @@ const headerOf = (chain, name) => (chain.headers.find((h) => low(h[0]) === name)
 export async function diffRoutes(t, { gateway, prefix = "", routes, chainAnswer }) {
   const served = {};
   for (const route of routes) {
-    const chain = await chainAnswer(route.segments);
+    let chain = await chainAnswer(route.segments);
     let got;
     try { got = await rawGet(gateway + prefix + route.path); }
     catch (e) { t.ok(false, `${route.path}: the gateway answered`, e.message); continue; }
+    /*  A live chain mines between the chain's answer and the gateway's,
+        and a document carries the block and its clock, so the two can
+        differ with nothing wrong (the second Base Sepolia run: /token/1/live,
+        41,991 bytes both ways, one block apart). When they differ, ask the
+        chain again: an answer that moved means the block did — fetch the
+        pair again, up to four draws; an answer that stands means the
+        difference is the gateway's, and the sentence below reports it.   */
+    for (let draw = 0; draw < 4 && !got.body.equals(chain.bodyBytes); draw++) {
+      const again = await chainAnswer(route.segments);
+      if (again.bodyBytes.equals(chain.bodyBytes) && again.status === chain.status) break;
+      chain = again;
+      try { got = await rawGet(gateway + prefix + route.path); } catch { break; }
+    }
     served[route.path] = { chain, got };
     const r = route.path;
     t.ok(got.status === chain.status, `${r}: the status is the chain's (${chain.status})`, `gateway ${got.status}`);
@@ -200,7 +213,7 @@ export async function diffRoutes(t, { gateway, prefix = "", routes, chainAnswer 
 }
 
 /// The hashes: what /manifest promises against what the gateway served.
-export async function checkHashes(t, { served, ids, record, codeAt }) {
+export async function checkHashes(t, { served, ids, record, codeAt, refetch = null }) {
   const man = served["/manifest"];
   if (!man) return;
   let M = null;
@@ -225,7 +238,20 @@ export async function checkHashes(t, { served, ids, record, codeAt }) {
   t.ok(recomputed, "/manifest hashes equal those recomputed from the bodies served",
        `panels ${PANELS.map((n) => `${n} ${panelHashes[n] === null ? "no inflate" : low(panelHashes[n]) === low(M.panelHashes[n])}`).join(", ")}; shell ${shell ? kec(shell) : "no payload"} vs ${M.engineHash}`);
   for (const id of ids) {
-    const h = served[`/token/${id}/hash`], live = served[`/token/${id}/live`], state = served[`/token/${id}/state.json`];
+    let h = served[`/token/${id}/hash`], live = served[`/token/${id}/live`], state = served[`/token/${id}/state.json`];
+    /*  A live chain mines between two fetches, and the state block carries
+        the block and its clock, so a /hash fetched in one block and a /live
+        fetched in the next disagree with nothing wrong (the first Base
+        Sepolia run: token 1 agreed, token 2 straddled a block). Take the
+        three as one snapshot — /hash, /live, /state.json, /hash again — and
+        accept it only when the two /hash bodies are equal, which brackets
+        the other two inside one block. Up to five draws; a disagreement
+        that survives them is reported as one.                            */
+    const agrees = () => { try { const X = JSON.parse(h.got.body.toString("utf8")); return live && state && low(X.document) === low(kec(live.got.body)) && low(X.state) === low(kec(state.got.body)); } catch { return false; } };
+    for (let draw = 0; refetch && h && !agrees() && draw < 5; draw++) {
+      const a = await refetch(`/token/${id}/hash`), l = await refetch(`/token/${id}/live`), s = await refetch(`/token/${id}/state.json`), b = await refetch(`/token/${id}/hash`);
+      if (a.body.equals(b.body)) { h = { got: a }; live = { got: l }; state = { got: s }; }
+    }
     let H = null;
     try { H = JSON.parse(h.got.body.toString("utf8")); } catch { /* not JSON */ }
     t.ok(H && live && low(H.document) === low(kec(live.got.body)), `/token/${id}/hash is the keccak of the served /live body`, H ? `${H.document} vs ${live ? kec(live.got.body) : "?"}` : "no hash body");
@@ -295,14 +321,14 @@ async function main() {
   const c = await RpcChain.open(rpc, DEV_KEYS[0]);
   if (record && record.chainId && c.chainId !== record.chainId) { console.error(`  the node at ${rpc} is chain ${c.chainId}; the record is for ${record.chainId}`); process.exit(2); }
   const chainAnswer = async (segments) => decResponse(await c.call(premises, encRequest(segments)));
-  const codeAt = (a) => c.rpc("eth_getCode", [a, "latest"]);
+  const codeAt = async (a) => c.rpc("eth_getCode", [a, c.tag ? await c.tag() : "latest"]);
   const key = record?.deployer || "0x" + "ab".repeat(20);
   const routes = routesFor(ids, key);
 
   t.head(`${routes.length} routes: status, bytes and headers against eth_call`);
   const served = await diffRoutes(t, { gateway, prefix, routes, chainAnswer });
   t.head("the hashes the manifest promises, recomputed from what was served");
-  await checkHashes(t, { served, ids, record, codeAt });
+  await checkHashes(t, { served, ids, record, codeAt, refetch: (p) => rawGet(gateway + prefix + p) });
   const cleanFailures = t.fail;
   console.log(`      ${routes.length} routes for ${ids.length} id(s): ${ids.join(", ")}`);
   t.ok(cleanFailures === 0, "every route's status, body bytes and headers are the chain's own answer", `${cleanFailures} difference(s) above`);

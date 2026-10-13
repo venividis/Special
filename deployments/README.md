@@ -30,6 +30,15 @@ the record hashes. `Catalog.agrees()` must be true, `catalogHash`, the
 registry's codehash, the band bounds and the Timelock's admin must match,
 and `/manifest` over ERC-5219 must name the same hashes.
 
+A post-MVB satellite the record lists under `satellites` is checked like
+every other contract (its address against the salt, its codehash, its
+own pins both ways) and twice more: the Timelock's queue for its `op`
+must be clear, and the factory's own `Deployed` event at the recorded
+`executed.block` must name its address — a record that claims a
+satellite without that evidence, or at a block where the factory
+deployed nothing, disagrees by name. A placeholder the record does not
+list under `contracts` must still be codeless.
+
 The last line is either `0 disagreeing` (exit 0) or the list of
 disagreeing fields, each with what the record says and what the chain
 says (exit 1). `tools/deploy.mjs` runs the same function in-process
@@ -66,7 +75,8 @@ end.
 | `contracts` | record key → address. Flat, like IPSEITY's, so a spread cannot drop one |
 | `codehashes` | `extcodehash` at deploy, per key |
 | `reproducible` | per key, whether that codehash equals `keccak(compiled deployedBytecode)` — true only for contracts without immutables |
-| `placeholders` | `market`, `roles`, `agentCard`: CREATE3-predicted and codeless until their units land. The hub, Catalog, Renderer and Premises pin these addresses immutably |
+| `placeholders` | `market`, `roles`, `agentCard`, `nameplate`: CREATE3-predicted and codeless until each lands through the Timelock (below, `satellites`). The hub, Catalog, Renderer and Premises pin the first three immutably; the fourth is band 0's resolver, carried by the Catalog's rows under its letter and codeless on every other band |
+| `satellites` | per post-MVB key that has landed or been queued (`agentCard`, `market`, `roles`, …): `via` (`timelock`), the Timelock `op`, `queued` `{tx, block, gas, by}`, `eta`, and `executed` `{tx, block, gas, by}` once it landed — written by `tools/deploy.mjs --satellite`, which then also lists the key under `contracts`, `codehashes` and `reproducible` and adds its gas. A queued-not-landed satellite has no `executed` and its placeholder is still codeless |
 | `shipBuild` | `out/ship.json` verbatim (`build`, `reason`, `intactBytes`, `threshold`, `limit`, `solc`) plus, in the diamond build, `facets {name: {address, codehash, selectors}}` and the `cut` |
 | `engine` | `address`, `via` (the plain CREATE that made it), `curator`, `frozen`, `engineHash`, `inflatedSize`, `shardHashes`, `panelHashes`, `head[]`, `body[]`, `panels[{name, address, hash, gzipHash}]`, `storedBytes`, `placeholder` |
 | `catalogHash` | `Catalog.catalogHash()` |
@@ -75,7 +85,7 @@ end.
 | `price` | the initial mint price the hub's constructor wrote |
 | `timelock` | `admin` (the burner at deploy), `delay`, `grace`, and `disposition` — read from the chain, not written in advance: "the burner holds the admin…" while `admin` is the burner, "renounced" at address(0), "rotated to …" otherwise |
 | `burner` | `nonceAfter` and `balanceAfter`: the burner as the run left it, so a later reader can see whether it was ever used again |
-| `venues` | the probed venue table used for the Router and Kiln, or null (Router skipped, letter X pinned as address(0)). Read back by name: `kiln.POOL_MANAGER`, `router.SWAP_ROUTER02/POOL_MANAGER/WETH`, and the Router's four codehash immutables |
+| `venues` | the probed venue table used for the Router, the Kiln and the custodian, or null (Router skipped, letter X pinned as address(0)): `swapRouter02`, `poolManager`, `weth`, and since U14 `positionManager` and `permit2` (what `LPCustodian` seeds through) and `launchHookCodehash` (the keccak of `LaunchHook`'s compiled runtime, which the deployer fills in when the table does not name it — one codehash for every launch's hook, the same on every band). Read back by name: `kiln.POOL_MANAGER`, `router.SWAP_ROUTER02/POOL_MANAGER/WETH`, the Router's four codehash immutables, and the custodian's `POOL_MANAGER/POSITION_MANAGER/PERMIT2` once it has landed |
 | `gas`, `gasTotal` | gas per step label and the sum |
 | `toolchain` | solc version, optimizer runs, viaIR, evmVersion, `bytecodeHash: none`, the EIP-170 limit |
 | `confirmToken`, `journal`, `writtenAt`, `block`, `recovered` | the literal token the run carried, the journal's path, when, at which block, and how many fields the in-process recovery checked |
@@ -158,13 +168,44 @@ A rehearsal that must not overwrite it passes `--record <path>` (and
 `--journal <path>`); the deployer refuses an option it does not know.
 Its `engine.placeholder` says whether `dist/` held the placeholder shell
 from `tools/fixtures/`: it did until U9 landed; the record in the tree was
-regenerated on 2026-10-12 from the console with every lane real and reads
-`false`, so a fresh local deploy from the same sources recovers against it
-with 0 disagreeing. `deploy.mjs` refuses to deploy a placeholder anywhere
+regenerated on 2026-10-13 by the wave-4 integration tree's rehearsal
+(`tools/testnet.mjs`, 59 sentences, 0 failed) from the console with every
+lane real and reads `false`, carries `satellites` for the card, the Market
+and the Roles (each queued and landed through the Timelock) and recovered
+with 383 fields, 0 disagreeing; `31337.campaign.json` beside it is that
+run's campaign record, the receipts of every function family walked live.
+A fresh local deploy from the same sources recovers against it with 0
+disagreeing. `deploy.mjs` refuses to deploy a placeholder anywhere
 but 31337, and a resumed run refuses a `dist/` rebuilt since the Engine's
 first shards were stored. Its deployer is
 hardhat's first account, which is nobody's burner; the warning the run
 printed is the record's `deployer` field.
+
+## `84532.json`
+
+Base Sepolia, written by `tools/testnet.mjs` on 2026-10-13 from the wave-4
+integration tree (`docs/DEPLOYMENT.md`, "Measured"), the second live run
+and the complete one: the 27 MVB contracts from block 48,082,395 under the
+burner `0x5282…7175` (hub `0x1928…e03e`, Premises `0x379a…7079`, Timelock
+`0xae53…53fb`), recovered in-run with 362 fields and 0 disagreeing;
+`satellites` carries the card, the Market and the Roles QUEUED on the
+Timelock (`queued`, `op`, `eta`; no `executed` yet) — executable from Unix
+time 1,792,537,900, by anyone with `tools/deploy.mjs --chain 84532
+--satellite all`, which writes `executed` and recovers the record. Its
+campaign record beside it walks all forty steps (5,816,607 gas; the two
+steward refusals proved by their selectors, since a public chain's clock
+cannot be moved). The burner was destroyed when the run completed, as
+the disposition says; it holds the Timelock's admin, as a rehearsal's must.
+
+`84532.first.json` and `84532.first.campaign.json` are the first live run,
+an hour earlier from the same tree: the same deployment shape from block
+48,081,889 under `0x6254…17e1`, its three satellites queued (ripe from Unix
+time 1,792,536,880), and a campaign that stops at the ninth step — the
+tenth, the exact-in swap, landed on the chain (block 48,081,907) but its
+read-back was answered by a lagging replica, and the run's disposition
+destroyed the key, so that deployment's holder and admin are gone with it.
+Kept as the record of the lesson (`CLAUDE.md`, the traps); nothing reads
+it by default.
 
 ## The campaign record (`intact.campaign/1`)
 
@@ -199,6 +240,13 @@ of the steps and why are in `tools/testnet.mjs`'s header, and
 `docs/DEPLOYMENT.md` reads the measured numbers out of a record.
 
 ## Not in MVB
+
+The post-MVB satellites are not in the MVB record but are not "not in
+MVB" either: `tools/deploy.mjs --satellite <key>` lands AgentCard, Market,
+Roles and, where a chain has a NameWrapper, the Nameplate (and LPCustodian
+as U14 lands) at the addresses the MVB pinned, through the Timelock's queue, and writes them
+into the same record (`satellites`, `docs/DEPLOYMENT.md` "The post-MVB
+satellites"). Still absent from this tooling:
 
 Reusing an existing Parley on a redeploy (`--reuse parley=<addr>`, as
 IPSEITY's `existingParley`), the post-MVB satellites (AgentCard, Market,

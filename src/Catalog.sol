@@ -340,7 +340,7 @@ abstract contract Templated {
   The sixteen contract addresses are constructor arguments (the deployer
   knows every prediction by then), so a row carries its contract.
 ───────────────────────────────────────────────────────────────────────────*/
-contract CatalogRows is Templated {
+abstract contract RowTable is Templated {
     address private immutable _SEL;
     address private immutable _R0;
     address private immutable _R1;
@@ -352,7 +352,10 @@ contract CatalogRows is Templated {
         shell or an agent can make. Contract letters: H hub, P pool,
         R reach, Y parley, T roster, S postage, K keys, N kiln,
         L launchpad, C a coin, O locks, W steward, X router, E any ERC-20,
-        G engine, Q the catalog. Kind: r read, w write, p payable. Via: d
+        G engine, Q the catalog; and, post-MVB (wave 4, rendered by the
+        second table so the first stays under the 2^24 transaction cap),
+        M market, D roles, A the agent card, U the LP custodian, I the
+        nameplate. Kind: r read, w write, p payable. Via: d
         direct from the holder's wallet, a `acts` (holder or the token's
         Reach), r the Reach only. The selector is keccak'd from the
         signature at construction; nothing hex is written by hand.
@@ -369,6 +372,173 @@ contract CatalogRows is Templated {
         panels by the same decision - no row, no control). Each
         names a public function its contract's ABI serves - the drift gate
         in tools/verify.mjs fails the build on one that does not.        */
+
+    /// @dev The sixteen letters, in the order the constructor takes their addresses.
+    bytes internal constant LETTERS = "HPRYTSKNLCOWXEGQMDAUI";
+
+    error RowsTooLong();
+
+    /// @param t the raw table this contract renders (the concrete contract's
+    ///        own constant: the MVB rows, or the post-MVB rows).
+    /// @param byLetter the address for each of LETTERS: zero for the
+    ///        per-asset families (a coin, any ERC-20), the Reach, whose
+    ///        address is per token — `account(id)` — and a satellite no
+    ///        band has yet.
+    constructor(bytes memory t, address[21] memory byLetter) {
+        servicesHash = keccak256(t);
+        _SEL = SSTORE2.write(_renderSelectors(t));
+        bytes memory rows_ = _renderRows(t, byLetter);
+        uint256 cut = SSTORE2.MAX_SHARD;
+        if (rows_.length > cut * 3) revert RowsTooLong();
+        _R0 = SSTORE2.write(_window(rows_, 0, cut));
+        _R1 = rows_.length > cut ? SSTORE2.write(_window(rows_, cut, cut)) : address(0);
+        _R2 = rows_.length > cut * 2 ? SSTORE2.write(_window(rows_, cut * 2, cut)) : address(0);
+    }
+
+    function _window(bytes memory b, uint256 from, uint256 len) private pure returns (bytes memory o) {
+        if (from + len > b.length) len = b.length - from;
+        o = _sub(b, from, len);
+    }
+
+    /// @notice `{"hub.mint":"0x…",…}`.
+    function selectors() external view returns (bytes memory) { return SSTORE2.read(_SEL); }
+
+    /// @notice The service rows, as the JSON array's inside.
+    function rows() external view returns (bytes memory o) {
+        o = SSTORE2.read(_R0);
+        if (_R1 != address(0)) o = bytes.concat(o, SSTORE2.read(_R1));
+        if (_R2 != address(0)) o = bytes.concat(o, SSTORE2.read(_R2));
+    }
+
+    /*═══════════════════ the rendering, at construction ═══════════════════*/
+
+    /// @dev `{"hub.mint":"0x…",…}`: every row as `contract.name` →
+    ///      selector. Keyed by both because `claim`, `execute`, `release`
+    ///      and `state` each exist on two contracts.
+    function _renderSelectors(bytes memory t) private pure returns (bytes memory o) {
+        o = new bytes(t.length * 2 + 64);
+        uint256 n = _put(o, 0, "{");
+        uint256 p;
+        while (p < t.length) {
+            uint256 e = _find(t, p, ";");
+            uint256 f1 = _find(t, p, "|");
+            uint256 f2 = _find(t, f1 + 1, "|");
+            uint256 f3 = _find(t, f2 + 1, "|");
+            if (p != 0) n = _put(o, n, ",");
+            n = _put(o, n, '"');
+            n = _put(o, n, bytes(word(t[f1 + 1])));
+            n = _put(o, n, ".");
+            n = _slice(o, n, t, p, f1 - p);
+            n = _put(o, n, '":"');
+            n = _writeHex(o, n, uint256(_keccak(t, f2 + 1, f3 - f2 - 1)) >> 224, 4);
+            n = _put(o, n, '"');
+            p = e + 1;
+        }
+        n = _put(o, n, "}");
+        assembly ("memory-safe") { mstore(o, n) }
+    }
+
+    /// @dev One JSON object per row, written straight into one buffer:
+    ///      `{name, on, contract, sig, selector, kind, via, args[], notes}`.
+    ///      `args` is the signature's own parameter list split at the top
+    ///      level, so a tuple is one argument, as the ABI sees it.
+    function _renderRows(bytes memory t, address[21] memory byLetter) private pure returns (bytes memory o) {
+        o = new bytes(t.length * 6 + 64);
+        uint256 n;
+        uint256 p;
+        while (p < t.length) {
+            uint256 e = _find(t, p, ";");
+            uint256 f1 = _find(t, p, "|");
+            uint256 f2 = _find(t, f1 + 1, "|");
+            uint256 f3 = _find(t, f2 + 1, "|");
+            uint256 f4 = _find(t, f3 + 1, "|");
+            uint256 f5 = _find(t, f4 + 1, "|");
+            if (p != 0) n = _put(o, n, ",");
+            n = _put(o, n, '{"name":"');
+            n = _slice(o, n, t, p, f1 - p);
+            n = _put(o, n, '","on":"');
+            n = _put(o, n, bytes(word(t[f1 + 1])));
+            n = _put(o, n, '","contract":"');
+            n = _writeHex(o, n, uint160(byLetter[_index(t[f1 + 1])]), 20);
+            n = _put(o, n, '","sig":"');
+            n = _slice(o, n, t, f2 + 1, f3 - f2 - 1);
+            n = _put(o, n, '","selector":"');
+            n = _writeHex(o, n, uint256(_keccak(t, f2 + 1, f3 - f2 - 1)) >> 224, 4);
+            n = _put(o, n, '","kind":"');
+            n = _put(o, n, t[f3 + 1] == "r" ? bytes("read") : t[f3 + 1] == "p" ? bytes("payable") : bytes("write"));
+            n = _put(o, n, '","via":"');
+            n = _put(o, n, t[f4 + 1] == "d" ? bytes("direct") : t[f4 + 1] == "r" ? bytes("reach") : bytes("acts"));
+            n = _put(o, n, '","args":[');
+            n = _args(o, n, t, f2 + 1, f3 - f2 - 1);
+            n = _put(o, n, '],"notes":"');
+            n = _slice(o, n, t, f5 + 1, e - f5 - 1);
+            n = _put(o, n, '"}');
+            p = e + 1;
+        }
+        assembly ("memory-safe") { mstore(o, n) }
+    }
+
+    /// @dev The parameter list inside the signature's outer parentheses,
+    ///      split at depth-zero commas, each piece quoted, written at `n`.
+    function _args(bytes memory o, uint256 n, bytes memory t, uint256 start, uint256 len) private pure returns (uint256) {
+        uint256 i = _find(t, start, "(") + 1;
+        uint256 end = start + len - 1;            // the closing paren
+        if (i >= end) return n;
+        uint256 depth;
+        uint256 from = i;
+        bool first = true;
+        for (; i <= end; ++i) {
+            bytes1 ch = t[i];
+            if (ch == "(") ++depth;
+            else if (ch == ")" && i != end) --depth;
+            if ((ch == "," && depth == 0) || i == end) {
+                n = _put(o, n, first ? bytes('"') : bytes(',"'));
+                first = false;
+                n = _slice(o, n, t, from, i - from);
+                n = _put(o, n, '"');
+                from = i + 1;
+            }
+        }
+        return n;
+    }
+
+    function _index(bytes1 c) private pure returns (uint256) {
+        bytes memory l = LETTERS;
+        for (uint256 i; i < l.length; ++i) if (l[i] == c) return i;
+        return 15;
+    }
+
+    /// @notice The contract a letter names.
+    function word(bytes1 c) public pure returns (string memory) {
+        if (c == "H") return "hub";
+        if (c == "P") return "pool";
+        if (c == "R") return "reach";
+        if (c == "Y") return "parley";
+        if (c == "T") return "roster";
+        if (c == "S") return "postage";
+        if (c == "K") return "keys";
+        if (c == "N") return "kiln";
+        if (c == "L") return "launchpad";
+        if (c == "C") return "coin";
+        if (c == "O") return "locks";
+        if (c == "W") return "steward";
+        if (c == "X") return "router";
+        if (c == "E") return "erc20";
+        if (c == "G") return "engine";
+        if (c == "M") return "market";
+        if (c == "D") return "roles";
+        if (c == "A") return "agentCard";
+        if (c == "U") return "custodian";
+        if (c == "I") return "nameplate";
+        return "catalog";
+    }
+
+}
+
+/// @notice The MVB rows (waves 0–2): the table U7 and U9 wrote, measured
+///         at 14.94 M gas to render and store on 31337 — 89 % of the 2^24
+///         transaction cap, which is why nothing is appended to it.
+contract CatalogRows is RowTable {
     string internal constant SERVICES =
         "mint|H|mint(address)|p|d|value is price() exactly - the id is in the Transfer log;"
         "transferFrom|H|transferFrom(address,address,uint256)|w|d|;"
@@ -530,159 +700,63 @@ contract CatalogRows is Templated {
         "services|Q|services()|r|d|;"
         "knownDelegates|Q|knownDelegates()|r|d|keccak of the 23-byte 0xef0100 designation per known 7702 delegate;";
 
-    /// @dev The sixteen letters, in the order the constructor takes their addresses.
-    bytes internal constant LETTERS = "HPRYTSKNLCOWXEGQ";
+    constructor(address[21] memory byLetter) RowTable(bytes(SERVICES), byLetter) {}
+}
 
-    error RowsTooLong();
+/// @notice The post-MVB rows (wave 4): the Market, the Roles, the agent
+///         card, the LP custodian and the nameplate. A second contract and a
+///         second transaction, so the MVB table's gas does not grow; the
+///         text layer serves both as one `sel` map and one `services`
+///         array. Every row names a function its contract's interface
+///         serves (the drift gate in tools/verify.mjs holds it to the ABI
+///         of the interface until the contract lands, then to both).
+contract CatalogRowsPost is RowTable {
+    string internal constant SERVICES =
+        "list|M|list(uint256,uint256,uint64,bytes32,(address,uint256)[])|w|d|holds - both seals must reach expiresAt - the fingerprint is getStateFingerprint read live - a floor is (asset,min), asset 0 is ether;"
+        "delist|M|delist(uint256)|w|d|holds while live - anyone once expired or stale;"
+        "buy|M|buy(uint256,uint256,bytes32)|p|d|value is the price exactly - the fingerprint is listingOf(id).fingerprint - re-read the epoch and the fingerprint before Sign;"
+        "claim|M|claim()|w|d|pull what a sale owes you;"
+        "listingOf|M|listingOf(uint256)|r|d|seller price expiresAt epoch fingerprint floors - seller 0 means unlisted;"
+        "owed|M|owed(address)|r|d|;"
+        "grantRole|D|grantRole((bytes32,address,uint256,address,uint64,bool,bytes))|w|d|holder only - revocable only - one recipient per role id - locks the token;"
+        "revokeRole|D|revokeRole(address,uint256,bytes32)|w|d|the holder or the recipient of a live role, anyone for an expired or stale record;"
+        "unlockToken|D|unlockToken(address,uint256)|w|d|anyone, once every role is expired or stale;"
+        "hasRole|D|hasRole(uint256,bytes32,address)|r|d|;"
+        "hasAnyRole|D|hasAnyRole(uint256,address)|r|d|what the hub reads R_ROLE from;"
+        "recipientOf|D|recipientOf(address,uint256,bytes32)|r|d|zero unless live;"
+        "roleExpirationDate|D|roleExpirationDate(address,uint256,bytes32)|r|d|zero unless live;"
+        "roleData|D|roleData(address,uint256,bytes32)|r|d|empty unless live - the rights a page reads;"
+        "roleEpoch|D|roleEpoch(uint256,bytes32)|r|d|the custody epoch at grant, live or not;"
+        "liveRoleCount|D|liveRoleCount(uint256)|r|d|walks at most 16 ids;"
+        "USER|D|USER()|r|d|keccak256 of USER;"
+        "registration|A|registration(uint256)|r|d|ERC-8004 registration-v1, face 2 - RFC 8785 canonical bytes, id 0 the collection;"
+        "card|A|card(uint256)|r|d|the A2A agent card, id 0 the collection;"
+        "llms|A|llms(uint256)|r|d|llms.txt for one token;"
+        "llmsCollection|A|llmsCollection()|r|d|/llms.txt and /llms.md;"
+        "manifestHash|A|manifestHash(uint256)|r|d|keccak256 of registration(id) - what a reader pins;"
+        "nameHeldBy|I|heldBy(bytes32)|r|d|the token holding a wrapped ENS name, and whether it sits in the Grip;"
+        "nameFor|I|tokenForName(bytes)|r|d|the token a DNS-wire name means - held, or <id>.intact.eth while the apex is held and live;"
+        "nameExpiry|I|expiry(bytes32)|r|d|when the .eth registration under a label hash lapses, by the registrar;"
+        "contentcontract|I|contentcontract()|r|d|the site as eth:0x..., ERC-6821 in ERC-3770 form;"
+        "createV4|L|createV4((uint256,address,uint128,uint128,uint128,uint64,uint64,uint128,uint16,uint16,uint16,uint16,uint64,uint8),(uint32,uint32,uint24,uint24,uint32),bytes32)|w|a|the v4 target: hook terms and the mined salt pinned beside the launch;"
+        "createV4Checked|L|createV4Checked((uint256,address,uint128,uint128,uint128,uint64,uint64,uint128,uint16,uint16,uint16,uint16,uint64,uint8),(uint32,uint32,uint24,uint24,uint32),bytes32,bytes32)|w|a|pins the terms, the hook terms and the salt the page showed;"
+        "v4TermsHash|L|v4TermsHash((uint256,address,uint128,uint128,uint128,uint64,uint64,uint128,uint16,uint16,uint16,uint16,uint64,uint8),(uint32,uint32,uint24,uint24,uint32),bytes32)|r|d|;"
+        "collect|U|collect(uint256)|w|d|anyone - every fee to feeSink(id);"
+        "release|U|release(uint256)|w|a|after unlocksAt, to the Reach only;"
+        "extend|U|extend(uint256,uint64)|w|a|only later, at most ten years;"
+        "resalt|U|resalt(uint256,bytes32)|w|a|a new hook salt before seeding - a new pool;"
+        "custodyOf|U|custodyOf(uint256)|r|d|;"
+        "hookTermsOf|U|hookTermsOf(address)|r|d|keyed by the coin;"
+        "hookOf|U|hookOf(uint256)|r|d|;"
+        "hookAt|U|hookAt(address,bytes32)|r|d|where a salt would put the coin's hook;"
+        "poolKeyOf|U|poolKeyOf(uint256)|r|d|;"
+        "poolIdOf|U|poolIdOf(uint256)|r|d|;"
+        "unlocksAt|U|unlocksAt(uint256)|r|d|the ratchet;"
+        "seededAt|U|seededAt(address)|r|d|zero before the pool is seeded;"
+        "spotOf|U|spotOf(uint256)|r|d|wei per 1e18 of the coin, off the pool;"
+        "launchOfCoin|U|launchOfCoin(address)|r|d|;";
 
-    /// @param byLetter the address for each of LETTERS: zero for the
-    ///        per-asset families (a coin, any ERC-20) and the Reach, whose
-    ///        address is per token — `account(id)`.
-    constructor(address[16] memory byLetter) {
-        bytes memory t = bytes(SERVICES);
-        servicesHash = keccak256(t);
-        _SEL = SSTORE2.write(_renderSelectors(t));
-        bytes memory rows_ = _renderRows(t, byLetter);
-        uint256 cut = SSTORE2.MAX_SHARD;
-        if (rows_.length > cut * 3) revert RowsTooLong();
-        _R0 = SSTORE2.write(_window(rows_, 0, cut));
-        _R1 = rows_.length > cut ? SSTORE2.write(_window(rows_, cut, cut)) : address(0);
-        _R2 = rows_.length > cut * 2 ? SSTORE2.write(_window(rows_, cut * 2, cut)) : address(0);
-    }
-
-    function _window(bytes memory b, uint256 from, uint256 len) private pure returns (bytes memory o) {
-        if (from + len > b.length) len = b.length - from;
-        o = _sub(b, from, len);
-    }
-
-    /// @notice `{"hub.mint":"0x…",…}`.
-    function selectors() external view returns (bytes memory) { return SSTORE2.read(_SEL); }
-
-    /// @notice The service rows, as the JSON array's inside.
-    function rows() external view returns (bytes memory o) {
-        o = SSTORE2.read(_R0);
-        if (_R1 != address(0)) o = bytes.concat(o, SSTORE2.read(_R1));
-        if (_R2 != address(0)) o = bytes.concat(o, SSTORE2.read(_R2));
-    }
-
-    /*═══════════════════ the rendering, at construction ═══════════════════*/
-
-    /// @dev `{"hub.mint":"0x…",…}`: every row as `contract.name` →
-    ///      selector. Keyed by both because `claim`, `execute`, `release`
-    ///      and `state` each exist on two contracts.
-    function _renderSelectors(bytes memory t) private pure returns (bytes memory o) {
-        o = new bytes(t.length * 2 + 64);
-        uint256 n = _put(o, 0, "{");
-        uint256 p;
-        while (p < t.length) {
-            uint256 e = _find(t, p, ";");
-            uint256 f1 = _find(t, p, "|");
-            uint256 f2 = _find(t, f1 + 1, "|");
-            uint256 f3 = _find(t, f2 + 1, "|");
-            if (p != 0) n = _put(o, n, ",");
-            n = _put(o, n, '"');
-            n = _put(o, n, bytes(word(t[f1 + 1])));
-            n = _put(o, n, ".");
-            n = _slice(o, n, t, p, f1 - p);
-            n = _put(o, n, '":"');
-            n = _writeHex(o, n, uint256(_keccak(t, f2 + 1, f3 - f2 - 1)) >> 224, 4);
-            n = _put(o, n, '"');
-            p = e + 1;
-        }
-        n = _put(o, n, "}");
-        assembly ("memory-safe") { mstore(o, n) }
-    }
-
-    /// @dev One JSON object per row, written straight into one buffer:
-    ///      `{name, on, contract, sig, selector, kind, via, args[], notes}`.
-    ///      `args` is the signature's own parameter list split at the top
-    ///      level, so a tuple is one argument, as the ABI sees it.
-    function _renderRows(bytes memory t, address[16] memory byLetter) private pure returns (bytes memory o) {
-        o = new bytes(t.length * 6 + 64);
-        uint256 n;
-        uint256 p;
-        while (p < t.length) {
-            uint256 e = _find(t, p, ";");
-            uint256 f1 = _find(t, p, "|");
-            uint256 f2 = _find(t, f1 + 1, "|");
-            uint256 f3 = _find(t, f2 + 1, "|");
-            uint256 f4 = _find(t, f3 + 1, "|");
-            uint256 f5 = _find(t, f4 + 1, "|");
-            if (p != 0) n = _put(o, n, ",");
-            n = _put(o, n, '{"name":"');
-            n = _slice(o, n, t, p, f1 - p);
-            n = _put(o, n, '","on":"');
-            n = _put(o, n, bytes(word(t[f1 + 1])));
-            n = _put(o, n, '","contract":"');
-            n = _writeHex(o, n, uint160(byLetter[_index(t[f1 + 1])]), 20);
-            n = _put(o, n, '","sig":"');
-            n = _slice(o, n, t, f2 + 1, f3 - f2 - 1);
-            n = _put(o, n, '","selector":"');
-            n = _writeHex(o, n, uint256(_keccak(t, f2 + 1, f3 - f2 - 1)) >> 224, 4);
-            n = _put(o, n, '","kind":"');
-            n = _put(o, n, t[f3 + 1] == "r" ? bytes("read") : t[f3 + 1] == "p" ? bytes("payable") : bytes("write"));
-            n = _put(o, n, '","via":"');
-            n = _put(o, n, t[f4 + 1] == "d" ? bytes("direct") : t[f4 + 1] == "r" ? bytes("reach") : bytes("acts"));
-            n = _put(o, n, '","args":[');
-            n = _args(o, n, t, f2 + 1, f3 - f2 - 1);
-            n = _put(o, n, '],"notes":"');
-            n = _slice(o, n, t, f5 + 1, e - f5 - 1);
-            n = _put(o, n, '"}');
-            p = e + 1;
-        }
-        assembly ("memory-safe") { mstore(o, n) }
-    }
-
-    /// @dev The parameter list inside the signature's outer parentheses,
-    ///      split at depth-zero commas, each piece quoted, written at `n`.
-    function _args(bytes memory o, uint256 n, bytes memory t, uint256 start, uint256 len) private pure returns (uint256) {
-        uint256 i = _find(t, start, "(") + 1;
-        uint256 end = start + len - 1;            // the closing paren
-        if (i >= end) return n;
-        uint256 depth;
-        uint256 from = i;
-        bool first = true;
-        for (; i <= end; ++i) {
-            bytes1 ch = t[i];
-            if (ch == "(") ++depth;
-            else if (ch == ")" && i != end) --depth;
-            if ((ch == "," && depth == 0) || i == end) {
-                n = _put(o, n, first ? bytes('"') : bytes(',"'));
-                first = false;
-                n = _slice(o, n, t, from, i - from);
-                n = _put(o, n, '"');
-                from = i + 1;
-            }
-        }
-        return n;
-    }
-
-    function _index(bytes1 c) private pure returns (uint256) {
-        bytes memory l = LETTERS;
-        for (uint256 i; i < l.length; ++i) if (l[i] == c) return i;
-        return 15;
-    }
-
-    /// @notice The contract a letter names.
-    function word(bytes1 c) public pure returns (string memory) {
-        if (c == "H") return "hub";
-        if (c == "P") return "pool";
-        if (c == "R") return "reach";
-        if (c == "Y") return "parley";
-        if (c == "T") return "roster";
-        if (c == "S") return "postage";
-        if (c == "K") return "keys";
-        if (c == "N") return "kiln";
-        if (c == "L") return "launchpad";
-        if (c == "C") return "coin";
-        if (c == "O") return "locks";
-        if (c == "W") return "steward";
-        if (c == "X") return "router";
-        if (c == "E") return "erc20";
-        if (c == "G") return "engine";
-        return "catalog";
-    }
-
+    constructor(address[21] memory byLetter) RowTable(bytes(SERVICES), byLetter) {}
 }
 
 /*───────────────────────────────────────────────────────────────────────────
@@ -691,10 +765,11 @@ contract CatalogRows is Templated {
 ───────────────────────────────────────────────────────────────────────────*/
 contract CatalogText is Templated {
     CatalogRows public immutable ROWS;
+    CatalogRowsPost public immutable ROWS_POST;
     address private immutable _ERR;
     address private immutable _TOP;
-    /// @notice keccak256 over the three raw tables' keccaks, for the
-    ///         deployment record: (services, errors, events).
+    /// @notice keccak256 over the four raw tables' keccaks, for the
+    ///         deployment record: (services, post-MVB services, errors, events).
     bytes32 public immutable tableHash;
 
     string public constant SCHEMA = "intact.services/1";
@@ -740,7 +815,10 @@ contract CatalogText is Templated {
         "InexactERC20Transfer(address,uint256,uint256);IrrevocableUnsupported();ManifestBusy();MulOverflow();NoLiquidity();"
         "NoQuote(uint8);NoSuchStamp(uint256);NotEnoughCredit(uint256,uint256);NotEntitled();NotHeld();NotKiln();NotListed();"
         "NotLocked(uint256);NotOwnerOrApproved(uint256,address);NotPoolManager();PieceLeft(address,uint256);PiecesFull();"
-        "Reentered();Stale(uint256);StampPending(uint256);StartsInThePast(uint64);StillLocked(uint256,uint64);TooManyFloors();"
+        "Reentered();Stale(uint256);StampPending(uint256);StartsInThePast(uint64);StillLocked(uint256,uint64);TooManyFloors();TooManyRoles(uint256);ApprovalsUnsupported();"
+        "NotTheManager();NotOpenYet(uint64);StillLocked(uint64);ForeignKey();Unregistered(address);AlreadyRegistered(uint256);"
+        "NotRegistered(uint256);AlreadySeeded(uint256);NotSeeded(uint256);BadTerms();BadSalt(address,uint16);HookMismatch(address,address);"
+        "PriceOutOfRange(uint160);PriceOff(uint160,uint160);PositionNotHeld(uint256);UnexpectedEther();"
         "UnknownRecipe(uint8);UnsupportedCollection(address);UnsupportedSchedule();WrongChain();WrongCommitment();"
         "WrongPrice(uint256,uint256);WrongTarget();ZeroInput();ZeroRecipient()";
 
@@ -749,6 +827,11 @@ contract CatalogText is Templated {
         "said=Said(uint256,uint256,uint64,uint64,uint64,uint8,uint64,uint64,bytes);"
         "founded=Founded(uint256,uint256,uint256,bool,string);entered=Entered(uint256,uint256);"
         "keyBound=KeyBound(uint256,address,uint64,uint16,bytes32);"
+        "registered=Registered(uint256,uint256,address,address,bytes32);resalted=Resalted(uint256,address,bytes32);"
+        "seeded=Seeded(uint256,bytes32,address,uint256,uint160,uint160,uint256);collected=Collected(uint256,address,uint256,uint256);"
+        "released=Released(uint256,address,uint256,uint256);extended=Extended(uint256,uint64);"
+        "orderPosted=OrderPosted(uint256,address,uint256,uint64,bytes32);delisted=Delisted(uint256);"
+        "sold=Sold(uint256,address,address,uint256,uint256);claimed=Claimed(address,uint256);"
         "transfer=Transfer(address,address,uint256);minted=Minted(uint256,address,address,uint8);"
         "custodyEpoch=CustodyEpoch(uint256,uint64);panicked=Panicked(uint256,uint64,address);"
         "statusChanged=StatusChanged(uint256,uint8,uint8);"
@@ -777,18 +860,34 @@ contract CatalogText is Templated {
 
     string internal constant TPL_BAND = '{"band":\x02,"chainId":\x02,"lo":\x02,"hi":\x02}';
 
-    constructor(CatalogRows rows_) {
+    constructor(CatalogRows rows_, CatalogRowsPost post_) {
         bytes memory errors_ = bytes(ERRORS);
         bytes memory events_ = bytes(EVENTS);
         ROWS = rows_;
-        tableHash = keccak256(abi.encode(rows_.servicesHash(), keccak256(errors_), keccak256(events_)));
+        ROWS_POST = post_;
+        tableHash = keccak256(abi.encode(rows_.servicesHash(), post_.servicesHash(), keccak256(errors_), keccak256(events_)));
         _ERR = SSTORE2.write(_renderErrors(errors_));
         _TOP = SSTORE2.write(_renderTopics(events_));
     }
 
     /*═══════════════════ served ═══════════════════*/
 
-    function selectors() external view returns (bytes memory) { return ROWS.selectors(); }
+    /// @notice `{"hub.mint":"0x…",…}` — both tables' maps as one object.
+    function selectors() external view returns (bytes memory) {
+        bytes memory a = ROWS.selectors();
+        bytes memory b = ROWS_POST.selectors();
+        if (b.length <= 2) return a;                 // `{}`: no post-MVB row
+        if (a.length <= 2) return b;
+        return bytes.concat(_sub(a, 0, a.length - 1), ",", _sub(b, 1, b.length - 1));
+    }
+    /// @dev Both tables' rows as one array's inside.
+    function _rowsAll() internal view returns (bytes memory) {
+        bytes memory a = ROWS.rows();
+        bytes memory b = ROWS_POST.rows();
+        if (b.length == 0) return a;
+        if (a.length == 0) return b;
+        return bytes.concat(a, ",", b);
+    }
     function errors() public view returns (bytes memory) { return SSTORE2.read(_ERR); }
     function topics() public view returns (bytes memory) { return SSTORE2.read(_TOP); }
     function routes() external pure returns (bytes memory) { return bytes(ROUTES); }
@@ -801,7 +900,7 @@ contract CatalogText is Templated {
         B[1] = world;
         B[2] = bandsJson();
         B[3] = bytes(ROUTES);
-        B[4] = ROWS.rows();
+        B[4] = _rowsAll();
         B[5] = errors();
         B[6] = topics();
         return _fill(bytes(TPL_SERVICES), "", B);
@@ -1400,12 +1499,32 @@ contract Catalog {
     /// @notice The object `window.INTACT` is set to: valid JSON, valid JS.
     ///         `id == 0` is the collection's own block for the `/` page.
     function state(uint256 id) external view returns (bytes memory) {
+        return id == 0 ? _collectionState() : _state(id, stateOf(id));
+    }
+
+    /// @notice `state(id)` from a TokenState already read: the Renderer reads
+    ///         `stateOf(id)` once for face 0's JSON and crest and builds the
+    ///         document from the same reading, so every satellite is probed
+    ///         once per tokenURI rather than twice (the card builds its whole
+    ///         registration to answer its probe). The bytes equal `state(id)`'s
+    ///         in the same block, which the equality step holds.
+    function stateFrom(uint256 id, TokenState calldata s) external view returns (bytes memory) {
+        return id == 0 ? _collectionState() : _state(id, s);
+    }
+
+    /// @dev Id 0 is the collection page: no token state is read for it.
+    function _collectionState() internal view returns (bytes memory) {
+        IIntact hub = IIntact(HUB);
+        World memory w = _world(0);
+        return abi.encodePacked("{", STATE.world(w), STATE.collection(w, hub.price(), hub.minted()), STATE.tail(ENGINE, CATALOG_HASH));
+    }
+
+    function _state(uint256 id, TokenState memory s) internal view returns (bytes memory) {
         IIntact hub = IIntact(HUB);
         World memory w = _world(id);
-        bytes memory middle = id != 0
-            ? STATE.token(w, stateOf(id), hub.coreOf(id), hub.price(), hub.feeSink(id), hub.getTraitValue(id, Traits.NAME))
-            : STATE.collection(w, hub.price(), hub.minted());
-        return abi.encodePacked("{", STATE.world(w), middle, STATE.tail(ENGINE, CATALOG_HASH));
+        return abi.encodePacked("{", STATE.world(w),
+            STATE.token(w, s, hub.coreOf(id), hub.price(), hub.feeSink(id), hub.getTraitValue(id, Traits.NAME)),
+            STATE.tail(ENGINE, CATALOG_HASH));
     }
 
     /*═══════════════════ services.json and the directories ═══════════════════*/

@@ -18,8 +18,10 @@
   Pool and Locks are U3's and U5's; this file drives the Launchpad against
   their FROZEN interfaces through test/mocks/LaunchFixtures.sol, which is
   what wave-1 parallelism means. U14's LaunchHook, LPCustodian and the
-  "pre-initialised pool at the wrong price" assertion land in the other
-  half of this file.
+  "pre-initialised pool at the wrong price" assertion are the second half
+  of this file: a second wiring with a custodian, the hook driven by
+  selector, the position minted through a PositionManager that decodes
+  the real action bytes, and a Permit2 with the real expiry rule.
 
     node tools/verify-launch.mjs
 ───────────────────────────────────────────────────────────────────────────*/
@@ -90,7 +92,7 @@ eq("and the Launchpad pins the Kiln back", decAddr(await c.read(pad, "KILN()")),
 eq("the Pool pins the Launchpad for openSealed", decAddr(await c.read(pool, "LAUNCHPAD()")), pad);
 eq("the Launchpad pins the Pool", decAddr(await c.read(pad, "POOL()")), pool);
 eq("and Locks", decAddr(await c.read(pad, "LOCKS()")), locks);
-eq("no custodian exists yet: Target.UniswapV4 is NotYet", decAddr(await c.read(pad, "CUSTODIAN()")), "0x" + "00".repeat(20));
+eq("this MVB wiring pins no custodian: Target.UniswapV4 is NotYet in it", decAddr(await c.read(pad, "CUSTODIAN()")), "0x" + "00".repeat(20));
 
 await c.exec(hub, "mint(address)", [alice.from.toString()]);
 const ID = 1n;
@@ -182,7 +184,7 @@ await refusesWith("a stranger cannot create a raise",
   () => bob.exec(pad, `create(${PARAMS})`, [terms()]), "NotActor()");
 await refusesWith("a 101 bps fee is refused",
   () => alice.exec(pad, `create(${PARAMS})`, [[...terms().slice(0, 9), 101, ...terms().slice(10)]]), "FeeTooHigh(uint16)");
-await refusesWith("the v4 target is NotYet",
+await refusesWith("the v4 target is NotYet where no custodian is pinned",
   () => alice.exec(pad, `create(${PARAMS})`, [[...terms().slice(0, 13), 1]]), "NotYet()");
 await alice.exec(pad, `createChecked(${PARAMS},bytes32)`, [terms(), termsHash], { label: "create" });
 const created = c.getLogs({ address: pad, topics: [topic("LaunchCreated(uint256,uint256,address,uint8,bytes32)")] }).pop();
@@ -450,6 +452,437 @@ await refusesWith("a stranger cannot drive beforeSwap",
 await refusesWith("nor beforeRemoveLiquidity",
   () => c.exec(at, `beforeRemoveLiquidity(address,${KEY},(int24,int24,int256,bytes32),bytes)`,
     [c.from.toString(), pk, [-100, 100, -1000n, "0x" + "00".repeat(32)], "0x"]), "NotTheManager()");
+
+/*═══════════════ the v4 launch path (U14): hook, custodian, graduation ═══════════════*/
+
+/*  DESIGN.md §8.3–8.4 and §14 D2/D6. The world below is the same real hub
+    with a SECOND launch wiring — a Kiln, a Launchpad pinned to an
+    LPCustodian, the U6 Pool and Locks fixtures — against the U14 fixtures:
+    a PoolManager that dispatches hooks by selector and keeps the pool
+    state StateLibrary reads, a PositionManager that decodes the real
+    `modifyLiquidities` action bytes, and a Permit2 with the real expiry
+    rule. Everything is deployed by one fresh actor so the same sequence on
+    another chain lands every contract at the same address, which is what
+    "one salt serves every band" has to mean.                             */
+{
+  const KEY = "(address,address,uint24,int24,address)";
+  const TERMS = "(uint32,uint32,uint24,uint24,uint32)";
+  const SWAP = "(bool,int256,uint160)";
+  const MOD = "(int24,int24,int256,bytes32)";
+  const MASK = (1n << 14n) - 1n;
+  const HOOK_FLAGS = (1n << 13n) | (1n << 9n) | (1n << 7n);
+  const Q96 = 1n << 96n;
+  const ZERO32 = "0x" + "00".repeat(32);
+  const { createAddressFromString } = await import("@ethereumjs/util");
+  const codeOf = async (chain, addr) => "0x" + Buffer.from(await chain.vm.stateManager.getCode(createAddressFromString(addr))).toString("hex");
+  const kec = (hex) => "0x" + Buffer.from(keccak256(Buffer.from(hex.replace(/^0x/, ""), "hex"))).toString("hex");
+  const isqrt = (n) => { if (n < 2n) return n; let x = n, y = (n + 1n) / 2n; while (y < x) { x = y; y = (n / y + y) / 2n; } return x; };
+  const word = (addr) => "0x" + addr.slice(2).toLowerCase().padStart(64, "0");
+  const F = "test/mocks/V4Fixtures.sol";
+  const deployV4World = async (chain, hubAddr) => {
+    const factory = await chain.deploy(A(F, "CustodianFactory").bytecode, "", "CustodianFactory");
+    const pm = await chain.deploy(A(F, "MockV4Manager").bytecode, "", "MockV4Manager");
+    const permit2 = await chain.deploy(A(F, "MockPermit2").bytecode, "", "MockPermit2");
+    const posm = await chain.deploy(A(F, "MockPositionManager").bytecode, encodeParams("address,address", [pm, permit2]), "MockPositionManager");
+    const wiring = await chain.deploy(A(F, "V4Wiring").bytecode, encodeParams("address,address,address,address,address", [hubAddr, pm, posm, permit2, factory]), "V4Wiring");
+    const r = async (s) => decAddr(await chain.read(wiring, s));
+    return { pm, permit2, posm, wiring, kiln: await r("kiln()"), pad: await r("pad()"), cust: await r("custodian()"), locks: await r("locks()"), pool: await r("pool()") };
+  };
+  const mine = async (chain, kilnAddr, hash, flags, from = 0n) => {
+    for (let f = from; f < from + 600000n; f += 60000n) {
+      const r = await chain.read(kilnAddr, "mine(bytes32,uint16,uint256,uint256)", [hash, Number(flags), f, 60000n]);
+      if (decUint(r, 0) === 1n) return { salt: "0x" + r.slice(2 + 64, 2 + 128), at: decAddr(r, 2) };
+    }
+    throw new Error("no salt in 600,000");
+  };
+  const custodyOf = async (launchId) => {
+    const r = await c.read(W.cust, "custodyOf(uint256)", [launchId]);
+    return { coin: decAddr(r, 0), unlocksAt: decUint(r, 1), released: decBool(r, 2), hook: decAddr(r, 3), seededAt: decUint(r, 4), salt: "0x" + r.slice(2 + 5 * 64, 2 + 6 * 64), id: decUint(r, 6), tokenId: decUint(r, 7) };
+  };
+  const poolOf = async (pid) => {
+    const r = await c.read(W.pm, "pools(bytes32)", [pid]);
+    return { init: decBool(r, 0), storedFee: decUint(r, 1), spacing: decUint(r, 2), price: decUint(r, 3), r0: decUint(r, 4), r1: decUint(r, 5), liquidity: decUint(r, 6), fees0: decUint(r, 7), fees1: decUint(r, 8) };
+  };
+  const keyOf = async (launchId) => { const r = await c.read(W.cust, `poolKeyOf(uint256)`, [launchId]); return [decAddr(r, 0), decAddr(r, 1), Number(decUint(r, 2)), Number(decUint(r, 3)), decAddr(r, 4)]; };
+  const swapIn = (who, key, amount, data = "0x") => who.exec(W.pm, `swap(${KEY},${SWAP},bytes)`, [key, [true, -amount, 0n], data], { value: amount, label: "v4 swap" });
+  /// the terminal sqrt price the Launchpad hands the custodian: sqrt(amountBase · 2^192 / raised)
+  const terminalOf = async (launchId) => {
+    const l = await c.read(W.pad, "launchOf(uint256)", [launchId]);
+    const q = decUint(l, 4), b = decUint(l, 5), raised = decUint(l, 9);
+    const amountBase = raised * b / q;
+    return { q, b, raised, amountBase, sqrt: isqrt(amountBase * (1n << 192n) / raised), terminal: q * E / b };
+  };
+
+  head("the v4 launch path: a custodian pinned both ways");
+  const v4 = await c.as("0x" + "f4".repeat(32));
+  const W = await deployV4World(v4, hub);
+  eq("the Launchpad pins the custodian", decAddr(await c.read(W.pad, "CUSTODIAN()")), W.cust);
+  eq("and the custodian pins the Launchpad back", decAddr(await c.read(W.cust, "LAUNCHPAD()")), W.pad);
+  eq("the Kiln", decAddr(await c.read(W.cust, "KILN()")), W.kiln);
+  eq("the hub", decAddr(await c.read(W.cust, "HUB()")), hub);
+  eq("the PoolManager", decAddr(await c.read(W.cust, "POOL_MANAGER()")), W.pm);
+  eq("the PositionManager", decAddr(await c.read(W.cust, "POSITION_MANAGER()")), W.posm);
+  eq("and Permit2", decAddr(await c.read(W.cust, "PERMIT2()")), W.permit2);
+  eq("the Kiln pins the same manager the hooks will answer to", decAddr(await c.read(W.kiln, "POOL_MANAGER()")), W.pm);
+  /*  The lever regex is case-insensitive, and the custodian pins the
+      PositionManager's action bytes as public constants — MINT_POSITION,
+      SETTLE_PAIR, SWEEP — which are getters of numbers, not levers; an
+      ALL-CAPS name is a constant and is read, never pulled.             */
+  for (const [f, n] of [["src/LPCustodian.sol", "LPCustodian"], ["src/LaunchHook.sol", "LaunchHook"]]) {
+    const fns = names(f, n).filter((x) => !/^[A-Z0-9_]+$/.test(x));
+    const hit = fns.filter((x) => lever.test(x));
+    ok(`${n}: ${fns.length} functions beside its constants, none of them a withdraw, pause, owner, setter or mint`, hit.length === 0, hit.join(", "));
+  }
+  ok("the Launchpad's interface grew only additively: createV4, createV4Checked, v4TermsHash beside the old entries",
+     ["createV4", "createV4Checked", "v4TermsHash", "create", "createChecked", "graduate", "fail", "claim"].every((n) => names("src/Launchpad.sol", "Launchpad").includes(n)));
+
+  await c.exec(hub, "mint(address)", [alice.from.toString()]);
+  const ID3 = 3n;
+  const reach3 = decAddr(await c.read(hub, "account(uint256)", [ID3]));
+  const grip3 = decAddr(await c.read(hub, "grip(uint256)", [ID3]));
+  await alice.exec(W.kiln, "launch(uint256,string,string,uint8,uint256,bytes32,uint256)",
+    [ID3, "Agent Four", "AGENT4", 18, SUPPLY, SALT, RAISE], { label: "launch" });
+  const coinA = "0x" + c.getLogs({ address: W.kiln, topics: [topic("Launched(address,uint256,address,string,uint256,uint256)")] }).pop().topics[1].slice(26);
+  const argA = word(coinA);
+
+  head("the recipe: a hook whose salt depends on nothing but the coin");
+  await refusesWith("the MVB wiring, with no custodian pinned, has no LaunchHook recipe",
+    () => c.read(kiln, "recipeHash(uint8,bytes32)", [1, argA]), "UnknownRecipe(uint8)");
+  const rhA = await c.read(W.kiln, "recipeHash(uint8,bytes32)", [1, argA]);
+  const hashA = "0x" + rhA.slice(2, 66);
+  const flagsA = decUint(rhA, 1);
+  eq("the kiln names the three permissions the launch hook needs: beforeInitialize, beforeSwap, beforeRemoveLiquidity", flagsA, HOOK_FLAGS);
+  eq("and the custodian agrees", decUint(await c.read(W.cust, "HOOK_FLAGS()")), HOOK_FLAGS);
+  const { salt: saltA, at: atA } = await mine(c, W.kiln, hashA, flagsA);
+  ok("a salt is found for exactly those permissions, in the same free eth_call", (BigInt(atA) & MASK) === HOOK_FLAGS);
+  eq("the custodian predicts the same address from the coin and the salt", decAddr(await c.read(W.cust, "hookAt(address,bytes32)", [coinA, saltA])), atA);
+  await refusesWith("nothing can be deployed from it before createV4 registered the terms: the constructor refuses blank terms",
+    () => c.exec(W.kiln, "deployHook(uint8,bytes32,bytes32)", [1, saltA, argA]), "DeployFailed()");
+  ok("and no code lives at the mined address", (await c.codeSize(atA)) === 0);
+
+  head("createV4: the hook terms and the salt pinned beside the launch");
+  const NOW3 = evm.BLOCK.header.timestamp;
+  const termsA = [0, 30 * 86400, 100000, 10000, 86400];      // opens at once, locked 30 d, 10 % → 1 % over a day
+  const paramsA = (target = 1) => [ID3, coinA, CURVE, E, 2n * E, 0n, 0n, (1n << 128n) - 1n, 0, 100, 1500, 0, NOW3 + 7n * 86400n, target];
+  await refusesWith("`create` is the wrong door for the v4 target", () => alice.exec(W.pad, `create(${PARAMS})`, [paramsA()]), "WrongTarget()");
+  await refusesWith("and `createV4` the wrong door for the owned target", () => alice.exec(W.pad, `createV4(${PARAMS},${TERMS},bytes32)`, [paramsA(0), termsA, saltA]), "WrongTarget()");
+  await refusesWith("a stranger cannot create", () => bob.exec(W.pad, `createV4(${PARAMS},${TERMS},bytes32)`, [paramsA(), termsA, saltA]), "NotActor()");
+  await refusesWith("a start fee above 90 % is refused", () => alice.exec(W.pad, `createV4(${PARAMS},${TERMS},bytes32)`, [paramsA(), [0, 30 * 86400, 900001, 10000, 86400], saltA]), "BadTerms()");
+  await refusesWith("a floor above the start is refused", () => alice.exec(W.pad, `createV4(${PARAMS},${TERMS},bytes32)`, [paramsA(), [0, 30 * 86400, 100000, 100001, 86400], saltA]), "BadTerms()");
+  await refusesWith("a lock past ten years is refused", () => alice.exec(W.pad, `createV4(${PARAMS},${TERMS},bytes32)`, [paramsA(), [0, 3650 * 86400 + 1, 100000, 10000, 86400], saltA]), "BadTerms()");
+  await refusesWith("a salt the miner did not bless is refused", () => alice.exec(W.pad, `createV4(${PARAMS},${TERMS},bytes32)`, [paramsA(), termsA, "0x" + w(BigInt(saltA) ^ 1n)]), "BadSalt(address,uint16)");
+  const v4hash = await c.read(W.pad, `v4TermsHash(${PARAMS},${TERMS},bytes32)`, [paramsA(), termsA, saltA]);
+  await refusesWith("`createV4Checked` refuses terms that moved", () => alice.exec(W.pad, `createV4Checked(${PARAMS},${TERMS},bytes32,bytes32)`, [paramsA(), termsA, saltA, "0x" + "ff".repeat(32)]), "TermsMoved(bytes32,bytes32)");
+  await alice.exec(W.pad, `createV4Checked(${PARAMS},${TERMS},bytes32,bytes32)`, [paramsA(), termsA, saltA, v4hash], { label: "createV4" });
+  const createdA = c.getLogs({ address: W.pad, topics: [topic("LaunchCreated(uint256,uint256,address,uint8,bytes32)")] }).pop();
+  const LA = decUint(createdA.topics[1]);
+  eq("the launch is created with the v4 target", decUint(createdA.data, 0), 1n);
+  const regA = c.getLogs({ address: W.cust, topics: [topic("Registered(uint256,uint256,address,address,bytes32)")] }).pop();
+  eq("the custodian registered it: the launch", decUint(regA.topics[1]), LA);
+  eq("the token", decUint(regA.topics[2]), ID3);
+  eq("the coin", "0x" + regA.topics[3].slice(26), coinA);
+  eq("and the hook the salt names", decAddr(regA.data, 0), atA);
+  {
+    const cA = await custodyOf(LA);
+    eq("custodyOf carries the coin", cA.coin, coinA);
+    eq("the salt", cA.salt, saltA);
+    eq("the hook", cA.hook, atA);
+    eq("no seeding yet", cA.seededAt, 0n);
+    eq("and no ratchet before the clock starts", cA.unlocksAt, 0n);
+    const t = await c.read(W.cust, "hookTermsOf(address)", [coinA]);
+    eq("the terms are the ones the page showed", [0, 1, 2, 3, 4].map((i) => decUint(t, i)).join(","), termsA.map(BigInt).join(","));
+    eq("launchOfCoin points back", decUint(await c.read(W.cust, "launchOfCoin(address)", [coinA])), LA);
+  }
+  await refusesWith("the share was spent: the same coin cannot raise twice", () => alice.exec(W.pad, `createV4(${PARAMS},${TERMS},bytes32)`, [paramsA(), termsA, saltA]), "WrongCoin(address)");
+  for (const who of [bob, carol, dave]) await who.exec(W.pad, "buy(uint256,uint256,uint64,uint16)", [LA, 0n, NOW3 + 60n, 10000], { value: E, label: "buy" });
+  ok("three buyers met the target", decUint(await c.read(W.pad, "raisedOf(uint256)", [LA])) >= 2n * E);
+
+  head("a stranger's pool: refused off the price, resalted, then seeded");
+  const keyA = await keyOf(LA);
+  eq("the pool key is native against the coin, dynamic fee, spacing 60, the hook", keyA.join(","), ["0x" + "00".repeat(20), coinA, 0x800000, 60, atA].join(","));
+  const pidA0 = await c.read(W.cust, "poolIdOf(uint256)", [LA]);
+  await bob.exec(W.kiln, "deployHook(uint8,bytes32,bytes32)", [1, saltA, argA], { label: "deployHook" });
+  ok("once the terms are registered anyone may deploy the hook: a stranger did, at the mined address", (await c.codeSize(atA)) > 0);
+  eq("born with the registered terms", `${decUint(await c.read(atA, "LOCK_FOR()"))},${decUint(await c.read(atA, "START_FEE()"))},${decUint(await c.read(atA, "FLOOR_FEE()"))}`, "2592000,100000,10000");
+  eq("and no opening time: the clock has not started", decUint(await c.read(atA, "OPENS()")), 0n);
+  const tA = await terminalOf(LA);
+  await bob.exec(W.pm, `initialize(${KEY},uint160)`, [keyA, tA.sqrt * 2n], { label: "initialize" });
+  ok("and initialised the pool at twice the terminal price", (await poolOf(pidA0)).price === tA.sqrt * 2n);
+  {
+    const sim = await c.simulate(W.pad, enc("graduate(uint256)", [LA]), { from: eve.from.toString() });
+    ok("a pre-initialised pool at the wrong price is refused", !sim.ok && sim.data.startsWith(sel("PriceOff(uint160,uint160)")), sim.data.slice(0, 10));
+    eq("with both prices in the refusal: the terminal", decUint(sim.data.slice(10), 0), tA.sqrt);
+    eq("and the stranger's", decUint(sim.data.slice(10), 1), tA.sqrt * 2n);
+  }
+  ok("the launch is untouched by the refusal", decUint(await c.read(W.pad, "launchOf(uint256)", [LA]), 3) === 1n);
+  await refusesWith("a swap on the stranger's pool is NotOpenYet: nothing opens before the launch seeds",
+    () => swapIn(c, keyA, E / 100n), "NotOpenYet(uint64)");
+  const { salt: saltB, at: atB } = await mine(c, W.kiln, hashA, flagsA, BigInt(saltA) + 1n);
+  await refusesWith("a stranger cannot resalt", () => eve.exec(W.cust, "resalt(uint256,bytes32)", [LA, saltB]), "NotActor()");
+  await refusesWith("nor can the launcher to an unblessed salt", () => alice.exec(W.cust, "resalt(uint256,bytes32)", [LA, "0x" + w(BigInt(saltB) ^ 1n)]), "BadSalt(address,uint16)");
+  await alice.exec(W.cust, "resalt(uint256,bytes32)", [LA, saltB], { label: "resalt" });
+  const pidA = await c.read(W.cust, "poolIdOf(uint256)", [LA]);
+  eq("and resalt gives a new key: a new hook address", (await custodyOf(LA)).hook, atB);
+  ok("a pre-initialised pool at the wrong price is refused and resalt gives a new key", pidA !== pidA0 && atB !== atA);
+  ok("the new hook has no code yet: the custodian will deploy it", (await c.codeSize(atB)) === 0);
+
+  const before = await c.read(W.pad, "launchOf(uint256)", [LA]);
+  const supplyA = decUint(await c.read(coinA, "totalSupply()"));
+  const feesA = await c.read(W.pad, "feesHeld(uint256)", [LA]);
+  const creatorOwedA = decUint(feesA, 0);
+  await eve.exec(W.pad, "graduate(uint256)", [LA], { label: "graduate v4" });
+  const SEEDED_A = evm.BLOCK.header.timestamp;
+  const gradA = c.getLogs({ address: W.pad, topics: [topic("Graduated(uint256,uint256,uint256,uint256)")] }).pop();
+  eq("a stranger graduated it, and the launch's key is the pool id", decUint(gradA.topics[2]), BigInt(pidA));
+  eq("the Graduated log names the terminal price", decUint(gradA.data, 0), tA.terminal);
+  {
+    const spot = decUint(gradA.data, 1);
+    const diff = spot > tA.terminal ? spot - tA.terminal : tA.terminal - spot;
+    ok("and the pool's spot beside it, equal to a part in a billion", diff * 1_000_000_000n <= tA.terminal, `terminal ${tA.terminal} spot ${spot}`);
+    eq("spotOf reads the same number off the pool", decUint(await c.read(W.cust, "spotOf(uint256)", [LA])), spot);
+  }
+  const seededA = c.getLogs({ address: W.cust, topics: [topic("Seeded(uint256,bytes32,address,uint256,uint160,uint160,uint256)")] }).pop();
+  eq("the Seeded log names the pool", seededA.topics[2], pidA);
+  eq("the hook the custodian deployed", "0x" + seededA.topics[3].slice(26), atB);
+  const tokenA = decUint(seededA.data, 0);
+  eq("the position is token 1 of the PositionManager", tokenA, 1n);
+  eq("the terminal sqrt price", decUint(seededA.data, 1), tA.sqrt);
+  eq("equals the pool's: the custodian initialised it", decUint(seededA.data, 2), tA.sqrt);
+  ok("the custodian deployed the hook through the Kiln", (await c.codeSize(atB)) > 0);
+  eq("at an address carrying exactly its bits", (BigInt(atB) & MASK), HOOK_FLAGS);
+  {
+    const p = await poolOf(pidA);
+    ok("the pool is initialised at the terminal price with spacing 60", p.init && p.price === tA.sqrt && p.spacing === 60n);
+    ok("holding the raise to the dust", p.r0 <= tA.raised && p.r0 + 1_000_000n >= tA.raised, `${p.r0} of ${tA.raised}`);
+    ok("and the base the terminal price called for", p.r1 <= tA.amountBase && p.r1 + 1_000_000_000_000n >= tA.amountBase, `${p.r1} of ${tA.amountBase}`);
+    eq("as liquidity the custodian's position owns", decUint(await c.read(W.posm, "getPositionLiquidity(uint256)", [tokenA])), p.liquidity);
+    eq("the ledger's liquidity is the Seeded log's", decUint(seededA.data, 3), p.liquidity);
+    eq("the base the price did not need was burned", decUint(await c.read(coinA, "totalSupply()")), supplyA - (decUint(before, 5) - tA.amountBase));
+    eq("the position is the custodian's", decAddr(await c.read(W.posm, "ownerOf(uint256)", [tokenA])), W.cust);
+    eq("the custodian holds no ether of its own", await c.balanceOf(W.cust), 0n);
+    eq("nor coin", decUint(await c.read(coinA, "balanceOf(address)", [W.cust])), 0n);
+    eq("the raise's dust went home to the Reach with the creator leg", await c.balanceOf(reach3), creatorOwedA + (tA.raised - p.r0));
+    eq("the Launchpad holds no ether of a graduated launch", await c.balanceOf(W.pad), 0n);
+    eq("and only the buyers' credits of the coin", decUint(await c.read(coinA, "balanceOf(address)", [W.pad])), decUint(before, 8));
+    eq("the actions were MINT_POSITION, SETTLE_PAIR, SWEEP", await c.read(W.posm, "lastActions()").then((r) => "0x" + r.slice(2 + 128, 2 + 128 + 6)), "0x020d14");
+  }
+  head("Permit2: a real expiry, never zero, and nothing left standing");
+  eq("the custodian never wrote a Permit2 approval with expiry 0", decUint(await c.read(W.permit2, "zeroExpiryWrites()")), 0n);
+  eq("one approval and its revocation", decUint(await c.read(W.permit2, "approvals()")), 2n);
+  {
+    const al = await c.read(W.permit2, "allowance(address,address,address)", [W.cust, coinA, W.posm]);
+    eq("the Permit2 allowance is zero after the call", decUint(al, 0), 0n);
+    ok("and its expiry does not outlive the call", decUint(al, 1) <= evm.BLOCK.header.timestamp);
+    eq("the coin's allowance to Permit2 is zero", decUint(await c.read(coinA, "allowance(address,address)", [W.cust, W.permit2])), 0n);
+    eq("and the Launchpad's to the custodian", decUint(await c.read(coinA, "allowance(address,address)", [W.pad, W.cust])), 0n);
+  }
+  {
+    const cA = await custodyOf(LA);
+    eq("custodyOf: seeded now", cA.seededAt, SEEDED_A);
+    eq("the ratchet starts at seededAt + LOCK_FOR", cA.unlocksAt, SEEDED_A + 30n * 86400n);
+    eq("the position", cA.tokenId, tokenA);
+    eq("the hook's own clock agrees: OPENS", decUint(await c.read(atB, "OPENS()")), SEEDED_A);
+    eq("UNLOCKS", decUint(await c.read(atB, "UNLOCKS()")), SEEDED_A + 30n * 86400n);
+    eq("SEEDED_AT", decUint(await c.read(atB, "SEEDED_AT()")), SEEDED_A);
+  }
+  await eve.exec(W.pad, "claim(uint256,address)", [LA, bob.from.toString()], { label: "claim" });
+  ok("a buyer's claim lands as before", decUint(await c.read(coinA, "balanceOf(address)", [bob.from.toString()])) > 0n);
+  await refusesWith("a second graduation is refused", () => eve.exec(W.pad, "graduate(uint256)", [LA]), "AlreadyGraduated(uint256)");
+  await refusesWith("and a resalt after seeding", () => alice.exec(W.cust, "resalt(uint256,bytes32)", [LA, saltB]), "AlreadySeeded(uint256)");
+  {
+    const stray = await poolOf(pidA0);
+    ok("the stranger's pool is left alone: its price, no reserves", stray.price === tA.sqrt * 2n && stray.r0 === 0n);
+  }
+
+  head("the hook: only the manager, exactly its bits, only its own key");
+  const keyB = await keyOf(LA);
+  await refusesWith("a stranger cannot drive beforeInitialize", () => c.exec(atB, `beforeInitialize(address,${KEY},uint160)`, [c.from.toString(), keyB, 1n]), "NotTheManager()");
+  await refusesWith("nor beforeSwap", () => c.exec(atB, `beforeSwap(address,${KEY},${SWAP},bytes)`, [c.from.toString(), keyB, [true, -1000n, 0n], "0x"]), "NotTheManager()");
+  await refusesWith("nor beforeRemoveLiquidity", () => c.exec(atB, `beforeRemoveLiquidity(address,${KEY},${MOD},bytes)`, [c.from.toString(), keyB, [-887220, 887220, -1000n, ZERO32], "0x"]), "NotTheManager()");
+  ok("every hook entry refuses a caller that is not the manager", true);
+  {
+    const perms = await c.read(atB, "getHookPermissions()");
+    let declared = 0n;
+    for (let i = 0; i < 14; ++i) if (decBool(perms, i)) declared |= 1n << BigInt(13 - i);
+    eq("`getHookPermissions` equals the address bits", declared, BigInt(atB) & MASK);
+    eq("which are beforeInitialize, beforeSwap, beforeRemoveLiquidity", declared, HOOK_FLAGS);
+    ok("and no delta-returning flag", [10, 11, 12, 13].every((i) => !decBool(perms, i)));
+    eq("FLAGS says the same", decUint(await c.read(atB, "FLAGS()")), HOOK_FLAGS);
+  }
+  await refusesWith("a foreign PoolKey is refused at initialize", () => c.exec(W.pm, `initialize(${KEY},uint160)`, [[keyB[0], coin, keyB[2], keyB[3], keyB[4]], 1n << 96n]), "ForeignKey()");
+  await refusesWith("a static fee is foreign", () => c.exec(W.pm, `initialize(${KEY},uint160)`, [[keyB[0], keyB[1], 3000, keyB[3], keyB[4]], 1n << 96n]), "ForeignKey()");
+  await refusesWith("another spacing is foreign", () => c.exec(W.pm, `initialize(${KEY},uint160)`, [[keyB[0], keyB[1], keyB[2], 10, keyB[4]], 1n << 96n]), "ForeignKey()");
+  await refusesWith("a non-native quote is foreign", () => c.exec(W.pm, `initialize(${KEY},uint160)`, [[coin, keyB[1], keyB[2], keyB[3], keyB[4]], 1n << 96n]), "ForeignKey()");
+  await refusesWith("its own key is already a pool: the manager refuses a second initialisation", () => c.exec(W.pm, `initialize(${KEY},uint160)`, [keyB, 1n << 96n]), "PoolAlreadyInitialized()");
+
+  head("the lock: negative deltas until UNLOCKS, zero-delta pokes always");
+  /*  Driven on the STRANGER's pool, whose hook reads the same clock — the
+      terms are the coin's, and the coin's launch has seeded — so the live
+      pool's ledger is not disturbed by a test's bare liquidity changes.  */
+  const takeA = (d) => c.exec(W.pm, `modifyLiquidity(${KEY},${MOD},bytes)`, [keyA, [-887220, 887220, d, ZERO32], "0x"], { label: "modifyLiquidity" });
+  eq("the stranger's pool runs on the same clock: its hook reads the launch's seededAt", decUint(await c.read(atA, "UNLOCKS()")), SEEDED_A + 30n * 86400n);
+  await takeA(1000n);
+  ok("adding liquidity is never gated — the hook does not hold that bit", true);
+  await refusesWith("a withdrawal through the manager is StillLocked", () => takeA(-1n), "StillLocked(uint64)");
+  await takeA(0n);
+  ok("a zero-delta poke passes during the lock", true);
+  await c.exec(W.cust, "collect(uint256)", [LA], { label: "collect" });
+  ok("and so does the custodian's collect, which is one", true);
+  ok("negative deltas are blocked until UNLOCKS and zero-delta pokes pass", true);
+
+  head("collect pays the Reach; principal waits for the unlock and goes only there");
+  await swapIn(c, keyB, E / 10n);
+  eq("the first swap after seeding pays the start fee: 10 %, with the override flag honoured by the pool", decUint(await c.read(W.pm, "lastFeeCharged()")), 100000n);
+  ok("the fee pot holds it", (await poolOf(pidA)).fees0 === E / 100n);
+  const reachBefore = await c.balanceOf(reach3);
+  await eve.exec(W.cust, "collect(uint256)", [LA], { label: "collect" });
+  eq("a stranger's collect pays the Reach the whole fee", (await c.balanceOf(reach3)) - reachBefore, E / 100n);
+  const collected = c.getLogs({ address: W.cust, topics: [topic("Collected(uint256,address,uint256,uint256)")] }).pop();
+  eq("the Collected log names the sink", "0x" + collected.topics[2].slice(26), reach3);
+  eq("and the amounts", `${decUint(collected.data, 0)},${decUint(collected.data, 1)}`, `${E / 100n},0`);
+  eq("the actions were DECREASE_LIQUIDITY(0), TAKE_PAIR: a poke, not a withdrawal", await c.read(W.posm, "lastActions()").then((r) => "0x" + r.slice(2 + 128, 2 + 128 + 4)), "0x0111");
+  eq("the principal is untouched", decUint(await c.read(W.posm, "getPositionLiquidity(uint256)", [tokenA])), decUint(seededA.data, 3));
+  eq("nothing passed through the custodian", await c.balanceOf(W.cust), 0n);
+  await alice.exec(hub, "setFeesToGrip(uint256,bool)", [ID3, true]);
+  await swapIn(c, keyB, E / 10n);
+  await eve.exec(W.cust, "collect(uint256)", [LA], { label: "collect" });
+  ok("feeSink is read live: with feesToGrip set the Grip is paid", (await c.balanceOf(grip3)) > 0n);
+  ok("collect pays the Reach and principal waits for the unlock", true);
+  await alice.exec(hub, "setFeesToGrip(uint256,bool)", [ID3, false]);
+  await refusesWith("a release before the unlock is StillLocked", () => alice.exec(W.cust, "release(uint256)", [LA]), "StillLocked(uint64)");
+  await refusesWith("a stranger cannot extend the lock", () => eve.exec(W.cust, "extend(uint256,uint64)", [LA, SEEDED_A + 40n * 86400n]), "NotActor()");
+  await refusesWith("the lock cannot shorten", () => alice.exec(W.cust, "extend(uint256,uint64)", [LA, SEEDED_A + 30n * 86400n]), "RatchetOnly()");
+  await refusesWith("nor reach past ten years", () => alice.exec(W.cust, "extend(uint256,uint64)", [LA, evm.BLOCK.header.timestamp + 3650n * 86400n + 1n]), "TooLong()");
+  await alice.exec(W.cust, "extend(uint256,uint64)", [LA, SEEDED_A + 31n * 86400n], { label: "extend" });
+  eq("the holder lengthened it by a day", decUint(await c.read(W.cust, "unlocksAt(uint256)", [LA])), SEEDED_A + 31n * 86400n);
+  warp(SEEDED_A + 30n * 86400n);
+  await takeA(-1n);
+  ok("at the hook's UNLOCKS the pool pays a withdrawal", true);
+  await refusesWith("but the custodian's ratchet runs a day longer", () => alice.exec(W.cust, "release(uint256)", [LA]), "StillLocked(uint64)");
+  warp(SEEDED_A + 31n * 86400n);
+  await refusesWith("a stranger cannot release", () => eve.exec(W.cust, "release(uint256)", [LA]), "NotActor()");
+  {
+    const p = await poolOf(pidA);
+    const reachEth = await c.balanceOf(reach3);
+    const reachCoin = decUint(await c.read(coinA, "balanceOf(address)", [reach3]));
+    await alice.exec(W.cust, "release(uint256)", [LA], { label: "release" });
+    const gotEth = (await c.balanceOf(reach3)) - reachEth;
+    const gotCoin = decUint(await c.read(coinA, "balanceOf(address)", [reach3])) - reachCoin;
+    ok("the holder released the principal to the Reach: the pool's native side to the wei of rounding", gotEth <= p.r0 + p.fees0 && gotEth + 2n >= p.r0 + p.fees0, `${gotEth} of ${p.r0 + p.fees0}`);
+    ok("and its coin side", gotCoin <= p.r1 + p.fees1 && gotCoin + 2n >= p.r1 + p.fees1, `${gotCoin} of ${p.r1 + p.fees1}`);
+    eq("the actions were BURN_POSITION, TAKE_PAIR", await c.read(W.posm, "lastActions()").then((r) => "0x" + r.slice(2 + 128, 2 + 128 + 4)), "0x0311");
+    eq("the position is empty", decUint(await c.read(W.posm, "getPositionLiquidity(uint256)", [tokenA])), 0n);
+    ok("custodyOf says released", (await custodyOf(LA)).released);
+    eq("the custodian still holds nothing", await c.balanceOf(W.cust), 0n);
+  }
+  await refusesWith("a second release is refused", () => alice.exec(W.cust, "release(uint256)", [LA]), "NotSeeded(uint256)");
+  await refusesWith("and a collect after it", () => eve.exec(W.cust, "collect(uint256)", [LA]), "NotSeeded(uint256)");
+
+  head("the fee ramp: shut before OPENS, then start to floor by the clock alone");
+  await c.exec(hub, "mint(address)", [bob.from.toString()]);
+  const ID4 = 4n;
+  const reach4 = decAddr(await c.read(hub, "account(uint256)", [ID4]));
+  await bob.exec(W.kiln, "launch(uint256,string,string,uint8,uint256,bytes32,uint256)", [ID4, "Agent Five", "AGENT5", 18, SUPPLY, SALT, RAISE], { label: "launch" });
+  const coinB = "0x" + c.getLogs({ address: W.kiln, topics: [topic("Launched(address,uint256,address,string,uint256,uint256)")] }).pop().topics[1].slice(26);
+  const rhB = await c.read(W.kiln, "recipeHash(uint8,bytes32)", [1, word(coinB)]);
+  ok("a second coin has its own recipe hash", "0x" + rhB.slice(2, 66) !== hashA);
+  const { salt: saltC } = await mine(c, W.kiln, "0x" + rhB.slice(2, 66), decUint(rhB, 1));
+  const NOW4 = evm.BLOCK.header.timestamp;
+  const termsB = [86400, 10 * 86400, 500000, 3000, 3600];      // opens a day after seeding, locked 10 d, 50 % → 0.3 % over an hour
+  const paramsB = [ID4, coinB, CURVE, E, 2n * E, 0n, 0n, (1n << 128n) - 1n, 0, 0, 0, 0, NOW4 + 7n * 86400n, 1];
+  await bob.exec(W.pad, `createV4(${PARAMS},${TERMS},bytes32)`, [paramsB, termsB, saltC], { label: "createV4" });
+  const LB = LA + 1n;
+  for (const who of [alice, carol, dave]) await who.exec(W.pad, "buy(uint256,uint256,uint64,uint16)", [LB, 0n, NOW4 + 60n, 10000], { value: E, label: "buy" });
+  const tB = await terminalOf(LB);
+  const keyC = await keyOf(LB);
+  const pidB = await c.read(W.cust, "poolIdOf(uint256)", [LB]);
+  // a stranger initialises this one INSIDE the band: 0.4 % up in sqrt space is 0.8 % in price
+  const live = tB.sqrt * 1004n / 1000n;
+  await carol.exec(W.kiln, "deployHook(uint8,bytes32,bytes32)", [1, saltC, word(coinB)], { label: "deployHook" });
+  await carol.exec(W.pm, `initialize(${KEY},uint160)`, [keyC, live], { label: "initialize" });
+  const reach4Coin = decUint(await c.read(coinB, "balanceOf(address)", [reach4]));
+  const reach4Eth = await c.balanceOf(reach4);
+  await eve.exec(W.pad, "graduate(uint256)", [LB], { label: "graduate v4" });
+  const SEEDED_B = evm.BLOCK.header.timestamp;
+  {
+    const p = await poolOf(pidB);
+    eq("a pre-initialised pool within 1 % is used as it is: the stranger's price stands", p.price, live);
+    const seededB = c.getLogs({ address: W.cust, topics: [topic("Seeded(uint256,bytes32,address,uint256,uint160,uint160,uint256)")] }).pop();
+    eq("the Seeded log carries the terminal price", decUint(seededB.data, 1), tB.sqrt);
+    eq("and the pool's, side by side", decUint(seededB.data, 2), live);
+    ok("at a higher price the coin is the short side: all of it goes in", p.r1 <= tB.amountBase && p.r1 + 1_000_000_000_000n >= tB.amountBase, `${p.r1} of ${tB.amountBase}`);
+    ok("and the ether the stranger's price did not need — under 1 % of the raise — went home to the Reach",
+       p.r0 < tB.raised && (await c.balanceOf(reach4)) - reach4Eth === tB.raised - p.r0 && (tB.raised - p.r0) * 100n < tB.raised);
+    ok("the coin's dust too", decUint(await c.read(coinB, "balanceOf(address)", [reach4])) - reach4Coin === tB.amountBase - p.r1);
+    eq("the custodian keeps none of it", decUint(await c.read(coinB, "balanceOf(address)", [W.cust])), 0n);
+    eq("nor any ether", await c.balanceOf(W.cust), 0n);
+  }
+  const hookC = (await custodyOf(LB)).hook;
+  const OPENS_B = SEEDED_B + 86400n;
+  eq("OPENS is seededAt + OPENS_IN", decUint(await c.read(hookC, "OPENS()")), OPENS_B);
+  await refusesWith("before the opening hour the pool will not swap", () => swapIn(c, keyC, E / 100n), "NotOpenYet(uint64)");
+  warp(OPENS_B - 1n);
+  await refusesWith("not a second early", () => swapIn(c, keyC, E / 100n), "NotOpenYet(uint64)");
+  warp(OPENS_B);
+  await swapIn(c, keyC, E / 100n);
+  eq("at the opening second the start fee: 50 %", decUint(await c.read(W.pm, "lastFeeCharged()")), 500000n);
+  warp(OPENS_B + 1800n);
+  await swapIn(c, keyC, E / 100n);
+  eq("halfway down the ramp: 25.15 %", decUint(await c.read(W.pm, "lastFeeCharged()")), 251500n);
+  eq("feeAt says the same", decUint(await c.read(hookC, "feeAt(uint64)", [OPENS_B + 1800n])), 251500n);
+  warp(OPENS_B + 3600n);
+  await swapIn(c, keyC, E / 100n);
+  eq("at the ramp's end the floor: 0.3 %", decUint(await c.read(W.pm, "lastFeeCharged()")), 3000n);
+  warp(OPENS_B + 400n * 86400n);
+  await swapIn(c, keyC, E / 100n, "0x" + "de".repeat(40));
+  eq("and forever after — garbage hookData changes nothing", decUint(await c.read(W.pm, "lastFeeCharged()")), 3000n);
+  {
+    const have = decUint(await c.read(coinB, "balanceOf(address)", [c.from.toString()]));
+    await c.exec(coinB, "approve(address,uint256)", [W.pm, have]);
+    await c.exec(W.pm, `swap(${KEY},${SWAP},bytes)`, [keyC, [false, -have, 0n], "0x"], { label: "v4 swap" });
+    eq("the fee is a function of the clock alone: the other direction pays the same", decUint(await c.read(W.pm, "lastFeeCharged()")), 3000n);
+  }
+  {
+    const st = await c.read(hookC, "status()");
+    ok("status: open, and the lock long over", decBool(st, 0) && decBool(st, 1));
+  }
+
+  head("one codehash for every launch's hook, and one salt for every band");
+  const codeB = await codeOf(c, atB), codeC = await codeOf(c, hookC);
+  ok("two launches, two terms, one runtime: the hooks' codehashes are equal", kec(codeB) === kec(codeC));
+  eq("and equal to the keccak of the compiled LaunchHook runtime — the number the Router pins as LAUNCH_HOOK_CODEHASH", kec(codeB), kec(A("src/LaunchHook.sol", "LaunchHook").deployed));
+  ok("the hook's runtime carries no immutable: nothing of one launch is in another's code", !codeB.includes(coinA.slice(2).toLowerCase()) && !codeC.includes(coinB.slice(2).toLowerCase()));
+  {
+    const c2 = await Chain.open({ chainId: 8453 });
+    const v4b = await c2.as("0x" + "f4".repeat(32));
+    const WB = await deployV4World(v4b, hub);
+    eq("the same deployer, the same sequence, another chain id: the Kiln lands at the same address", WB.kiln, W.kiln);
+    eq("so does the custodian", WB.cust, W.cust);
+    eq("the recipe hash is the same number there", "0x" + (await c2.read(WB.kiln, "recipeHash(uint8,bytes32)", [1, argA])).slice(2, 66), hashA);
+    const there = await mine(c2, WB.kiln, hashA, flagsA);
+    eq("the first salt mined there is the one mined here", there.salt, saltA);
+    eq("one mined salt gives the same address on every chain", there.at, atA);
+    eq("and the custodian there predicts it too", decAddr(await c2.read(WB.cust, "hookAt(address,bytes32)", [coinA, saltA])), atA);
+  }
+
+  head("the constants a deployment record pins, asserted");
+  eq("MINT_POSITION is 0x02", decUint(await c.read(W.cust, "MINT_POSITION()")), 2n);
+  eq("SETTLE_PAIR is 0x0d", decUint(await c.read(W.cust, "SETTLE_PAIR()")), 0x0dn);
+  eq("SWEEP is 0x14", decUint(await c.read(W.cust, "SWEEP()")), 0x14n);
+  eq("DECREASE_LIQUIDITY is 0x01", decUint(await c.read(W.cust, "DECREASE_LIQUIDITY()")), 1n);
+  eq("BURN_POSITION is 0x03", decUint(await c.read(W.cust, "BURN_POSITION()")), 3n);
+  eq("TAKE_PAIR is 0x11", decUint(await c.read(W.cust, "TAKE_PAIR()")), 0x11n);
+  eq("POOLS_SLOT is 6, where StateLibrary reads slot0", decUint(await c.read(W.cust, "POOLS_SLOT()")), 6n);
+  eq("the grid is spacing 60 from tick −887220", decUint(await c.read(W.cust, "TICK_LOWER()")), (1n << 256n) - 887220n);
+  eq("to 887220", decUint(await c.read(W.cust, "TICK_UPPER()")), 887220n);
+  eq("SQRT_LOWER is TickMath's sqrt price at the lower edge", decUint(await c.read(W.cust, "SQRT_LOWER()")), decUint(await c.read(W.pm, "sqrtAt(int24)", [-887220])));
+  eq("SQRT_UPPER at the upper", decUint(await c.read(W.cust, "SQRT_UPPER()")), decUint(await c.read(W.pm, "sqrtAt(int24)", [887220])));
+  eq("the 1 % band in sqrt space: sqrt(0.99) rounded in", decUint(await c.read(W.cust, "BAND_LO()")), 994988n);
+  eq("sqrt(1.01) rounded in", decUint(await c.read(W.cust, "BAND_HI()")), 1004987n);
+  eq("the start fee's ceiling is the Pool's sniper ceiling in v4's unit", decUint(await c.read(W.cust, "MAX_START_FEE()")), 900000n);
+  eq("the Permit2 window is an hour: a real time, never zero", decUint(await c.read(W.cust, "PERMIT_WINDOW()")), 3600n);
+  eq("the hook's own grid constant agrees", decUint(await c.read(atB, "TICK_SPACING()")), 60n);
+}
 
 head("gas");
 for (const [k, v] of Object.entries(c.gas)) console.log(`  ${k.padEnd(18)} ${String(v).padStart(10)}`);

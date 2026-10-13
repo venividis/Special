@@ -296,7 +296,8 @@ head("the catalog cannot drift from the ABIs");
   const sigOf = (f) => `${f.name}(${(f.inputs || []).map(canon).join(",")})`;
   const ON = { hub: "IIntact", pool: "Pool", reach: "Reach", parley: "Parley", roster: "Roster", postage: "Postage", keys: "KeyRegistry",
                kiln: "Kiln", launchpad: "Launchpad", coin: "Coin", locks: "Locks", steward: "Steward", router: "Router",
-               erc20: "MockERC20", engine: "Engine", catalog: "Catalog" };
+               erc20: "MockERC20", engine: "Engine", catalog: "Catalog",
+               market: "IMarket", roles: "IRoles", agentCard: "IAgentCard", nameplate: "Nameplate", custodian: "LPCustodian" };
   const fns = {};
   for (const [on, name] of Object.entries(ON)) fns[on] = new Set(find(name).abi.filter((f) => f.type === "function").map(sigOf));
   const unserved = SV.services.filter((r) => !fns[r.on] || !fns[r.on].has(r.sig));
@@ -307,7 +308,7 @@ head("the catalog cannot drift from the ABIs");
   // every error a panel-facing contract can revert with, by selector; two
   // are construction-time and never reach a panel
   const PANEL_FACING = ["CoreFacet", "RightsFacet", "MintFacet", "SiteFacet", "Pool", "Reach", "Grip", "Parley", "Roster", "Postage",
-                        "KeyRegistry", "Kiln", "Coin", "Launchpad", "Locks", "Steward", "Router", "IMarket", "IRoles"];
+                        "KeyRegistry", "Kiln", "Coin", "Launchpad", "Locks", "Steward", "Router", "IMarket", "IRoles", "LPCustodian", "LaunchHook"];
   const CONSTRUCTION_ONLY = new Set(["BadBand()", "WrongRegistry()"]);
   const lacking = new Set();
   for (const name of PANEL_FACING) for (const f of find(name).abi) {
@@ -518,7 +519,7 @@ console.log("      dist/token-1.html   the document exactly as /token/1/live ser
 console.log("      dist/token-1.json   the metadata; dist/crest-1.svg the still; dist/services.json; dist/state-1.json");
 
 head("gas, measured");
-for (const [k, v] of Object.entries(c.gas)) if (["Engine", "Catalog", "CatalogRows", "CatalogText", "CatalogState", "Renderer", "Premises", "IntactDiamond", "mint", "loadHead", "loadBody", "loadPanel"].includes(k)) console.log(`      ${k.padEnd(20)} ${gas(v).padStart(8)}`);
+for (const [k, v] of Object.entries(c.gas)) if (["Engine", "Catalog", "CatalogRows", "CatalogRowsPost", "CatalogText", "CatalogState", "Renderer", "Premises", "IntactDiamond", "mint", "loadHead", "loadBody", "loadPanel"].includes(k)) console.log(`      ${k.padEnd(20)} ${gas(v).padStart(8)}`);
 console.log(`      ${"tokenURI".padEnd(20)} ${gas(uriGas).padStart(8)}   (cap ${gas(CAPS.tokenURI)})`);
 console.log(`      ${"/token/1/live".padEnd(20)} ${gas(live.gas).padStart(8)}   (cap ${gas(CAPS.live)})`);
 console.log(`      ${"/manifest".padEnd(20)} ${gas(man.gas).padStart(8)}   (cap ${gas(CAPS.manifest)})`);

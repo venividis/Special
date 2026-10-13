@@ -44,8 +44,11 @@ chain by the Catalog, never typed by hand.
 and in `/manifest`. An agent pins the hash it reviewed and refuses a
 catalogue that answers with another: a changed selector table is a changed
 protocol, not an update. (CVE-2025-54136's class: a tool description that
-changes after approval.) The MCP bridge in `sdk/` that does this for you is
-post-MVB (U17, INVARIANTS G2); today the agent does it itself.
+changes after approval.) `sdk/mcp.mjs` does this for you: every tool it
+lists is derived from `/services.json` read from the chain and refused
+whole when the bytes' keccak is not `Catalog.catalogHash()` — or not the
+hash you reviewed (`INTACT_PINNED_HASH`). `node sdk/mcp.test.mjs` proves
+it (INVARIANTS G2).
 
 ## 2. Authority: session keys and nothing else
 
@@ -113,9 +116,15 @@ grant's terms in words (`sessionOf`, `sessionExposure`), and whether
 `rightsOf(id, key)` carries `SESSION`; `body.dataset.rights` is masked to
 that one bit; every holder control is hidden and `propose` refuses; a
 connected wallet whose account is not the key is refused with the sentence
-naming both. The agent lane offers, before U17, one read: whether the grant
-allows a target and a selector (`sessionAllows`). The `executeAsSession`
-composer in the page arrives with U17.
+naming both. The agent lane prints the key's envelope (`sessionOf`,
+`sessionExposure`, `rightsOf`, the token's epoch and status), the doors the
+grant opens (`sessionAllows` over every write row of the catalogue), and the
+composer: PROPOSE is a read — `sessionAllows`, then a dry `eth_call` of the
+very `executeAsSession` — and nothing a grant refuses reaches a wallet. The
+shell never writes in session mode, so the ACT is offered in the console
+(`/token/<id>/live`) to the key's own wallet, whose `rightsOf` carries
+`SESSION` there: one `executeAsSession(to, value, data)` through the slab,
+`custodyEpoch` and `sessionAllows` re-read at the press.
 
 ## 4. Invariants an agent may rely on (tested forever)
 
@@ -140,25 +149,34 @@ composer in the page arrives with U17.
 
 ## 5. After the MVB
 
-- **AgentCard** (U17): face 2 of `tokenURI` becomes an ERC-8004
-  `registration-v1` document (`agentId == tokenId`, `agentWallet =
-  account(id)`, the token's `web3://` routes and its door as `services[]`,
-  `supportedTrust = ["custody-epoch", "erc-5646"]`, `x402Support: false`),
-  pinned by `AgentCard.manifestHash(id)`; `/.well-known/agent-registration.json`,
-  `/.well-known/agent-card.json` (A2A) and `/llms.txt` served by Premises.
+- **The card is live** (U17). Face 2 of `tokenURI` is the ERC-8004
+  `registration-v1` (`AgentCard.registration(id)`): `agentId == tokenId`,
+  `agentWallet = account(id)`, `active` is the token's status, `custodyEpoch`
+  and `catalogHash` are named, `services[]` are the token's `web3://` routes
+  and its door as the RFC 6570 template `/k/<id>/{key}`, `supportedTrust =
+  ["custody-epoch","erc-5646"]`, `x402Support: false`. The bytes are RFC
+  8785 canonical, so `canonicalize(JSON.parse(bytes)) === bytes`, and
+  `manifestHash(id)` is their keccak — pin the hash, then parse.
+  `/.well-known/agent-registration.json` (the collection's document),
+  `/.well-known/agent-card.json` (A2A), `/llms.txt`, `/llms.md` and
+  `/token/<id>/llms.txt` are served by Premises from the same contract.
   Mirror-registration in the ERC-8004 singleton is a holder action and
   never a correctness dependency.
-- **The MCP bridge** (`sdk/mcp.mjs`, U17): tools generated from
-  `services.json`, refusing a catalogue whose hash drifted (INVARIANTS G2:
-  *"a catalog whose hash drifted is refused"*); `propose` and `act` as
-  separate tools; `sessionAllows` before any send.
+- **The bridge is live** (`sdk/mcp.mjs`, U17): `INTACT_RPC_URL`,
+  `INTACT_CATALOG`, optional `INTACT_PINNED_HASH` and `INTACT_SIGNER` (a
+  module exporting `{address, send(tx)}` — the key stays on your machine).
+  Tools: `intact_catalogue`, `intact_clock` (every deadline comes from
+  here), `intact_read`, `intact_propose`, `intact_act`, and
+  `read_<word>_<name>` / `propose_<word>_<name>` / `act_<word>_<name>` per
+  row. A tool argument named like a key is refused unread; an approval of
+  2^255 or more is never built.
 - **Roles** (U16): ERC-7432 roles that lock the token instead of escrowing
   it, revocable only, epoch-stamped.
-- The **`executeAsSession` composer** in the agent lane, and the door's
-  action list.
 
 ## 6. What an agent must never do
 
+- Trust a registration whose keccak is not `manifestHash(id)`: pin the
+  hash, then parse.
 - Pass a wallet's private key, a session key or a signature through a
   bridge, a prompt or a log. The key signs transactions on the agent's own
   machine; the bridge sees calldata and receipts.

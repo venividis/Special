@@ -13,6 +13,12 @@ pragma solidity ^0.8.24;
   Every attempt is wrapped so the fill completes; the test asserts none
   of them worked — the Reach's seal refuses the drain, the custody epoch
   kills the session, and `_update` clears the user.
+
+  U15 (test/Market.t.sol): `act` lets the test have the seller do what a
+  holder does first — seal its Reach, list on the Market, pull its money —
+  so the callback fires at the one moment the Market pays it, which is
+  `claim`, after the token has moved; `armed` still standing after the
+  fill is the proof that the fill itself never called it.
 ───────────────────────────────────────────────────────────────────────────*/
 interface IHubStrip {
     function setApprovalForAll(address operator, bool approved) external;
@@ -57,6 +63,15 @@ contract MaliciousSeller {
         id = id_;
         armed = true;
         HUB.setApprovalForAll(market, true);
+    }
+
+    /// @notice Act as the holder: seal, list, claim — whatever a test needs
+    ///         the seller to have done in its own name. A revert bubbles
+    ///         whole, so the test can name the error it met.
+    function act(address target, bytes calldata data) external payable returns (bytes memory r) {
+        bool ok;
+        (ok, r) = target.call{value: msg.value}(data);
+        if (!ok) assembly ("memory-safe") { revert(add(r, 0x20), mload(r)) }
     }
 
     receive() external payable {
