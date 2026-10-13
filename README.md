@@ -28,10 +28,19 @@ binary is needed:
 
 ```sh
 npm install
-npm run compile     # tools/compile.mjs — fails any contract over the EIP-170 ceiling
-npm run forge       # tools/forge.mjs   — runs test/*.t.sol on @ethereumjs/vm with a cheatcode shim
-npm run check       # the whole battery, in the order DESIGN §13 and docs/CHECKPOINT.md give
+npm run compile                  # tools/compile.mjs — fails any contract over the EIP-170 ceiling; --ship prints the build that ships
+npm run forge                    # tools/forge.mjs   — runs test/*.t.sol on @ethereumjs/vm with a cheatcode shim (--match <name> for one)
+npm run check                    # tools/check.mjs   — the whole battery in DESIGN §13's order: every step must print exactly one
+                                 #                     summary line reporting zero failures, and a missing step fails the run
+                                 #                     (incomplete ≠ pass); --keep-going for the whole table, --only/--skip for a PARTIAL run
+node tools/verify-findings.mjs   # every historical finding replayed: refuted on HEAD, or reproduced against a one-line variant
+node tools/agents.mjs            # seven motives for 220 ticks over the whole bundle, the invariants asserted after every tick
+node tools/invariants-check.mjs  # every docs/INVARIANTS.md and DESIGN §14 row names an assertion string that exists
+npm run mutations                # tools/mutations.mjs — the E1/E3 mutation gate for Parley and Postage (a cold compile per mutation; not in check)
 ```
+
+`CLAUDE.md` is what an agent working in this repository must know: the toolchain, the file-ownership
+discipline, the summary-line contract every verifier obeys, and the traps with their reasons.
 
 Status: waves 0–2 of the build plan are complete. U9 is in: the console's shell (`engine/app.html`),
 its DOM-and-wallet shim, and the six lane panels (swap, social, launch, vault, identity, and the agent
