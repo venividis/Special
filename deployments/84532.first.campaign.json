@@ -1,0 +1,251 @@
+{
+ "schema": "intact.campaign/1",
+ "chainId": 84532,
+ "network": "Base Sepolia",
+ "record": "deployments/84532.json",
+ "hub": "0x0be4afc5f30284503fada69151f330d3838c34ff",
+ "premises": "0x62fdd5f9b8e9250f5477a6661c75535fd8f4930b",
+ "startedAt": "2026-10-13T22:54:44.368Z",
+ "finishedAt": "2026-10-13T22:55:01.181Z",
+ "confirmToken": "DEPLOY_INTACT_TO_BASE_SEPOLIA",
+ "actors": {
+  "holder": "0x625495023ea02128722b3af9b1bfbc2a9b2b17e1",
+  "second": "0x8c95279f15d3d1e5b91f76f54f229e4e16d05645",
+  "secondDerivation": "keccak256(\"intact.campaign/1:second\" ‖ the burner's 32 key bytes)"
+ },
+ "amounts": {
+  "supply": "1000000000000000000000000000",
+  "raise": "900000000000000000000000000",
+  "curve": "700000000000000000000000000",
+  "virtualQuote": "1000000000000000",
+  "target": "3000000000000000",
+  "buy": "1000000000000000",
+  "inventory": "200000000000000000000",
+  "marketBase": "100000000000000000000",
+  "marketQuote": "2000000000000000",
+  "swapIn": "500000000000000",
+  "swapOut": "100000000000000",
+  "sealedSwap": "200000000000000",
+  "postage": "100000000000000",
+  "replyWindow": "300",
+  "lock": "1000000000000000",
+  "lockSeconds": "120",
+  "sessionTransfer": "1000000000000000000",
+  "sealDays": "30",
+  "quiet": "2592000",
+  "notice": "1209600"
+ },
+ "preflight": {
+  "rpcChainId": 84532,
+  "blockA": "48081849",
+  "blockB": "48081849",
+  "latestTimestamp": "1791931986",
+  "wallClock": "1791931987",
+  "skewSeconds": "1",
+  "gasPrice": "6000000",
+  "deployer": "0x625495023ea02128722b3af9b1bfbc2a9b2b17e1",
+  "nonce": "0",
+  "balance": "30000000000000000",
+  "deployBudget": "1080000000306432",
+  "campaignBudget": "26866459231005580",
+  "campaignGas": "5902168",
+  "campaignGasMeasuredOn": "31337 · 2026-10-13 · node tools/testnet.mjs --chain 31337 --confirm DEPLOY_INTACT_LOCAL over npx hardhat node (cancun): 40 steps, 39 transactions",
+  "secondFund": "1713339719001080",
+  "l1Oracle": "0x420000000000000000000000000000000000000F",
+  "l1Deploy": "306432",
+  "l1PerStep": "90",
+  "placeholder": false,
+  "shipBuild": "diamond",
+  "shipReason": "Intact 25364 B > 24000; IntactDiamond compiled",
+  "price": "10000000000000000"
+ },
+ "vars": {
+  "idA": "1",
+  "idB": "2",
+  "reachA": "0xe1ac2329cd780f3dad705b732c3cfef485bf76d3",
+  "reachB": "0x87915c75aa01cf7521da6818ef42bec646bb38af",
+  "coin": "0x40dc4ea5f40d1885bf3f04e75088613427fe9408"
+ },
+ "steps": [
+  {
+   "i": 1,
+   "label": "fund the second key from the burner",
+   "family": "fund",
+   "actor": "holder",
+   "fn": "(transfer)",
+   "to": "0x8c95279f15d3d1e5b91f76f54f229e4e16d05645",
+   "txHash": "0xa8a8ce5a387b0b98f64d9c624f680021d55a3edde88426c6a77d1bff8117a7f9",
+   "block": "48081899",
+   "gasUsed": "21000",
+   "status": "0x1",
+   "notes": "0.001713 ETH to 0x8c95279f15d3d1e5b91f76f54f229e4e16d05645, derived as keccak256(\"intact.campaign/1:second\" ‖ the burner's 32 key bytes)",
+   "ms": 352,
+   "at": "2026-10-13T22:54:44.722Z"
+  },
+  {
+   "i": 2,
+   "label": "mint the holder's token",
+   "family": "mint",
+   "actor": "holder",
+   "fn": "mint(address)",
+   "to": "0x0be4afc5f30284503fada69151f330d3838c34ff",
+   "txHash": "0x3827b2be12797884c93b9d24538249073b51c36d413ec32cbe289015c2b08168",
+   "block": "48081900",
+   "gasUsed": "305261",
+   "status": "0x1",
+   "notes": "id 1 from the Transfer log, 0.010000 ETH",
+   "ms": 540,
+   "at": "2026-10-13T22:54:47.187Z"
+  },
+  {
+   "i": 3,
+   "label": "mint the second key's token",
+   "family": "mint",
+   "actor": "holder",
+   "fn": "mint(address)",
+   "to": "0x0be4afc5f30284503fada69151f330d3838c34ff",
+   "txHash": "0xeaa82dbaf1e5393ca48263bc8d81b8a852d6fd4319a811e47c6ee67684500ea6",
+   "block": "48081901",
+   "gasUsed": "290661",
+   "status": "0x1",
+   "notes": "id 2 from the Transfer log, paid by the burner, owned by the second key",
+   "ms": 515,
+   "at": "2026-10-13T22:54:48.549Z"
+  },
+  {
+   "i": 4,
+   "label": "launch a coin on the Kiln",
+   "family": "launch",
+   "actor": "holder",
+   "fn": "launch(uint256,string,string,uint8,uint256,bytes32,uint256)",
+   "to": "0x2ecfea07e47c96300fb96c108367ef88427a88fa",
+   "txHash": "0x3230784f27dcaa0a1fc422917deec541e96aaee0ba5c26f7a5399f6daab4a28d",
+   "block": "48081902",
+   "gasUsed": "1090585",
+   "status": "0x1",
+   "notes": "coin 0x40dc4ea5f40d1885bf3f04e75088613427fe9408 from the Launched log; the Reach holds 100000000 of 1000000000, the Launchpad the raise share",
+   "ms": 2268,
+   "at": "2026-10-13T22:54:52.568Z"
+  },
+  {
+   "i": 5,
+   "label": "the Reach hands the holder inventory (execute → coin.transfer)",
+   "family": "execute",
+   "actor": "holder",
+   "fn": "execute(address,uint256,bytes,uint8)",
+   "to": "0xe1ac2329cd780f3dad705b732c3cfef485bf76d3",
+   "txHash": "0xb37a52a8ceba0e91233de553746499ccf163b1e45bbc686c8d1954bfe839ac7f",
+   "block": "48081903",
+   "gasUsed": "124234",
+   "status": "0x1",
+   "notes": "200 coin to 0x625495023ea02128722b3af9b1bfbc2a9b2b17e1",
+   "ms": 592,
+   "at": "2026-10-13T22:54:53.230Z"
+  },
+  {
+   "i": 6,
+   "label": "open the owned market: coin against ETH at 30 bps",
+   "family": "market",
+   "actor": "holder",
+   "fn": "openMarket(uint256,address,address,uint16,uint24,uint16,uint32)",
+   "to": "0x70320aad84b0644425022ef32fd982d29d68f4af",
+   "txHash": "0xbde2e562e4b2997070df59951e5dea2692ff3029229d663568ad1c6df8999d1e",
+   "block": "48081904",
+   "gasUsed": "185653",
+   "status": "0x1",
+   "notes": "open false, base 0x0000000000000000000000000000000000000000, quote native, fee 0 bps, no sniper fee",
+   "ms": 271,
+   "at": "2026-10-13T22:54:54.358Z"
+  },
+  {
+   "i": 7,
+   "label": "approve the Pool for exactly the deposit",
+   "family": "market",
+   "actor": "holder",
+   "fn": "approve(address,uint256)",
+   "to": "0x40dc4ea5f40d1885bf3f04e75088613427fe9408",
+   "txHash": "0xd0fca5f0161c8c89f86b4dc71b6f42ebad28fa5d9dc080762a503ae161df69f6",
+   "block": "48081905",
+   "gasUsed": "45952",
+   "status": "0x1",
+   "notes": "an exact approval, never unlimited",
+   "ms": 526,
+   "at": "2026-10-13T22:54:56.532Z"
+  },
+  {
+   "i": 8,
+   "label": "deposit inventory and the native quote",
+   "family": "market",
+   "actor": "holder",
+   "fn": "deposit(uint256,uint256,uint256)",
+   "to": "0x70320aad84b0644425022ef32fd982d29d68f4af",
+   "txHash": "0xc7b87e5776dd4c224c82eda15db705886987fe7d8e9f14fbdcc0888c3edb2be4",
+   "block": "48081906",
+   "gasUsed": "132423",
+   "status": "0x1",
+   "notes": "reserves 0 coin / 0.000000 ETH, open true",
+   "ms": 579,
+   "at": "2026-10-13T22:54:58.760Z"
+  },
+  {
+   "i": 9,
+   "label": "swap exact-in: ETH for coin",
+   "family": "swap",
+   "actor": "second",
+   "status": "failed",
+   "notes": "the swap paid 0, under its floor 19752451470882529518",
+   "at": "2026-10-13T22:55:01.180Z"
+  }
+ ],
+ "families": {
+  "fund": {
+   "steps": 1,
+   "gas": "21000"
+  },
+  "mint": {
+   "steps": 2,
+   "gas": "595922"
+  },
+  "launch": {
+   "steps": 1,
+   "gas": "1090585"
+  },
+  "execute": {
+   "steps": 1,
+   "gas": "124234"
+  },
+  "market": {
+   "steps": 3,
+   "gas": "364028"
+  }
+ },
+ "gasTotal": "2195769",
+ "secondGas": "0",
+ "recover": {
+  "checked": 362,
+  "disagreeing": 0,
+  "missing": []
+ },
+ "gateway": null,
+ "measure": [
+  {
+   "endpoint": "https://sepolia.base.org",
+   "chainId": 84532,
+   "estimateGas": "3646044",
+   "estimateMs": 66,
+   "call": "ok",
+   "bytes": 77681,
+   "callMs": 88
+  }
+ ],
+ "disposition": {
+  "timelockAdmin": "0x625495023ea02128722b3af9b1bfbc2a9b2b17e1",
+  "disposition": "the burner holds the admin; rotation or renunciation only through the Timelock's own 7-day queue",
+  "recordSaid": "the burner holds the admin; rotation or renunciation only through the Timelock's own 7-day queue",
+  "burnerNonce": "48",
+  "burnerBalance": "5451070487963037",
+  "secondBalance": "1212512582909076",
+  "keyFile": "overwritten and unlinked",
+  "writtenAt": "2026-10-13T22:55:11.860Z"
+ }
+}

@@ -47,7 +47,7 @@ const fetcher = async (url) => {
     That is not the node failing — retry on transport errors only, never on
     an RPC error, which is an answer.                                    */
 const call = async (url, method, params = []) => {
-  let last;
+  let last, lagged = 0;
   for (let attempt = 0; attempt < 7; attempt++) {
     try {
       const f = await fetcher(url);
@@ -69,6 +69,11 @@ const call = async (url, method, params = []) => {
           retry it like a transport error.                               */
       if (e.rpc && !/not found|header|missing|unknown block/i.test(e.message)) throw e;
       last = e;
+      /*  Lag has its own patience: a replica can sit a few blocks behind
+          the one the pin names, and every retry is another draw from the
+          balancer. Up to a minute of one-second draws, apart from the
+          seven tries a transport error gets.                            */
+      if (e.rpc) { if (++lagged > 60) break; attempt--; await new Promise((res) => setTimeout(res, 1000)); continue; }
       await new Promise((res) => setTimeout(res, 300 * (attempt + 1)));
     }
   }
@@ -88,6 +93,26 @@ export class RpcChain {
     this.gas = {};
     this.lastGas = 0n;
     this.journalPath = null;
+    /*  The pin every read carries (the third lag defence, after the
+        receipt's logs and the wait for code): the highest block this
+        process has a receipt from, or has seen the endpoint report. A
+        read at "latest" on a load-balanced public endpoint is answered by
+        whichever replica the balancer picks, and one a block behind
+        answers from before the receipt — the first Base Sepolia rehearsal
+        lost its campaign at the swap that way, the swap itself landed and
+        `balanceOf` read 0. A read pinned to a block number is exact on
+        any replica that has the block and "header not found" on one that
+        does not, which `call` retries. Shared with every `as()` key, so
+        the second key's reads see the burner's receipts.               */
+    this.view = { head: 0n };
+  }
+
+  /// The block tag every read is pinned to: the highest of the receipts'
+  /// blocks and the latest block the endpoint reports now.
+  async tag() {
+    const seen = BigInt(await this.rpc("eth_blockNumber"));
+    if (seen > this.view.head) this.view.head = seen;
+    return "0x" + this.view.head.toString(16);
   }
 
   /*  A deployment journal contains public receipt data only: never the key,
@@ -123,7 +148,7 @@ export class RpcChain {
       const est = await this.rpc("eth_estimateGas", [{
         from: this.from.toString(), to: to || undefined,
         data, value: "0x" + BigInt(value).toString(16)
-      }]);
+      }, await this.tag()]);
       /*  EIP-7825: a transaction over 2^24 gas is not includable on a
           Fusaka chain. The estimate is the honest number; refuse it rather
           than send something the chain will reject or, worse, a chunk a
@@ -157,6 +182,7 @@ export class RpcChain {
     }
     if (!receipt) throw new Error(`${label || "tx"} ${hash} not mined after four minutes`);
     if (receipt.status !== "0x1") throw new Error(`${label || "tx"} reverted in ${receipt.transactionHash}`);
+    if (BigInt(receipt.blockNumber) > this.view.head) this.view.head = BigInt(receipt.blockNumber);
     const gas = BigInt(receipt.gasUsed);
     if (label) this.gas[label] = (this.gas[label] || 0n) + gas;
     if (this.journalPath) {
@@ -203,18 +229,18 @@ export class RpcChain {
       [this.from.toString(), "pending"]));
   }
 
-  async call(to, data, from, tag = "latest") {
+  async call(to, data, from, tag) {
     const r = await this.rpc("eth_call", [{
       from: from || this.from.toString(), to,
       data: data.startsWith("0x") ? data : "0x" + data
-    }, tag]);
+    }, tag || await this.tag()]);
     return r;
   }
 
   async read(to, sig, args = []) { return this.call(to, enc(sig, args)); }
 
   async codeSize(addr) {
-    return (await this.rpc("eth_getCode", [addr, "latest"])).length / 2 - 1;
+    return (await this.rpc("eth_getCode", [addr, await this.tag()])).length / 2 - 1;
   }
 
   getLogs(filter) { return this.rpc("eth_getLogs", [filter]); }
@@ -222,13 +248,14 @@ export class RpcChain {
   async as(keyHex) {
     const other = new RpcChain(this.url, keyHex, this.chainId);
     other.gas = this.gas;
+    other.view = this.view;
     other.nonce = BigInt(await this.rpc("eth_getTransactionCount",
       [other.from.toString(), "pending"]));
     return other;
   }
 
-  async balanceOf(addr, tag = "latest") {
-    return BigInt(await this.rpc("eth_getBalance", [addr, tag]));
+  async balanceOf(addr, tag) {
+    return BigInt(await this.rpc("eth_getBalance", [addr, tag || await this.tag()]));
   }
 }
 

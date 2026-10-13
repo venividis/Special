@@ -464,7 +464,8 @@ async function main() {
     let r;
     try { r = await run(); }
     catch (e) {
-      camp.steps.push({ i: camp.steps.length + 1, label, family, actor, status: "failed", notes: String(e.message).slice(0, 400), at: new Date().toISOString() }); save();
+      camp.steps.push({ i: camp.steps.length + 1, label, family, actor, status: "failed", notes: String(e.message).slice(0, 400),
+                        txHash: e.r ? e.r.hash : null, block: e.r ? e.r.block.toString() : null, gasUsed: e.r ? e.r.gas.toString() : null, at: new Date().toISOString() }); save();
       ok(false, `${family} · ${label}`, e.message); throw e;
     }
     const rec = { i: camp.steps.length + 1, label, family, actor, fn: r.fn || null, to: r.to ? low(r.to) : null,
@@ -558,7 +559,8 @@ async function main() {
       const before = decUint(await read(COIN, "balanceOf(address)", [second]));
       const r = await ad2.exec(POOL, SIG.swapIn, [A, false, AMOUNTS.swapIn, minOut, second, await deadline()], { value: AMOUNTS.swapIn, label: "swapExactIn" });
       const got = decUint(await read(COIN, "balanceOf(address)", [second])) - before;
-      if (got < minOut) throw new Error(`the swap paid ${got}, under its floor ${minOut}`);
+      // a landed transaction stays in the record even when the check after it fails
+      if (got < minOut) throw Object.assign(new Error(`the swap paid ${got}, under its floor ${minOut}`), { r });
       return { fn: SIG.swapIn, to: POOL, r, notes: `${eth(AMOUNTS.swapIn)} ETH in, ${got} coin units out (floor ${minOut}); deadline from the chain's clock` };
     });
     await step("approve the Pool for the exact-out swap's maximum", "swap", "second", async () => {
@@ -875,7 +877,15 @@ async function main() {
   ok(true, `disposition · Timelock admin ${admin}: ${disposition}`);
   ok(true, `disposition · the burner ${me} ends at nonce ${finalNonce} with ${eth(finalBal)} ETH; the second key ${second} keeps ${eth(secondBal)} ETH`);
   save();
-  if (args["key-file"] && args["key-file"] !== true) {
+  if (args["key-file"] && args["key-file"] !== true && campaignFailed && !KEEP) {
+    /*  A campaign that stopped is resumed with --resume by the same key:
+        destroying it now would strand the deployment's holder, its tokens
+        and the burner's remainder (the first Base Sepolia rehearsal did).
+        The operator destroys it by hand once the campaign is complete. */
+    camp.disposition.keyFile = "kept: the campaign stopped, resume it with --resume";
+    note(`the campaign stopped, so the key file ${path.relative(ROOT, path.resolve(ROOT, String(args["key-file"])))} is KEPT for --resume (the same command again); destroy it by hand once the campaign is complete — overwrite with zeros, then unlink`);
+    ok(true, "disposition · the key is kept for --resume because the campaign stopped; it is destroyed when a run completes");
+  } else if (args["key-file"] && args["key-file"] !== true) {
     const kf = path.resolve(ROOT, String(args["key-file"]));
     try { destroyKeyFile(kf); camp.disposition.keyFile = "overwritten and unlinked"; ok(true, `disposition · the key file ${path.relative(ROOT, kf)} was overwritten with zeros and unlinked, after both records were written`); }
     catch (e) { camp.disposition.keyFile = "NOT destroyed: " + e.message; ok(false, `disposition · the key file could not be destroyed: ${e.message}`); }

@@ -280,7 +280,7 @@ export function adapt(c) {
     balanceOf: (a) => c.balanceOf(a),
     codeAt: async (addr) => inProcess
       ? bytesToHex(await c.vm.stateManager.getCode(createAddressFromString(addr)))
-      : low(await c.rpc("eth_getCode", [addr, "latest"])),
+      : low(await c.rpc("eth_getCode", [addr, await c.tag()])),   // pinned: a replica behind the receipt answers "header not found" and is retried, never 0x
     blockNumber: async () => inProcess ? EVM.BLOCK.header.number : BigInt(await c.rpc("eth_blockNumber")),
     /// the chain's clock (the latest block's timestamp) and any account's nonce
     timestamp: async () => inProcess ? EVM.BLOCK.header.timestamp : BigInt((await c.rpc("eth_getBlockByNumber", ["latest", false])).timestamp),

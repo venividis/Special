@@ -181,6 +181,32 @@ first shards were stored. Its deployer is
 hardhat's first account, which is nobody's burner; the warning the run
 printed is the record's `deployer` field.
 
+## `84532.json`
+
+Base Sepolia, written by `tools/testnet.mjs` on 2026-10-13 from the wave-4
+integration tree (`docs/DEPLOYMENT.md`, "Measured"), the second live run
+and the complete one: the 27 MVB contracts from block 48,082,395 under the
+burner `0x5282…7175` (hub `0x1928…e03e`, Premises `0x379a…7079`, Timelock
+`0xae53…53fb`), recovered in-run with 362 fields and 0 disagreeing;
+`satellites` carries the card, the Market and the Roles QUEUED on the
+Timelock (`queued`, `op`, `eta`; no `executed` yet) — executable from Unix
+time 1,792,537,900, by anyone with `tools/deploy.mjs --chain 84532
+--satellite all`, which writes `executed` and recovers the record. Its
+campaign record beside it walks all forty steps (5,816,607 gas; the two
+steward refusals proved by their selectors, since a public chain's clock
+cannot be moved). The burner was destroyed when the run completed, as
+the disposition says; it holds the Timelock's admin, as a rehearsal's must.
+
+`84532.first.json` and `84532.first.campaign.json` are the first live run,
+an hour earlier from the same tree: the same deployment shape from block
+48,081,889 under `0x6254…17e1`, its three satellites queued (ripe from Unix
+time 1,792,536,880), and a campaign that stops at the ninth step — the
+tenth, the exact-in swap, landed on the chain (block 48,081,907) but its
+read-back was answered by a lagging replica, and the run's disposition
+destroyed the key, so that deployment's holder and admin are gone with it.
+Kept as the record of the lesson (`CLAUDE.md`, the traps); nothing reads
+it by default.
+
 ## The campaign record (`intact.campaign/1`)
 
 `deployments/<chainId>.campaign.json`, written by `tools/testnet.mjs`

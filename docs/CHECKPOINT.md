@@ -10,9 +10,12 @@ itself added what no unit owned: the way a post-MVB satellite lands on a band (t
 queue, at the address the MVB pinned), the record and the recovery that follow it, the second service
 table so the MVB rows' transaction stays under the cap, one read of the state block per `tokenURI`, and the
 base64 encoder rewritten when the landed shape's `tokenURI` crossed its cap (8.15 M → 3.62 M, the same bytes).
-U19 (audits, the mainnet band, the Base launch) is calendar-bound and not started. U13's live run on Base
-Sepolia and Sepolia still awaits a funded burner, so `deployments/84532.json` and `deployments/11155111.json`
-do not exist and no document pretends otherwise.
+U19 (audits, the mainnet band, the Base launch) is calendar-bound and not started. U13's live run happened on Base Sepolia
+at the end of the session, twice: the first deploy was complete and recovered but its campaign stopped at the
+tenth step to a lagging replica (the swap landed, the read after it did not see it), which taught the tree to
+pin every wire read to a block; the second walked all forty steps and is the record (`deployments/84532.json`,
+the first kept as `84532.first.json`), with the three satellites queued on its Timelock until 2026-10-20.
+`deployments/11155111.json` does not exist and no document pretends otherwise.
 
 ## What exists and is verified
 
@@ -75,7 +78,7 @@ commit follows it with documents only; `node tools/check.mjs --keep-going`):
 
 The compile was cold for the forge runner (the encoder and the Catalog changed after the last full compile of
 src + test), which is the 20 m 35 s of forge:monolith; the tools' compile of src alone was warm. A battery on
-a tree whose Solidity has not changed since runs in about 12 minutes on these four cores.
+a tree whose Solidity has not changed since runs in about 12 minutes on these four cores — measured after the live runs' tool changes on this tree, before the push: 28 steps, 0 failed, 13 m 17 s, with `npm run drive` (the console journey over a wire) 35 passed, 0 failed beside it.
 
 ## Decisions taken during the build (see DESIGN.md §3, §12, §14, §15 and docs/INTERFACE-CHANGES.md)
 - Everything the previous checkpoints recorded stands: the diamond ships; `Timelock.execute` is open; the Reach at 20,821 B under the valve; U7's pipeline; U10's CREATE3 factory gated to the burner and the Timelock; U9's console contract; U11's Chromium battery; U12's incomplete ≠ pass; U13's rehearsal in one command.
@@ -99,12 +102,15 @@ a tree whose Solidity has not changed since runs in about 12 minutes on these fo
 6. **`test/Ratchet.t.sol` could add the custodian's `extend`** to `test_everyRatchetOnlyLengthens` (U14's request); `tools/verify-findings.mjs` could replay ANIMA's CRITICAL #1 against the Market (U15's).
 7. The previous checkpoints' observations stand: a marketplace frame has no `navigator.clipboard` and the vault's copy button throws there; `catalogRows` at 89 % of the EIP-7825 cap (now the reason for the second table); hardhat's `eth_estimateGas` of `tokenURI` took 16 s at 7.9 M and takes 1.4 s at 3.8 M; the shell is 45 B under its ceiling and the vault panel 26 B under its own.
 8. The unit agents share one scratchpad directory: a generically named file one wrote was overwritten by another's before it was read (U15's note; its commit message was restored by hand). Unit-specific names, or a directory per unit, next time.
+9. **A read at `latest` on a public endpoint is not a read after the receipt.** The first Base Sepolia run (84532, 2026-10-13) deployed in 91 s and queued the satellites, then stopped its campaign at the exact-in swap: the swap landed (block 48,081,907; the second key holds the full output, read at the chain's head afterwards) and the balance read after the receipt was answered by a replica a block behind, so the step recorded a failure and the disposition destroyed the key. `tools/rpc.mjs` now pins every read to the highest of the receipts' blocks and the latest the endpoint reports, `call` retries "header not found" as lag, a failed step keeps the receipt it got, and a stopped campaign keeps its key for `--resume` (proved again on 31337: 59 sentences, 0 failed). The deployment stands as `84532.first.json`; the burner's 0.005451 ETH and the second key's 0.001213 ETH went with the key. The second run, an hour later with the pinned reads, walked all forty steps (59 sentences passed; the one failure a third public endpoint rate-limiting the 78 KB `tokenURI` answer) and is the committed record.
 
 ## What remains (BUILD-PLAN.md)
-Waves 0–3 are built and wave 4's five units are in. **What remains of the MVB proof is the live run**:
-`tools/testnet.mjs` on Base Sepolia and on Sepolia with a funded nonce-0 burner (`docs/DEPLOYMENT.md`; the
-preflight prints the figure, the satellites now budgeted in it), which writes the two records with their
-campaign records and lands the satellites the chain admits (the Nameplate on Sepolia). Then the console's
+Waves 0–3 are built and wave 4's five units are in. **What remains of the MVB proof** is the Sepolia
+rehearsal (`tools/testnet.mjs --chain 11155111`, a fresh funded nonce-0 burner, where the Nameplate lands), the
+gateway opened from `web3://`, and, from 2026-10-20, landing the three satellites queued on the Base Sepolia
+deployment with `tools/deploy.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --satellite all` from
+any funded key (the record then gains their `executed` transactions, and `tools/recover-record.mjs` must read
+0 disagreeing). Then the console's
 next round (observation 4), the venue table (a probed PoolManager, PositionManager and Permit2 per chain,
 so the custodian can land and the Router walk v4), and U19: two audits of `Intact`, `Reach`, `Pool`,
 `Launchpad` (and now `Market`, `Roles`, `LPCustodian`) on the deployed commit, the mainnet band, the Base
