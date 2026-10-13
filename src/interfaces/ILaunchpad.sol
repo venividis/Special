@@ -12,6 +12,8 @@ pragma solidity ^0.8.24;
   until U14. Field names follow ANIMA where DESIGN is silent.
 ───────────────────────────────────────────────────────────────────────────*/
 
+import {HookTerms} from "./ILPCustodian.sol";
+
 enum Target { OwnedPool, UniswapV4 }
 enum LaunchState { None, Live, Graduated, Failed }
 
@@ -116,6 +118,11 @@ interface ILaunchpad is ILaunchpadEvents {
     /// @notice The Kiln made a coin for `id`: apply the launch rules and remember the share it minted here.
     ///         Added in the wave-1 integration (additive; docs/INTERFACE-CHANGES.md). KILN only.
     function recordLaunch(uint256 id, address by, address coin, uint256 raiseShare) external;                  // KILN
+    /*── added in wave 4 (U14, additive): the v4 target, DESIGN.md §8.3–8.4 ──*/
+    /// @notice `create` for `Target.UniswapV4`: the hook's terms and the mined salt are pinned with the launch.
+    function createV4(LaunchParams calldata p, HookTerms calldata h, bytes32 hookSalt) external returns (uint256 launchId);           // acts
+    function createV4Checked(LaunchParams calldata p, HookTerms calldata h, bytes32 hookSalt, bytes32 expectedTermsHash) external returns (uint256 launchId);
+    function v4TermsHash(LaunchParams calldata p, HookTerms calldata h, bytes32 hookSalt) external pure returns (bytes32);
 
     /*── reading ──*/
     function launchOf(uint256 launchId) external view returns (Launch memory);
@@ -143,5 +150,5 @@ interface ILaunchpad is ILaunchpadEvents {
     function KILN() external view returns (address);
     function POOL() external view returns (address);
     function LOCKS() external view returns (address);
-    function CUSTODIAN() external view returns (address);           // address(0) until U14
+    function CUSTODIAN() external view returns (address);           // address(0) on a band without an LPCustodian (then UniswapV4 is NotYet)
 }

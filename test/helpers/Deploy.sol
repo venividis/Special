@@ -372,7 +372,7 @@ abstract contract BundleFixture is IntactFixture {
         theSteward = new Steward(hubP);                                               // n + 4
         thePool = new Pool(hubP, padP);                                               // n + 5
         theKiln = new Kiln(hubP, padP, address(poolManager));                         // n + 6
-        theLaunchpad = new Launchpad(hubP, address(theKiln), address(thePool), address(theLocks));   // n + 7
+        theLaunchpad = new Launchpad(hubP, address(theKiln), address(thePool), address(theLocks), address(0));   // n + 7 (no custodian in the MVB bundle)
         IntactConfig memory c = bundleConfig();
         hub = diamondBuild ? deployDiamond(c, PRICE) : deployMonolith(c, PRICE);     // n + 8 (+ 4)
 
