@@ -28,4 +28,18 @@ interface IRoles is IERC7432 {
     function roleEpoch(uint256 tokenId, bytes32 roleId) external view returns (uint64);
     function supportsInterface(bytes4 interfaceId) external pure returns (bool);
     function HUB() external view returns (address);
+
+    /*── additive, U16 (docs/INTERFACE-CHANGES.md) ──*/
+    /// @notice v1 has no role operators: DESIGN §2 makes the holder the only one who grants ("an
+    ///         operator may transfer only; never acts"), so `setRoleApprovalForAll` reverts with
+    ///         this and `isRoleApprovedForAll` is always false.
+    error ApprovalsUnsupported();
+    /// @notice A token carries at most `MAX_ROLES` distinct role ids at once; the bound keeps every
+    ///         walk (`liveRoleCount`, `hasAnyRole`, `unlockToken`) finite.
+    error TooManyRoles(uint256 tokenId);
+    /// @notice Any live role for `account` on `tokenId`: the hub's `R_ROLE` read, every role id in
+    ///         one guarded call (DESIGN §2 "ROLE = any live ERC-7432 role").
+    function hasAnyRole(uint256 tokenId, address account) external view returns (bool);
+    /// @notice The bound on distinct role ids per token.
+    function MAX_ROLES() external view returns (uint256);
 }
