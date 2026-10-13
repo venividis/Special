@@ -37,6 +37,8 @@ node tools/verify-findings.mjs   # every historical finding replayed: refuted on
 node tools/agents.mjs            # seven motives for 220 ticks over the whole bundle, the invariants asserted after every tick
 node tools/invariants-check.mjs  # every docs/INVARIANTS.md and DESIGN §14 row names an assertion string that exists
 npm run mutations                # tools/mutations.mjs — the E1/E3 mutation gate for Parley and Postage (a cold compile per mutation; not in check)
+npm run drive                    # tools/testnet-drive.mjs — the console journey in Chromium over a real wire (hardhat, the CREATE3 deploy, the gateway)
+npm run testnet -- --chain 31337 --confirm DEPLOY_INTACT_LOCAL   # tools/testnet.mjs — the rehearsal in one command: preflight, deploy, the campaign, recovery, the gateway diff (docs/DEPLOYMENT.md)
 ```
 
 `CLAUDE.md` is what an agent working in this repository must know: the toolchain, the file-ownership
@@ -55,7 +57,4 @@ motives for 220 ticks with the invariants read after every tick (`tools/agents.m
 the files it cites (`tools/invariants-check.mjs`), the E1/E3 mutation gate (`tools/mutations.mjs`), and
 `npm run check` as `tools/check.mjs`, which runs the suite on both hub builds, the gas gate cold, every
 lane through the shim and in Chromium, every standalone verifier and the record recovery, and never
-calls an incomplete run green; the counts are in `docs/CHECKPOINT.md` after each run. What remains of
-wave 3 is U13, the testnet rehearsal (`tools/testnet.mjs`, `tools/verify-gateway.mjs`,
-`docs/DEPLOYMENT.md`, a funded burner on Base Sepolia). Unaudited; nothing is deployed beyond a local
-chain.
+calls an incomplete run green; the counts are in `docs/CHECKPOINT.md` after each run. U13 is the rehearsal in one command (`tools/testnet.mjs`: a read-only preflight, the CREATE3 deploy over the wire, a campaign that exercises every function family live with receipts, the record recovered, the gateway diffed against the chain by `tools/verify-gateway.mjs`, `tokenURI` measured, the burner disposed), proved over a local hardhat wire and documented in `docs/DEPLOYMENT.md`; its live run on Base Sepolia and Sepolia awaits a funded burner, so no public record exists yet. Unaudited; nothing is deployed beyond a local chain.

@@ -22,6 +22,8 @@ node tools/verify-site.mjs --group vault   # one console lane through the DOM sh
 npm run check                         # tools/check.mjs: the whole battery, DESIGN §13's order, ≈ 20–40 min on 4 cores
 node tools/check.mjs --only verify:pool,invariants   # a PARTIAL run (never called green)
 npm run mutations                     # tools/mutations.mjs: the E1/E3 mutation gate (not in check; minutes per mutation)
+npm run drive                         # tools/testnet-drive.mjs: the console journey over a wire (hardhat on 8546, the gateway on 8081)
+npm run testnet -- --chain 31337 --confirm DEPLOY_INTACT_LOCAL   # tools/testnet.mjs: the rehearsal over a wire (hardhat on 8547, the gateway on 8082); docs/DEPLOYMENT.md
 ```
 
 The first viaIR compile of `src/` takes about three minutes; `src/` plus

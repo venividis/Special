@@ -222,7 +222,7 @@ function instanceOf(sentence, segs) {
       // whole render (k final: the trailing hole, if any, is the last `.*?`),
       // or a quote that stops at or inside a segment a hole follows — never
       // a quote whose tail disappears into a hole with static text beyond it
-      const body = (head ? head + ".*?" : "") + esc(last.slice(0, c));
+      const body = (k > 0 ? head + ".*?" : "") + esc(last.slice(0, c));   // k > 0: a hole precedes `last`, even after an empty first segment
       if (new RegExp("^" + body + "$").test(sentence)) return true;
     }
   }

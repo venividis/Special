@@ -34,7 +34,8 @@
     "invariants": "node tools/invariants-check.mjs",
     "check": "node tools/check.mjs",
     "mutations": "node tools/mutations.mjs",
-    "drive": "node tools/testnet-drive.mjs"
+    "drive": "node tools/testnet-drive.mjs",
+    "testnet": "node tools/testnet.mjs"
   },
   "dependencies": {
     "@ethereumjs/common": "^10.1.2",
