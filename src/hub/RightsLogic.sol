@@ -39,9 +39,10 @@ abstract contract RightsLogic is IntactBase {
     /// @notice What `actor` may do with `id`, as bits (Rights.sol), with the
     ///         custody epoch every delegated right is stamped with and the
     ///         holder, so one call tells a page everything the gate needs.
-    /// @dev    R_ROLE is read for the USER role, the only role id the hub
-    ///         knows; IRoles has no per-actor any-role query. R_SESSION is a
-    ///         hint — the Reach is the enforcer.
+    /// @dev    R_ROLE is any live ERC-7432 role, read through the any-role
+    ///         view U16 gave IRoles (`hasAnyRole`; until then the USER role
+    ///         was the only one the hub asked about). R_SESSION is a hint —
+    ///         the Reach is the enforcer.
     function rightsOf(uint256 id, address actor)
         external view returns (uint16 bits, uint64 epoch, address holder)
     {
@@ -61,7 +62,7 @@ abstract contract RightsLogic is IntactBase {
         if (!c.guardianHold && ($.nft.approved[id] == actor || isApprovedForAll(holder, actor))) {
             bits |= Rights.R_CUSTODY;
         }
-        if (_guarded32(_ROLES, abi.encodeCall(IRoles.hasRole, (id, USER_ROLE, actor))) != 0) bits |= Rights.R_ROLE;
+        if (_guarded32(_ROLES, abi.encodeCall(IRoles.hasAnyRole, (id, actor))) != 0) bits |= Rights.R_ROLE;
         if (_guarded32(DELEGATE_REGISTRY, abi.encodeCall(
                 IDelegateRegistryV2.checkDelegateForERC721, (actor, holder, address(this), id, bytes32(0)))) != 0)
         {

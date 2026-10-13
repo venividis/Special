@@ -138,6 +138,10 @@ contract MockRoles {
     function roleExpirationDate(address, uint256 id, bytes32 roleId) external view returns (uint64) {
         return roleId == USER_ROLE ? _exp[id] : 0;
     }
+    /// @dev U16's any-role view, as the hub reads R_ROLE now; the stand-in has one role.
+    function hasAnyRole(uint256 id, address a) external view returns (bool) {
+        return a != address(0) && _user[id] == a && _exp[id] >= block.timestamp;
+    }
 }
 
 /// @dev Etched at delegate.xyz v2's address when a test wants the bit.
