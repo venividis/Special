@@ -142,6 +142,16 @@ after wave 0: a change is additive only and goes in
   EIP-7825 caps a transaction at 2^24 gas and applies that cap to
   `eth_call` too, so `tokenURI` fails with a bare revert while every
   transaction lands. `hardhat.config.cjs` pins `hardfork: "cancun"`.
+- **`CatalogRows.SERVICES` is at 89 % of the transaction cap.** Rendering
+  and storing the MVB table costs 14.94 M gas of the 16.78 M a Fusaka
+  chain admits per transaction (EIP-7825); a row appended there could make
+  the deployment un-includable. Post-MVB rows go in
+  `CatalogRowsPost.SERVICES` — the second table, its own transaction —
+  under their own letters (`M` market, `D` roles, `A` the agent card, `U`
+  the custodian, `I` the nameplate); the text layer serves both as one
+  `sel` map and one `services` array, and the drift gate in
+  `tools/verify.mjs` holds a row to its contract's interface until the
+  contract lands, then to both.
 - **The shell is 45 B under its gzip ceiling** (14,955 of 15,000) and the
   vault panel 26 B under its own; any fix to either pays in cuts first.
 - **The monolith is over EIP-170** (25,402 B); the diamond ships. Both

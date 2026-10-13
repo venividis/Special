@@ -140,10 +140,10 @@ export async function deploySite(c, out, opts = {}) {
   const n0 = await c.nonceNow();
   const at = (k) => predictCreate(from, n0 + BigInt(k));
   const P = {
-    catalogRows: at(0), catalogText: at(1), catalogState: at(2), catalog: at(3), renderer: at(4), premises: at(5),
-    coreFacet: at(6), rightsFacet: at(7), mintFacet: at(8), siteFacet: at(9), hub: at(10),
-    locks: at(11), steward: at(12), postage: at(13), parley: at(14), roster: at(15),
-    pool: at(16), kiln: at(17), launchpad: at(18)
+    catalogRows: at(0), catalogRowsPost: at(1), catalogText: at(2), catalogState: at(3), catalog: at(4), renderer: at(5), premises: at(6),
+    coreFacet: at(7), rightsFacet: at(8), mintFacet: at(9), siteFacet: at(10), hub: at(11),
+    locks: at(12), steward: at(13), postage: at(14), parley: at(15), roster: at(16),
+    pool: at(17), kiln: at(18), launchpad: at(19)
   };
   const router = opts.router || ZERO;
   const agentCard = opts.agentCard || AGENTCARD_PLACEHOLDER;
@@ -152,11 +152,14 @@ export async function deploySite(c, out, opts = {}) {
   // initcode; EIP-7825 keeps the two table renderings in two transactions);
   // the rows carry every contract's address, so they take the predictions by letter
   const byLetter = [P.hub, P.pool, ZERO, P.parley, P.roster, P.postage, keys, P.kiln, P.launchpad, ZERO,
-                    P.locks, P.steward, router, ZERO, engine, P.catalog];           // HPRYTSKNLCOWXEGQ
+                    P.locks, P.steward, router, ZERO, engine, P.catalog,
+                    MARKET_PLACEHOLDER, ROLES_PLACEHOLDER, agentCard, ZERO, ZERO];   // HPRYTSKNLCOWXEGQMDAUI
   const catalogRows = await c.deploy(A("src/Catalog.sol", "CatalogRows").bytecode,
-    encodeParams("address[16]", [byLetter]), "CatalogRows");
+    encodeParams("address[21]", [byLetter]), "CatalogRows");
+  const catalogRowsPost = await c.deploy(A("src/Catalog.sol", "CatalogRowsPost").bytecode,
+    encodeParams("address[21]", [byLetter]), "CatalogRowsPost");
   const catalogText = await c.deploy(A("src/Catalog.sol", "CatalogText").bytecode,
-    encodeParams("address", [catalogRows]), "CatalogText");
+    encodeParams("address,address", [catalogRows, catalogRowsPost]), "CatalogText");
   const catalogState = await c.deploy(A("src/Catalog.sol", "CatalogState").bytecode, encodeParams("address", [catalogText]), "CatalogState");
   const catalog = await c.deploy(A("src/Catalog.sol", "Catalog").bytecode,
     encodeParams(CATALOG_CONFIG_TYPE, [[
@@ -190,7 +193,7 @@ export async function deploySite(c, out, opts = {}) {
   const launchpad = await c.deploy(A("src/Launchpad.sol", "Launchpad").bytecode,
     encodeParams("address,address,address,address", [hub, kiln, pool, locks]), "Launchpad");
 
-  const got = { catalogRows, catalogText, catalogState, catalog, renderer, premises, coreFacet: facets.CoreFacet, rightsFacet: facets.RightsFacet,
+  const got = { catalogRows, catalogRowsPost, catalogText, catalogState, catalog, renderer, premises, coreFacet: facets.CoreFacet, rightsFacet: facets.RightsFacet,
                 mintFacet: facets.MintFacet, siteFacet: facets.SiteFacet, hub, locks, steward, postage, parley, roster,
                 pool, kiln, launchpad };
   const missed = Object.keys(P).filter((k) => P[k].toLowerCase() !== got[k].toLowerCase());

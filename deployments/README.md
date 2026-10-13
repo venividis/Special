@@ -30,6 +30,15 @@ the record hashes. `Catalog.agrees()` must be true, `catalogHash`, the
 registry's codehash, the band bounds and the Timelock's admin must match,
 and `/manifest` over ERC-5219 must name the same hashes.
 
+A post-MVB satellite the record lists under `satellites` is checked like
+every other contract (its address against the salt, its codehash, its
+own pins both ways) and twice more: the Timelock's queue for its `op`
+must be clear, and the factory's own `Deployed` event at the recorded
+`executed.block` must name its address — a record that claims a
+satellite without that evidence, or at a block where the factory
+deployed nothing, disagrees by name. A placeholder the record does not
+list under `contracts` must still be codeless.
+
 The last line is either `0 disagreeing` (exit 0) or the list of
 disagreeing fields, each with what the record says and what the chain
 says (exit 1). `tools/deploy.mjs` runs the same function in-process
@@ -66,7 +75,8 @@ end.
 | `contracts` | record key → address. Flat, like IPSEITY's, so a spread cannot drop one |
 | `codehashes` | `extcodehash` at deploy, per key |
 | `reproducible` | per key, whether that codehash equals `keccak(compiled deployedBytecode)` — true only for contracts without immutables |
-| `placeholders` | `market`, `roles`, `agentCard`: CREATE3-predicted and codeless until their units land. The hub, Catalog, Renderer and Premises pin these addresses immutably |
+| `placeholders` | `market`, `roles`, `agentCard`: CREATE3-predicted and codeless until each lands through the Timelock (below, `satellites`). The hub, Catalog, Renderer and Premises pin these addresses immutably |
+| `satellites` | per post-MVB key that has landed or been queued (`agentCard`, `market`, `roles`, …): `via` (`timelock`), the Timelock `op`, `queued` `{tx, block, gas, by}`, `eta`, and `executed` `{tx, block, gas, by}` once it landed — written by `tools/deploy.mjs --satellite`, which then also lists the key under `contracts`, `codehashes` and `reproducible` and adds its gas. A queued-not-landed satellite has no `executed` and its placeholder is still codeless |
 | `shipBuild` | `out/ship.json` verbatim (`build`, `reason`, `intactBytes`, `threshold`, `limit`, `solc`) plus, in the diamond build, `facets {name: {address, codehash, selectors}}` and the `cut` |
 | `engine` | `address`, `via` (the plain CREATE that made it), `curator`, `frozen`, `engineHash`, `inflatedSize`, `shardHashes`, `panelHashes`, `head[]`, `body[]`, `panels[{name, address, hash, gzipHash}]`, `storedBytes`, `placeholder` |
 | `catalogHash` | `Catalog.catalogHash()` |
@@ -199,6 +209,13 @@ of the steps and why are in `tools/testnet.mjs`'s header, and
 `docs/DEPLOYMENT.md` reads the measured numbers out of a record.
 
 ## Not in MVB
+
+The post-MVB satellites are not in the MVB record but are not "not in
+MVB" either: `tools/deploy.mjs --satellite <key>` lands AgentCard, Market
+and Roles (and LPCustodian and the Nameplate as their units land) at the
+addresses the MVB pinned, through the Timelock's queue, and writes them
+into the same record (`satellites`, `docs/DEPLOYMENT.md` "The post-MVB
+satellites"). Still absent from this tooling:
 
 Reusing an existing Parley on a redeploy (`--reuse parley=<addr>`, as
 IPSEITY's `existingParley`), the post-MVB satellites (AgentCard, Market,

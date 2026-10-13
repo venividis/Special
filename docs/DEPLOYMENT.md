@@ -150,6 +150,41 @@ the door, and `Premises.resolveMode()` answers `5219`. DESIGN §13 makes
 this diff the nightly: against the self-hosted gateway on Base Sepolia,
 and against `w3link.io` on Base mainnet once live.
 
+## The post-MVB satellites
+
+AgentCard, Market and Roles — and LPCustodian and the Nameplate as their
+units land — are not part of the MVB record: the hub, the Catalog, the
+Renderer and the Premises pin their CREATE3 addresses at the MVB, and
+those addresses stay codeless until each lands through the Timelock's
+seven-day public queue, the only caller the factory admits once the
+burner is gone (`deployments/README.md`, "The burner"). One command per
+satellite, run twice on a public chain:
+
+```sh
+RPC_URL=… node tools/deploy.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --satellite market
+#   the admin's key queues it; the record gains `satellites.market` with the queue transaction and the eta
+#   … seven days …
+RPC_URL=… node tools/deploy.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --satellite market
+#   anyone's key lands it; the record gains `contracts.market`, its codehash and `satellites.market.executed`
+```
+
+`--satellite all` takes every satellite the band admits in DESIGN §12's
+order; `--satellite a,b` a chosen few, in that order. Before anything is
+sent the command refuses a record for another chain, a salt or a
+placeholder that is not where the arithmetic predicts, a holder whose
+pin is not the predicted address, a constructor argument the record
+lacks, an unknown key, and a queue the key may not make — then it prints
+the exact `queue` call for the admin to make by hand (a band's admin is
+the multisig). After landing it reads every pin of the new contract
+back, recovers the whole record in-process and writes it only on 0
+disagreeing; a repeated run sends nothing and changes nothing. On 31337
+and in-process the clock is moved past the eta, so one run queues, lands
+and records; `tools/verify-recover.mjs` proves the path on the in-process
+EVM — the burner queues, nothing lands before the delay, a stranger lands
+it a week later where the hub pinned it, the record follows it and
+recovers, and a tampered codehash, a wrong landing block or a missing
+queue is caught by name.
+
 ## What a run leaves behind
 
 - `deployments/<chainId>.json` — the deployment record, schema

@@ -15,7 +15,7 @@ import {KeyRegistry} from "../src/KeyRegistry.sol";
 import {Locks} from "../src/Locks.sol";
 import {Engine} from "../src/Engine.sol";
 import {Crest} from "../src/Crest.sol";
-import {Catalog, CatalogRows, CatalogText, CatalogState, CatalogConfig} from "../src/Catalog.sol";
+import {Catalog, CatalogRows, CatalogRowsPost, CatalogText, CatalogState, CatalogConfig} from "../src/Catalog.sol";
 import {Renderer} from "../src/Renderer.sol";
 import {Premises} from "../src/Premises.sol";
 import {LibNum} from "../src/lib/LibNum.sol";
@@ -92,6 +92,7 @@ abstract contract SiteFixture is IntactFixture {
     ScriptPool spool;
     Locks locksReal;
     CatalogRows rowsC;
+    CatalogRowsPost postC;
     CatalogText text;
     CatalogState stateC;
     Catalog catalog_;
@@ -125,18 +126,19 @@ abstract contract SiteFixture is IntactFixture {
         // deployment on the monolith, four facets and the diamond on the
         // other build. The assertEqs below catch a shifted prediction.
         uint256 n = _myNonce();
-        address pCatalog = _create(address(this), n + 4);
-        address pRenderer = _create(address(this), n + 5);
-        address pPremises = _create(address(this), n + 6);
-        predictedHub = _create(address(this), diamondBuild ? n + 11 : n + 7);
+        address pCatalog = _create(address(this), n + 5);
+        address pRenderer = _create(address(this), n + 6);
+        address pPremises = _create(address(this), n + 7);
+        predictedHub = _create(address(this), diamondBuild ? n + 12 : n + 8);
         locksReal = new Locks(predictedHub);
 
-        address[16] memory byLetter;                              // HPRYTSKNLCOWXEGQ
+        address[21] memory byLetter;                              // HPRYTSKNLCOWXEGQMDAUI
         byLetter[0] = predictedHub; byLetter[1] = address(spool); byLetter[3] = parley; byLetter[6] = address(keysReal);
         byLetter[8] = address(launchpad); byLetter[10] = address(locksReal); byLetter[11] = address(steward);
         byLetter[14] = address(engine); byLetter[15] = pCatalog;
         rowsC = new CatalogRows(byLetter);
-        text = new CatalogText(rowsC);
+        postC = new CatalogRowsPost(byLetter);
+        text = new CatalogText(rowsC, postC);
         stateC = new CatalogState(text);
         catalog_ = new Catalog(_catalogConfig(pRenderer, pPremises));
         renderer_ = new Renderer(predictedHub, address(engine), address(crest), address(catalog_), AGENTCARD0);
