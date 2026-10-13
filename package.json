@@ -33,7 +33,8 @@
     "agents": "node tools/agents.mjs",
     "invariants": "node tools/invariants-check.mjs",
     "check": "node tools/check.mjs",
-    "mutations": "node tools/mutations.mjs"
+    "mutations": "node tools/mutations.mjs",
+    "drive": "node tools/testnet-drive.mjs"
   },
   "dependencies": {
     "@ethereumjs/common": "^10.1.2",

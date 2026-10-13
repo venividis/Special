@@ -42,12 +42,20 @@ npm run mutations                # tools/mutations.mjs — the E1/E3 mutation ga
 `CLAUDE.md` is what an agent working in this repository must know: the toolchain, the file-ownership
 discipline, the summary-line contract every verifier obeys, and the traps with their reasons.
 
-Status: waves 0–2 of the build plan are complete. U9 is in: the console's shell (`engine/app.html`),
-its DOM-and-wallet shim, and the six lane panels (swap, social, launch, vault, identity, and the agent
-stub until U17), each with its verify-site group; the build labels nothing a placeholder. U10 (CREATE3
-factory, journaled deploy with a shard check on resume, machine-checked records, read-only gateway) is
-complete, and `deployments/31337.json` is a record of the console from a local hardhat run. `npm run
-check` runs the suite on both hub builds, the gas gate cold, every lane through the shim and the record
-recovery; the counts are in `docs/CHECKPOINT.md` after each run. Next is wave 3: U11 Chromium journeys,
-U12 the adversarial battery and documents, U13 the testnet rehearsal. Unaudited; nothing is deployed
-beyond a local chain.
+Status: waves 0–2 of the build plan are complete, and two of wave 3's three units are in. U9 is the
+console: the shell (`engine/app.html`), its DOM-and-wallet shim, and the six lane panels (swap, social,
+launch, vault, identity, and the agent stub until U17), each with its verify-site group. U10 is the
+deployment: CREATE3 factory, journaled deploy with a shard check on resume, machine-checked records, a
+read-only gateway, and `deployments/31337.json` from a local hardhat run. U11 drives the same console in a
+real Chromium (`tools/verify-console.mjs`: the three boot modes, the picker, the viewer, the slab's epoch
+re-read, the 7702 delegate, the sealed DM, and the holder's journey from mint to the buyer's clean
+`rightsOf`) and over a real wire (`tools/testnet-drive.mjs`: hardhat, the CREATE3 deploy, the gateway).
+U12 is the battery around it: every historical finding replayed (`tools/verify-findings.mjs`), seven
+motives for 220 ticks with the invariants read after every tick (`tools/agents.mjs`), the ledger held to
+the files it cites (`tools/invariants-check.mjs`), the E1/E3 mutation gate (`tools/mutations.mjs`), and
+`npm run check` as `tools/check.mjs`, which runs the suite on both hub builds, the gas gate cold, every
+lane through the shim and in Chromium, every standalone verifier and the record recovery, and never
+calls an incomplete run green; the counts are in `docs/CHECKPOINT.md` after each run. What remains of
+wave 3 is U13, the testnet rehearsal (`tools/testnet.mjs`, `tools/verify-gateway.mjs`,
+`docs/DEPLOYMENT.md`, a funded burner on Base Sepolia). Unaudited; nothing is deployed beyond a local
+chain.

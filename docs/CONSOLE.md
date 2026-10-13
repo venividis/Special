@@ -835,11 +835,15 @@ three boot modes, the picker that never auto-selects, the viewer that never
 reaches a wallet prompt, the epoch re-read after every receipt, the unknown
 7702 delegate hiding the spending controls, the sealed DM refusing after a
 rotation, and the holder's journey from mint to the buyer's clean
-`rightsOf` — over `npx hardhat node` (chain 31337, cancun) with Playwright's
-Chromium. Its sentences are listed in its own header comment and are not
+`rightsOf` — in Playwright's Chromium 141, the served bytes fronted by an
+in-process HTTP gateway over the same in-process chain the shim uses, the
+wallet injected over EIP-6963 and answered by the shim's own `walletFor`.
+Its sentences are listed in its own header comment and are not
 restated here: a sentence this file quoted and that file did not print
 would be a promise nobody keeps. `tools/check.mjs` runs it as the
 `verify:console` step, which fails the battery until the file exists
 (incomplete is not pass), and INVARIANTS F5 cites its one sentence DESIGN
 §14 names. `tools/testnet-drive.mjs` (U11) walks the same journey over a
-public RPC against a deployed band.
+real wire: `npx hardhat node` (chain 31337, cancun), `tools/deploy.mjs`'s
+CREATE3 run, `tools/gateway.mjs` serving the bytes, and a wallet whose Node
+side signs with a dev key and sends `eth_sendRawTransaction` to the node.
