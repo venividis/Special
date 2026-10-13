@@ -57,7 +57,10 @@ const call = async (url, method, params = []) => {
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params })
       });
       const j = await r.json();
-      if (j.error) throw Object.assign(new Error(`${method}: ${j.error.message}`), { rpc: true });
+      /*  The node's own error, with its `code` and revert `data` kept on the
+          thrown Error (INTACT U13, additive): a refusal is proved by the
+          custom error's selector in `data`, not by the message's wording. */
+      if (j.error) throw Object.assign(new Error(`${method}: ${j.error.message}`), { rpc: true, code: j.error.code, data: j.error.data });
       return j.result;
     } catch (e) {
       /*  A load-balanced public endpoint answers each request from whichever
