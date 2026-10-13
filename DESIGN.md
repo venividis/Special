@@ -122,7 +122,7 @@ Libraries (no deployed bytes): I `SSTORE2`, `Base64`, `Web`, `Mul`, `Tick`, `Lib
 - **ERC-7774 `ClearPathCache` is not emitted on `setUser`, `setStatus` or `pause`** (budget); it is emitted on every custody change, seal, pin and trait write. A gateway caching `/token/<id>/state.json` across a status change serves a stale status until the next custody event; `Catalog.stateOf` is a live read.
 - **Postage's payer of record is `HUB.account(from)`**, the sender token's Reach; there is no payer parameter, so a wallet-pays model is unsupported in v1.
 - **A home room exists only after its steward's first word there**, so `follow` (`join(homeKey(id), …)`) reverts `NoSuchRoom` for a token that has never spoken at home. The page says so instead of offering the button.
-- **`R_ROLE` is read for the USER role only** until U16 gives `IRoles` an any-role view (docs/INTERFACE-CHANGES.md).
+- **`R_ROLE` is any live ERC-7432 role** since U16: the hub reads `IRoles.hasAnyRole(id, actor)` (guarded; the walk bounded by `MAX_ROLES`), where until then it could ask about the USER role alone (docs/INTERFACE-CHANGES.md).
 - **`Timelock.execute` is open to anyone** (row 27 wins over the donor's `onlyAdmin`); `queue` and `cancel` remain the admin's.
 
 *Constructor shapes, for U10's deploy script (every pin is an immutable; the mutual ones are predicted first):*
@@ -556,7 +556,7 @@ An AI agent is a holder-authorised key on the Reach and nothing more. **Manifest
 | # | Item | Test file · assertion |
 |---|---|---|
 | A1 | `_update` bumps `custodyEpoch`, clears approval/user/guardian/wallet/face/feesToGrip, forces `Paused`; no seller authority survives | `test/Update.t.sol` · `test_sellingTheTokenRevokesEverySellerAuthority`, `test_selfTransferBumpsTheEpochAndRevivesNothing`, `test_buyBackRevivesNoSession` |
-| A2 | Locked tokens cannot transfer; only pinned modules lock; `moduleUnlock` at zero reverts | `test/Update.t.sol` · `test_aLockedTokenCannotMove`, `test_onlyPinnedModulesMayLock`, `test_unlockingAtZeroReverts` |
+| A2 | Locked tokens cannot transfer; only pinned modules lock; `moduleUnlock` at zero reverts | `test/Update.t.sol` · `test_aLockedTokenCannotMove`, `test_onlyPinnedModulesMayLock`, `test_unlockingAtZeroReverts`; `test/Roles.t.sol` · `test_moduleUnlockIsNeverCalledAtZero` |
 | A3 | `isApprovedForAll` reads the epoch store; `revokeAllApprovals` O(1); timed approvals expire | `test/Approvals.t.sol` · `test_revokeAllApprovalsIsOneWrite`, `test_aTimedApprovalExpires` |
 | A4 | `Core` append-only; fingerprint moves for every field | `test/Fingerprint.t.sol` · `test_everyFieldMovesTheFingerprint` (one mutation per field) |
 | A5 | Canonical-account transfer refusal; no nesting, no strand, no cycle at any depth | `test/Update.t.sol` · `test_noIntactCanEnterAnyIntactsAccounts`, `test_aGripNeverStrandsAnIntact`, `test_sellingJLeavesKNoSellerSession` |
@@ -565,6 +565,7 @@ An AI agent is a holder-authorised key on the Reach and nothing more. **Manifest
 | A8 | No initializer/proxy/`diamondCut`/routing owner; cut strict; config hash equal; slots 0–2 empty | `test/Diamond.t.sol` · `test_partitionsTheMonolithAbiEveryFunctionRoutedOnce`, `test_routesNoDiamondCutAnywhere`, `test_slotsZeroToTwoAreEmpty`, `test_refusesAFacetBuiltAgainstAnotherConfiguration`; `tools/facets.mjs` |
 | A9 | Every contract ≤ 24,576 on every band; ship rule applied | `tools/compile.mjs` size gate; `deployments/*.json` `shipBuild` field checked by `recover-record` |
 | A10 | Guardian panic never revokes the owner's operators on other tokens; holder panic may | `test/Panic.t.sol` · `test_guardianPanicLeavesOtherTokensOperatorsAlone`, `test_holderPanicKillsEveryDelegatedRight` |
+| A11 | A live ERC-7432 role locks the token, released with the last live role and never twice; grants are epoch-stamped and stale after `panic`; only the holder grants; revocable only; `R_ROLE` is any live role | `test/Roles.t.sol` · `test_aLiveRoleLocksTheToken`, `test_aStaleRoleUnlocksForAnyone`, `test_panicMakesEveryRoleStale`, `test_anOperatorCannotGrant` |
 | B1 | Grip: every selector enumerated, none moves an asset; `0x51945447` not advertised; `state()==0` | `tools/verify-vault.mjs` · "the Grip's ABI has no selector that moves an asset" |
 | B2 | Reach `execute` op 0 only; no delegatecall path | `test/Reach.t.sol` · `test_operationOneIsRefused`; `static-audit` |
 | B3 | ERC-7739: `0x7739…` → `0x77390001`; session keys → `0xffffffff`; passes as a Safe ≥ 1.4.1 owner | `test/Reach7739.t.sol` · `test_attestationVerifiesAsASafeOwnerWithoutReplay`, `test_aSessionKeyNeverSigns` |
@@ -593,6 +594,7 @@ An AI agent is a holder-authorised key on the Reach and nothing more. **Manifest
 | F5 | Viewer never asks to sign; picker never auto-selects; rights recomputed on account/chain change | `tools/verify-console.mjs` · "the opaque origin shows the viewer and never a wallet prompt" |
 | F6 | Optional dependencies degrade; "zero" ≠ "no answer"; hash-manifest and gateway diff | `tools/verify-site.mjs` · "an absent Router hides the tab and sets the chip to not reported"; `tools/verify-gateway.mjs` · "every route's status, body bytes and headers are the chain's own answer", "a gateway that appends a script to an HTML body is caught by name" |
 | F7 | The confirm slab: the custody epoch is re-read immediately before Sign; every approval the slab builds is exact, also inside a Reach call; every deadline is the chain's clock; no panel can reach a provider | `tools/verify-site.mjs` · "the epoch is re-read immediately before Sign, and a changed epoch closes the slab unsent", "every approval the slab builds is exact", "an unlimited approve hidden in a Reach call is still refused", "no panel can reach a provider" |
+| F8 | Nameplate: custody is the binding; counterfeit wrapper, impostor account, wallet, registry control and lapsed registration answer nothing; `contentcontract` opens the site; no setter | `tools/verify-plate.mjs` · "a contract claiming to be the NameWrapper cannot bind: heldBy(counterfeit.eth) is 0", "every id from 3073 to 3584 answers its own Reach through <id>.intact.eth: 512 of 512", "at the very second of expiry the name answers nothing", "every function on the ABI is a view or pure: no setter, no admin, no stored binding" |
 | G1 | Receiving a token grants no authority; no `onERC*Received` grants anything | `test/Rights.t.sol` · `test_receivingATokenGrantsNothing` |
 | G2 | Catalog hashes on chain; bridge refuses mismatch | `sdk/mcp.test.mjs` · "a catalog whose hash drifted is refused" |
 | G3 | The door refuses a wallet that is not the key; a session page never writes | `tools/verify-site.mjs --group agent` · "the door refuses a wallet that is not the key" |

@@ -52,9 +52,7 @@ Behaviour decided in the same pass, outside the interfaces:
 - **`IPostage` has no payer parameter.** The payer of record is
   `HUB.account(from)` — the sender token's Reach — so a wallet-pays model
   is unsupported in v1.
-- **`IRoles` has no any-role view.** The hub's `R_ROLE` bit is computed from
-  `hasRole(id, USER, actor)` only. U16 (Roles) adds the view it needs; the
-  hub's read is widened then, additively.
+- ~~**`IRoles` has no any-role view.**~~ Struck in U16: `hasAnyRole(tokenId, account)` is the view, and the hub's `R_ROLE` reads it (below, "U16 — Roles").
 - **`ILaunchpad.Launch` lacks `graduationTarget`**; it is the public mapping
   `Launchpad.graduationTargetOf(launchId)`.
 - **Home rooms open on the steward's first word.** `Parley.join(homeKey(id),
@@ -141,3 +139,26 @@ three units build on them):
 One row per signature, additive only, with the unit report or issue it
 answers. A change that is not additive is a new interface version and a
 new file (`INTERFACE-CHANGES-v2.md`), never an edit to a frozen signature.
+
+## U16 — Roles (additive)
+
+| File | Change | Why | Where it came from |
+|---|---|---|---|
+| `IRoles.sol` | `function hasAnyRole(uint256 tokenId, address account) external view returns (bool);` | DESIGN §2 defines `R_ROLE` as "any live ERC-7432 role"; the frozen surface had only `hasRole(tokenId, roleId, account)`, so the hub could ask about the USER role alone (the wart recorded under "Known warts"). The hub's `R_ROLE` now reads this view, guarded as before; a live non-USER role sets the bit. The walk is bounded by `MAX_ROLES`. | U16 |
+| `IRoles.sol` | `function MAX_ROLES() external view returns (uint256);` | The bound on distinct role ids per token (16), so a page can say "no more than sixteen" rather than discover `TooManyRoles`. | U16 |
+| `IRoles.sol` | `error ApprovalsUnsupported();` | `setRoleApprovalForAll` is in ERC-7432 and in the frozen interface, and INTACT has no role operators (DESIGN §2: the holder is the only one who grants); the entry reverts with this so the console can print why, and `isRoleApprovedForAll` is always false. | U16 |
+| `IRoles.sol` | `error TooManyRoles(uint256 tokenId);` | The seventeenth distinct role id on one token. | U16 |
+
+Behaviour decided in the unit, outside the interface: grants are strict
+`holds` (not the donor's owner-or-approved; the frozen error name
+`NotOwnerOrApproved` is kept and only the owner passes it); `revokeRole` of
+a record that does not exist is a silent no-op (the donor's shape, kept so a
+cleanup is idempotent); `revokeRole` of an expired or stale record is
+anyone's; `grantRole` refuses `expirationDate <= block.timestamp` (the
+donor's and the ERC-7432 reference's boundary: a role is dead AT its expiry
+second, where the hub's own ERC-4907 field is live at `userExpires ==
+block.timestamp`; the two never disagree about the same grant because the
+shim reads the role through `recipientOf`). The wave-1 suites that read
+rights were rerun on both builds after the hub's one-line change (Rights
+5, Update 10, Panic 3, Bundle 7, each 0 failed); RightsFacet measures
+4,996 B (5,034 before).

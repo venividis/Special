@@ -89,6 +89,7 @@ export const STEPS = [
   { name: "verify:steward", file: "tools/verify-steward.mjs", args: [], shape: "passedFailed", what: "succession and recovery against the real hub" },
   { name: "verify:timelock", file: "tools/verify-timelock.mjs", args: [], shape: "passedFailed", what: "the only curator, through its queue" },
   { name: "verify:premises", file: "tools/verify-premises.mjs", args: [], shape: "passedFailed", what: "the ERC-5219 router: routes, 404s, one resource one URL" },
+  { name: "verify:plate", file: "tools/verify-plate.mjs", args: [], shape: "passedFailed", what: "the ENS resolver: custody is the binding, the wildcard, the clock" },
   { name: "fuzz", file: "tools/fuzz.mjs", args: [], shape: "propertiesHeld", what: "the seeded, shrinking market properties" },
   { name: "verify:findings", file: "tools/verify-findings.mjs", args: [], shape: "passedFailed", what: "every historical finding replayed: refuted on HEAD, reproduced on a variant" },
   { name: "agents", file: "tools/agents.mjs", args: [], shape: "passedFailed", what: "seven motives for 220 ticks with the invariants checked after every tick" },

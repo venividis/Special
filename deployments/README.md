@@ -75,7 +75,7 @@ end.
 | `contracts` | record key → address. Flat, like IPSEITY's, so a spread cannot drop one |
 | `codehashes` | `extcodehash` at deploy, per key |
 | `reproducible` | per key, whether that codehash equals `keccak(compiled deployedBytecode)` — true only for contracts without immutables |
-| `placeholders` | `market`, `roles`, `agentCard`: CREATE3-predicted and codeless until each lands through the Timelock (below, `satellites`). The hub, Catalog, Renderer and Premises pin these addresses immutably |
+| `placeholders` | `market`, `roles`, `agentCard`, `nameplate`: CREATE3-predicted and codeless until each lands through the Timelock (below, `satellites`). The hub, Catalog, Renderer and Premises pin the first three immutably; the fourth is band 0's resolver, carried by the Catalog's rows under its letter and codeless on every other band |
 | `satellites` | per post-MVB key that has landed or been queued (`agentCard`, `market`, `roles`, …): `via` (`timelock`), the Timelock `op`, `queued` `{tx, block, gas, by}`, `eta`, and `executed` `{tx, block, gas, by}` once it landed — written by `tools/deploy.mjs --satellite`, which then also lists the key under `contracts`, `codehashes` and `reproducible` and adds its gas. A queued-not-landed satellite has no `executed` and its placeholder is still codeless |
 | `shipBuild` | `out/ship.json` verbatim (`build`, `reason`, `intactBytes`, `threshold`, `limit`, `solc`) plus, in the diamond build, `facets {name: {address, codehash, selectors}}` and the `cut` |
 | `engine` | `address`, `via` (the plain CREATE that made it), `curator`, `frozen`, `engineHash`, `inflatedSize`, `shardHashes`, `panelHashes`, `head[]`, `body[]`, `panels[{name, address, hash, gzipHash}]`, `storedBytes`, `placeholder` |
@@ -211,9 +211,9 @@ of the steps and why are in `tools/testnet.mjs`'s header, and
 ## Not in MVB
 
 The post-MVB satellites are not in the MVB record but are not "not in
-MVB" either: `tools/deploy.mjs --satellite <key>` lands AgentCard, Market
-and Roles (and LPCustodian and the Nameplate as their units land) at the
-addresses the MVB pinned, through the Timelock's queue, and writes them
+MVB" either: `tools/deploy.mjs --satellite <key>` lands AgentCard, Market,
+Roles and, where a chain has a NameWrapper, the Nameplate (and LPCustodian
+as U14 lands) at the addresses the MVB pinned, through the Timelock's queue, and writes them
 into the same record (`satellites`, `docs/DEPLOYMENT.md` "The post-MVB
 satellites"). Still absent from this tooling:
 

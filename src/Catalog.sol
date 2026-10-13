@@ -718,19 +718,26 @@ contract CatalogRowsPost is RowTable {
         "claim|M|claim()|w|d|pulls what buy credited;"
         "listingOf|M|listingOf(uint256)|r|d|;"
         "owed|M|owed(address)|r|d|;"
-        "grantRole|D|grantRole((bytes32,address,uint256,address,uint64,bool,bytes))|w|d|holds - revocable only - a live role locks the token;"
-        "revokeRole|D|revokeRole(address,uint256,bytes32)|w|d|the holder or the recipient;"
+        "grantRole|D|grantRole((bytes32,address,uint256,address,uint64,bool,bytes))|w|d|holder only - revocable only - one recipient per role id - locks the token;"
+        "revokeRole|D|revokeRole(address,uint256,bytes32)|w|d|the holder or the recipient of a live role, anyone for an expired or stale record;"
         "unlockToken|D|unlockToken(address,uint256)|w|d|anyone, once every role is expired or stale;"
         "hasRole|D|hasRole(uint256,bytes32,address)|r|d|;"
-        "recipientOf|D|recipientOf(address,uint256,bytes32)|r|d|;"
-        "roleExpirationDate|D|roleExpirationDate(address,uint256,bytes32)|r|d|;"
-        "roleData|D|roleData(address,uint256,bytes32)|r|d|;"
-        "liveRoleCount|D|liveRoleCount(uint256)|r|d|;"
+        "hasAnyRole|D|hasAnyRole(uint256,address)|r|d|what the hub reads R_ROLE from;"
+        "recipientOf|D|recipientOf(address,uint256,bytes32)|r|d|zero unless live;"
+        "roleExpirationDate|D|roleExpirationDate(address,uint256,bytes32)|r|d|zero unless live;"
+        "roleData|D|roleData(address,uint256,bytes32)|r|d|empty unless live - the rights a page reads;"
+        "roleEpoch|D|roleEpoch(uint256,bytes32)|r|d|the custody epoch at grant, live or not;"
+        "liveRoleCount|D|liveRoleCount(uint256)|r|d|walks at most 16 ids;"
+        "USER|D|USER()|r|d|keccak256 of USER;"
         "registration|A|registration(uint256)|r|d|ERC-8004 registration-v1, face 2 - RFC 8785 canonical bytes, id 0 the collection;"
         "card|A|card(uint256)|r|d|the A2A agent card, id 0 the collection;"
         "llms|A|llms(uint256)|r|d|llms.txt for one token;"
         "llmsCollection|A|llmsCollection()|r|d|/llms.txt and /llms.md;"
-        "manifestHash|A|manifestHash(uint256)|r|d|keccak256 of registration(id) - what a reader pins;";
+        "manifestHash|A|manifestHash(uint256)|r|d|keccak256 of registration(id) - what a reader pins;"
+        "nameHeldBy|I|heldBy(bytes32)|r|d|the token holding a wrapped ENS name, and whether it sits in the Grip;"
+        "nameFor|I|tokenForName(bytes)|r|d|the token a DNS-wire name means - held, or <id>.intact.eth while the apex is held and live;"
+        "nameExpiry|I|expiry(bytes32)|r|d|when the .eth registration under a label hash lapses, by the registrar;"
+        "contentcontract|I|contentcontract()|r|d|the site as eth:0x..., ERC-6821 in ERC-3770 form;";
 
     constructor(address[21] memory byLetter) RowTable(bytes(SERVICES), byLetter) {}
 }
@@ -791,7 +798,7 @@ contract CatalogText is Templated {
         "InexactERC20Transfer(address,uint256,uint256);IrrevocableUnsupported();ManifestBusy();MulOverflow();NoLiquidity();"
         "NoQuote(uint8);NoSuchStamp(uint256);NotEnoughCredit(uint256,uint256);NotEntitled();NotHeld();NotKiln();NotListed();"
         "NotLocked(uint256);NotOwnerOrApproved(uint256,address);NotPoolManager();PieceLeft(address,uint256);PiecesFull();"
-        "Reentered();Stale(uint256);StampPending(uint256);StartsInThePast(uint64);StillLocked(uint256,uint64);TooManyFloors();"
+        "Reentered();Stale(uint256);StampPending(uint256);StartsInThePast(uint64);StillLocked(uint256,uint64);TooManyFloors();TooManyRoles(uint256);ApprovalsUnsupported();"
         "UnknownRecipe(uint8);UnsupportedCollection(address);UnsupportedSchedule();WrongChain();WrongCommitment();"
         "WrongPrice(uint256,uint256);WrongTarget();ZeroInput();ZeroRecipient()";
 

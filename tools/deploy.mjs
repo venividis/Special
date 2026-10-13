@@ -107,6 +107,7 @@ import { REGISTRY, REGISTRY_RUNTIME, ZERO, PANELS, CONFIG_TYPE, CATALOG_CONFIG_T
     hardhat run deployed everything and then exited with code 13 at the
     recovery step, having published nothing.                             */
 import { recover } from "./recover-record.mjs";
+import { ENS_REGISTRY, ETH_REGISTRAR, NAME_WRAPPER } from "./ens-name.mjs";
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -178,7 +179,7 @@ export const SALTED = [
   "coreFacet", "rightsFacet", "mintFacet", "siteFacet", "hub",
   "keys", "roster", "postage", "parley", "locks", "pool", "kiln", "launchpad", "router", "steward", "premises"
 ];
-export const PLACEHOLDERS = ["market", "roles", "agentCard"];
+export const PLACEHOLDERS = ["market", "roles", "agentCard", "nameplate"];
 /// AgentCard, LPCustodian, Market, Roles and the Nameplate land AFTER the
 /// MVB record (DESIGN §12's tail), at the addresses the hub, the Catalog,
 /// the Renderer and the Premises already pin — the same factory, the same
@@ -199,10 +200,19 @@ export const SATELLITES = {
   market:    { file: "src/Market.sol", name: "Market", pins: ["hub", "pool"],
                args: (w) => encodeParams("address,address", [w.hub, w.pool]) },
   roles:     { file: "src/Roles.sol", name: "Roles", pins: ["hub"],
-               args: (w) => encodeParams("address", [w.hub]) }
+               args: (w) => encodeParams("address", [w.hub]) },
+  /// band 0's resolver (U18): the ENS singletons are contract addresses
+  /// (`tools/ens-name.mjs`), never endpoints; a chain with no NameWrapper
+  /// in that table is refused by name before anything is sent
+  nameplate: { file: "src/Nameplate.sol", name: "Nameplate", pins: ["hub", "premises"],
+               admits: (rec) => (NAME_WRAPPER[Number(rec.chainId)] ? null : `chain ${rec.chainId} has no NameWrapper in tools/ens-name.mjs's table — the Nameplate is band 0's (Ethereum, and Sepolia to rehearse)`),
+               args: (w, rec) => encodeParams("address,address,address,address,address,string",
+                 [w.hub, w.premises, ENS_REGISTRY, NAME_WRAPPER[Number(rec.chainId)], ETH_REGISTRAR, "intact"]) }
 };
-/// DESIGN §12's post-MVB order.
-export const SATELLITE_ORDER = ["agentCard", "market", "roles"];
+/// DESIGN §12's post-MVB order. `admits(rec)`, when present, names why a
+/// chain does not take the satellite (null when it does).
+export const SATELLITE_ORDER = ["agentCard", "market", "roles", "nameplate"];
+export const admitsSatellite = (key, rec) => (SATELLITES[key].admits ? SATELLITES[key].admits(rec) : null);
 /// DESIGN §12's order as one list, asserted against the journal before the
 /// record is written: the factory, the Timelock, the Engine (whose loads
 /// are journaled apart), then every salted key. The facets exist only in
@@ -704,7 +714,7 @@ export async function deployIntact(ad, opts = {}) {
   /*── 7. the Catalog: three companions, then the façade (checks text/state code) ──*/
   const byLetter = [T.hub, T.pool, ZERO, T.parley, T.roster, T.postage, T.keys, T.kiln, T.launchpad, ZERO,
                     T.locks, T.steward, T.router, ZERO, engine, T.catalog,
-                    T.market, T.roles, T.agentCard, ZERO, ZERO];                           // HPRYTSKNLCOWXEGQMDAUI
+                    T.market, T.roles, T.agentCard, ZERO, T.nameplate];                    // HPRYTSKNLCOWXEGQMDAUI
   await create3("catalogRows", "src/Catalog.sol", "CatalogRows", encodeParams("address[21]", [byLetter]));
   await create3("catalogRowsPost", "src/Catalog.sol", "CatalogRowsPost", encodeParams("address[21]", [byLetter]));
   await create3("catalogText", "src/Catalog.sol", "CatalogText", encodeParams("address,address", [got.catalogRows, got.catalogRowsPost]), [code("catalogRows"), code("catalogRowsPost")]);
@@ -771,7 +781,7 @@ export async function deployIntact(ad, opts = {}) {
     encodeParams("address,address,address,address,address,address", [got.hub, got.renderer, engine, got.catalog, got.crest, T.agentCard]));
 
   /*═══════════════════ post-conditions: refuse to publish on any miss ═══════════════════*/
-  const world = { ...got, factory, market: P.market, roles: P.roles, agentCard: P.agentCard, ...venueTargets(venues) };
+  const world = { ...got, factory, ...Object.fromEntries(PLACEHOLDERS.map((k) => [k, P[k]])), ...venueTargets(venues) };
   if (!venues) world.router = ZERO;
   const fail = (m) => { throw new Error("refusing to publish: " + m); };
 
@@ -880,7 +890,7 @@ export async function deployIntact(ad, opts = {}) {
     contracts,
     codehashes: { factory: journal.steps.factory.codehash, ...codehashes },
     reproducible: { factory: journal.steps.factory.codehash === kecHex(A("src/lib/Create3Factory.sol", "Create3Factory").deployed), ...reproducible },
-    placeholders: { market: P.market, roles: P.roles, agentCard: P.agentCard },
+    placeholders: Object.fromEntries(PLACEHOLDERS.map((k) => [k, P[k]])),
     shipBuild: { build: ship.build, reason: ship.reason, intactBytes: ship.intactBytes, threshold: ship.threshold, limit: ship.limit, solc: ship.solc,
                  facets: facetRecord, cut: cut ? cut.map((x) => ({ facet: low(x.facetAddress), selectors: x.functionSelectors.map(low) })) : null },
     engine: {
@@ -945,7 +955,7 @@ export async function deploySatellite(ad, rec, key, opts = {}) {
   const sat = SATELLITES[key];
   if (!sat) throw new Error(`${key} is not a post-MVB satellite; the satellites are ${SATELLITE_ORDER.join(", ")}`);
   if (Number(rec.chainId) !== ad.chainId) throw new Error(`the record is chain ${rec.chainId}, the node is chain ${ad.chainId}; refusing`);
-  if (sat.bands && !sat.bands.includes(Number(rec.band?.band))) throw new Error(`${key} lands only on band ${sat.bands.join("/")}; this record is band ${rec.band?.band}`);
+  const why = admitsSatellite(key, rec); if (why) throw new Error(`${key}: ${why}; refusing`);
   if (!rec.factory || !rec.contracts?.timelock) throw new Error("the record names no factory or no Timelock; the MVB must land first");
   const factory = low(rec.factory);
   const timelock = low(rec.contracts.timelock);
@@ -965,7 +975,7 @@ export async function deploySatellite(ad, rec, key, opts = {}) {
     if (have !== want) throw new Error(`the ${holder}'s ${getter.replace("()", "")} is ${have}, the ${key} salt predicts ${want}; refusing`);
   }
   const art = artifact(out, sat.file, sat.name);
-  const init = art.bytecode + sat.args(world).replace(/^0x/, "");
+  const init = art.bytecode + sat.args(world, rec).replace(/^0x/, "");
   if ((init.length - 2) / 2 > 49_152) throw new Error(`${key}'s initcode is ${(init.length - 2) / 2} bytes, over EIP-3860's 49,152`);
   const data = enc("deploy(bytes32,bytes)", [salt, init]);
   const op = low(await ad.read(timelock, "opHash(address,uint256,bytes,bytes32)", [factory, 0, data, salt]));
@@ -1137,10 +1147,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   /*── --satellite <key[,key]|all>: land post-MVB satellites for the recorded deployment ──*/
   if (args.satellite) {
     if (!fs.existsSync(recordPath)) { console.error(`  no record at ${path.relative(ROOT, recordPath)}: the MVB must land first`); process.exit(2); }
-    const keys = args.satellite === "all"
-      ? SATELLITE_ORDER.filter((k) => !SATELLITES[k].bands || SATELLITES[k].bands.includes(band.band))
-      : String(args.satellite).split(",");
     let rec = JSON.parse(fs.readFileSync(recordPath, "utf8"));
+    const keys = args.satellite === "all"
+      ? SATELLITE_ORDER.filter((k) => !admitsSatellite(k, rec))
+      : String(args.satellite).split(",");
     for (const key of keys) {
       console.log(`\n  satellite ${key}`);
       let r;

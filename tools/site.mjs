@@ -38,6 +38,7 @@ export const PANELS = ["swap", "social", "launch", "vault", "identity", "agent"]
 export const MARKET_PLACEHOLDER = "0x0000000000000000000000000000000000A2CE70";
 export const ROLES_PLACEHOLDER = "0x0000000000000000000000000000000000A01E50";
 export const AGENTCARD_PLACEHOLDER = "0x000000000000000000000000000000000A6E7CA0";
+export const NAMEPLATE_PLACEHOLDER = "0x00000000000000000000000000000000A3E97A7E";
 
 export const CONFIG_TYPE =
   "(address,address,uint8,uint256,uint256,address,address,address,address,address,address,address,address,address,address,address)";
@@ -164,6 +165,7 @@ export async function deploySite(c, out, opts = {}) {
   if (opts.deployRoles) P.roles = at(next++);
   const market = opts.deployMarket ? P.market : MARKET_PLACEHOLDER;
   const roles = opts.deployRoles ? P.roles : ROLES_PLACEHOLDER;
+  const nameplate = opts.nameplate || NAMEPLATE_PLACEHOLDER;      // band 0 only; deployed beside the site by tools/verify-plate.mjs
   const router = opts.router || ZERO;
   const agentCard = opts.deployAgentCard ? P.agentCard : (opts.agentCard || AGENTCARD_PLACEHOLDER);
 
@@ -172,7 +174,7 @@ export async function deploySite(c, out, opts = {}) {
   // the rows carry every contract's address, so they take the predictions by letter
   const byLetter = [P.hub, P.pool, ZERO, P.parley, P.roster, P.postage, keys, P.kiln, P.launchpad, ZERO,
                     P.locks, P.steward, router, ZERO, engine, P.catalog,
-                    market, roles, agentCard, ZERO, ZERO];                           // HPRYTSKNLCOWXEGQMDAUI
+                    market, roles, agentCard, ZERO, nameplate];                      // HPRYTSKNLCOWXEGQMDAUI
   const catalogRows = await c.deploy(A("src/Catalog.sol", "CatalogRows").bytecode,
     encodeParams("address[21]", [byLetter]), "CatalogRows");
   const catalogRowsPost = await c.deploy(A("src/Catalog.sol", "CatalogRowsPost").bytecode,
@@ -241,7 +243,7 @@ export async function deploySite(c, out, opts = {}) {
   return {
     plan, price, band, lo, hi, gasLog,
     registry: REGISTRY, reachImpl, gripImpl, engine, crest, keys, timelock, router, agentCard,
-    market, roles, ...got, facets
+    market, roles, nameplate, ...got, facets
   };
 }
 

@@ -168,6 +168,11 @@ after wave 0: a change is additive only and goes in
   a cheatcode precompile and a 3-byte-REVERT self-check that must burn gas;
   no invariant campaigns, no coverage, no traces. `expectRevert` matches
   an error name or any 4-byte selector of that name.
+- **`expectRevert(bytes)` matches any revert in this runner**, and there is
+  no `expectEmit` or log capture: an exact refusal (its selector and its
+  arguments) is asserted through a raw call that returns the data, and an
+  event through the state it changed (or a verifier reading
+  `Chain.send().logs`), never through those two cheats.
 - **A `view` call inside a pranked statement's arguments consumes the
   prank** (forge and this runner agree): compute keys before `vm.prank`.
 - **`block.number` is read once per transaction by the optimiser**, so a

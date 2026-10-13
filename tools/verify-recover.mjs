@@ -37,7 +37,7 @@ import { Chain, warp, BLOCK, encodeParams, enc, decAddr, decUint, decBool } from
 import { compile, shipRule, artifact } from "./compile.mjs";
 import { ROOT, adapt, deployIntact, predictCreate3, saltOf, SALTED, PLACEHOLDERS, RECORD_KEYS, PINS, DEPLOY_ORDER,
          PROXY_INITCODE_HASH, bandOf, assertTiles, BANDS, COLLECTION, kec, parseArgs, readDist, atomicWrite, CLI_OPTIONS, decWords,
-         SATELLITES, SATELLITE_ORDER, deploySatellite } from "./deploy.mjs";
+         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite } from "./deploy.mjs";
 import { recover } from "./recover-record.mjs";
 import { predictCreate, PANELS } from "./site.mjs";
 
@@ -358,7 +358,7 @@ ok("has burner (nonce and balance after the run)", "burner" in rec && "nonceAfte
 /*──────────────── the post-MVB satellites ────────────────*/
 head("a post-MVB satellite lands through the Timelock, and the record follows it");
 const hasArtifact = (f, n) => { try { artifact(out, f, n); return true; } catch { return false; } };
-const present = SATELLITE_ORDER.filter((k) => hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
+const present = SATELLITE_ORDER.filter((k) => hasArtifact(SATELLITES[k].file, SATELLITES[k].name) && !admitsSatellite(k, rec));
 if (!present.length) note("no satellite contract is compiled in this tree; the sentences below run once one lands (U14–U18)");
 let follow = rec;
 const stranger1 = adapt(await c1.as("0x" + "66".repeat(32)));

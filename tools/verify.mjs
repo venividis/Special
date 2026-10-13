@@ -297,7 +297,7 @@ head("the catalog cannot drift from the ABIs");
   const ON = { hub: "IIntact", pool: "Pool", reach: "Reach", parley: "Parley", roster: "Roster", postage: "Postage", keys: "KeyRegistry",
                kiln: "Kiln", launchpad: "Launchpad", coin: "Coin", locks: "Locks", steward: "Steward", router: "Router",
                erc20: "MockERC20", engine: "Engine", catalog: "Catalog",
-               market: "IMarket", roles: "IRoles", agentCard: "IAgentCard" };
+               market: "IMarket", roles: "IRoles", agentCard: "IAgentCard", nameplate: "Nameplate" };
   const fns = {};
   for (const [on, name] of Object.entries(ON)) fns[on] = new Set(find(name).abi.filter((f) => f.type === "function").map(sigOf));
   const unserved = SV.services.filter((r) => !fns[r.on] || !fns[r.on].has(r.sig));

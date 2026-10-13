@@ -152,8 +152,8 @@ and against `w3link.io` on Base mainnet once live.
 
 ## The post-MVB satellites
 
-AgentCard, Market and Roles — and LPCustodian and the Nameplate as their
-units land — are not part of the MVB record: the hub, the Catalog, the
+AgentCard, Market, Roles and the Nameplate — and LPCustodian as its unit
+lands — are not part of the MVB record: the hub, the Catalog, the
 Renderer and the Premises pin their CREATE3 addresses at the MVB, and
 those addresses stay codeless until each lands through the Timelock's
 seven-day public queue, the only caller the factory admits once the
@@ -184,6 +184,32 @@ EVM — the burner queues, nothing lands before the delay, a stranger lands
 it a week later where the hub pinned it, the record follows it and
 recovers, and a tampered codehash, a wrong landing block or a missing
 queue is caught by name.
+
+### Band 0: the name
+
+The Nameplate (`src/Nameplate.sol`, U18) is one more satellite, admitted
+only on a chain with a NameWrapper in `tools/ens-name.mjs`'s table
+(Ethereum, and Sepolia to rehearse): `--satellite nameplate` lands it at
+`keccak("intact.v1.nameplate")` with the ENS registry, the NameWrapper,
+the .eth BaseRegistrar and the label `intact` as its constructor
+arguments (contract addresses, never endpoints); its constructor refuses
+a codeless pin, a registrar the registry does not name at `namehash("eth")`
+and a bad label. The binding is custody, so the rest is the operator's
+wallet's, not the burner's, in this order: own `intact.eth` wrapped
+(`registry.owner(node) == NameWrapper`, the registrant a durable key);
+land the Nameplate; mint the home token, id 3073; `NameWrapper.setResolver(node, nameplate)`
+by the wrapped owner (and, one-way if wanted, `setFuses(node, CANNOT_UNWRAP | CANNOT_SET_RESOLVER)`);
+`NameWrapper.safeTransferFrom(registrant, hub.account(3073), uint256(node), 1, "")`
+— into the Reach, or into `hub.grip(3073)` for permanence — from which
+block the apex and every `<id>.intact.eth` of the band answer, and before
+which nothing does. Verify with reads only:
+`RPC_URL=… node tools/ens-name.mjs --custody intact.eth --nameplate <addr>`
+and `RPC_URL=… node tools/ens-name.mjs web3://intact.eth/token/3073/live`.
+Renewal is anyone's through the public controller; from the registrar's
+expiry second the resolver answers nothing (`nameplate.expiry(keccak("intact"))`),
+the wrapper still names the account for ninety days, and past those the
+name must be registered anew. `tools/verify-plate.mjs` walks every one of
+these paths on a local ENS fixture.
 
 ## What a run leaves behind
 

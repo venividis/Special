@@ -667,8 +667,11 @@ export async function run(t, ctx) {
     t.ok(f1 === 0x77c4 && f2 === f1, "the format bits are a valid BCH word for L and mask 0", `0x${f1.toString(16)} 0x${f2.toString(16)}`);
     const mapHash = kec(Buffer.from(map));
     /* recorded on the first green run (2026-10-09) for the harness Premises 0xcbd1…c7ce on chain 1 and
-       token #1; the map is a function of the payload, so another deployment pins another number */
-    const PIN = "0x4bf26fe9fb8b081f4ef99dbcec98e6453d42144a4a8acb88b447dae6974afa5e";
+       token #1; the map is a function of the payload, so another deployment pins another number —
+       re-pinned in wave 4 when the service table became two contracts (CatalogRowsPost, one more
+       CREATE before the Premises), which moved the harness Premises to the next nonce and so the
+       payload the QR carries; the decoder sentences below prove the new map is the new address */
+    const PIN = "0x9ebd22a1940d9d19f3de6f72c90e2ee1b2730f7118c0450b9d236cf9c106308c";
     t.ok(mapHash === PIN, `the module map's keccak is pinned (${mapHash})`, "want " + PIN);
     /* an independent decoder: the map rasterised at 4 px per module, including the quiet zone */
     let decoded = null, how = "";

@@ -100,7 +100,7 @@ import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { compile, artifact, shipRule } from "./compile.mjs";
 import { enc, sel, decAddr, decUint, decBool, decString } from "./evm.mjs";
 import { adapt, deployIntact, bandOf, CONFIRM, SALTED, atomicWrite, parseArgs, readDist, awaitBlock, awaitCode, logsBy, ROOT,
-         SATELLITES, SATELLITE_ORDER, deploySatellite } from "./deploy.mjs";
+         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite } from "./deploy.mjs";
 import { recover } from "./recover-record.mjs";
 import { encRequest, decResponse, ZERO } from "./site.mjs";
 
@@ -366,7 +366,7 @@ async function main() {
   const secondFund = (secondGas * gasPrice * 15n) / 10n + l1PerStep * 12n + SECOND_SPEND + 2n * 27_300n * gasPrice;
   const campaignNeed = (campaignGas * gasPrice * 15n) / 10n + l1PerStep * steps + HOLDER_SPEND + 2n * price + secondFund;
   const hasArtifact = (f, n) => { try { artifact(out, f, n); return true; } catch { return false; } };
-  const satelliteKeys = SATELLITE_ORDER.filter((k) => (!SATELLITES[k].bands || SATELLITES[k].bands.includes(band.band)) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
+  const satelliteKeys = SATELLITE_ORDER.filter((k) => !admitsSatellite(k, { chainId, band: { band: band.band } }) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
   const satelliteNeed = (BigInt(satelliteKeys.length) * SATELLITE_BUDGET_GAS * gasPrice * 15n) / 10n + l1PerStep * 2n * BigInt(satelliteKeys.length);
   const need = deployNeed + campaignNeed + satelliteNeed;
   ok(bal >= need, `preflight · balance ${eth(bal)} ETH covers ${eth(need)} ETH: the deploy ${eth(deployNeed)} (120M gas × ${gasPrice} wei × 1.5 + L1) plus the campaign ${eth(campaignNeed)} (${campaignGas} gas ${measured ? `measured on ${CAMPAIGN_GAS.measuredOn}` : "BUDGET: no wire run measured yet"} × 1.5, two mints at ${eth(price)} ETH, ${eth(HOLDER_SPEND)} ETH the holder spends, ${eth(secondFund)} ETH funding the second key)${satelliteKeys.length ? ` plus the satellites ${eth(satelliteNeed)} (${satelliteKeys.join(", ")}: ${SATELLITE_BUDGET_GAS} gas each, a budget, × 1.5)` : ""}`,
