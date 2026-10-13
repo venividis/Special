@@ -20,7 +20,7 @@ is.
 | Acts | `execute` (CALL only), `executeBatch` (≤ 16, `EmptyBatch` on `[]`), `executeTyped`, sessions | nothing: no function on it moves an asset, for anybody, ever |
 | Promise | the measured seal: nothing on the manifest leaves before `sealedUntil` | permanence: whatever arrives stays |
 | Signs | ERC-7739-wrapped attestations only; session keys never | `0xffffffff` to everything |
-| Measured size | 20,821 B | 1,937 B |
+| Measured size | 20,821 B (re-measured unchanged by U12 on 2026-10-12: `node tools/compile.mjs`) | 1,937 B (likewise) |
 
 ## The Reach's promise, enforced by measurement
 
@@ -76,6 +76,7 @@ sixteen reserved slots; `tools/verify-vault.mjs` recomputes the compiler's
 array lengths kept) and compares its SHA-256 to the hash recorded here.
 
 layout hash: `76641f157a6780198c4e8a71afb0ccb275c9d586464f483ef77f3fd0adb8d1d4`
+(recomputed unchanged by U12: `node tools/verify-vault.mjs --layout`)
 
 ```
 slot off  name               type
