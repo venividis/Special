@@ -726,10 +726,11 @@ contract CatalogRowsPost is RowTable {
         "roleExpirationDate|D|roleExpirationDate(address,uint256,bytes32)|r|d|;"
         "roleData|D|roleData(address,uint256,bytes32)|r|d|;"
         "liveRoleCount|D|liveRoleCount(uint256)|r|d|;"
-        "registration|A|registration(uint256)|r|d|face 2 - the ERC-8004 registration-v1 document;"
-        "card|A|card(uint256)|r|d|the A2A agent card;"
-        "llms|A|llms(uint256)|r|d|;"
-        "manifestHash|A|manifestHash(uint256)|r|d|keccak of registration(id);";
+        "registration|A|registration(uint256)|r|d|ERC-8004 registration-v1, face 2 - RFC 8785 canonical bytes, id 0 the collection;"
+        "card|A|card(uint256)|r|d|the A2A agent card, id 0 the collection;"
+        "llms|A|llms(uint256)|r|d|llms.txt for one token;"
+        "llmsCollection|A|llmsCollection()|r|d|/llms.txt and /llms.md;"
+        "manifestHash|A|manifestHash(uint256)|r|d|keccak256 of registration(id) - what a reader pins;";
 
     constructor(address[21] memory byLetter) RowTable(bytes(SERVICES), byLetter) {}
 }

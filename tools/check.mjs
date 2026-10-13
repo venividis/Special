@@ -81,6 +81,7 @@ export const STEPS = [
   { name: "gas:selftest", file: "tools/gas.mjs", args: ["--selftest"], shape: "gasSelftest", what: "the gate fails the GasHog fixture" },
   { name: "verify", file: "tools/verify.mjs", args: [], shape: "passedFailed", what: "the equality step: tokenURI bytes equal /live, the manifest, the catalog" },
   { name: "verify:site", file: "tools/verify-site.mjs", args: [], shape: "passedFailed", what: "every lane through the DOM and wallet shim" },
+  { name: "mcp", file: "sdk/mcp.test.mjs", args: [], shape: "passedFailed", what: "the MCP bridge: tools from services.json, the drift refusal, propose then act" },
   { name: "verify:pool", file: "tools/verify-pool.mjs", args: [], shape: "passedFailed", what: "the market: k-walk, round trips, C1/C2/C5, no admin" },
   { name: "verify:vault", file: "tools/verify-vault.mjs", args: [], shape: "passedFailed", what: "the Reach and the Grip: seal, sessions, ledger, 7739" },
   { name: "verify:parley", file: "tools/verify-parley.mjs", args: [], shape: "passedFailed", what: "the archive walked by single blocks; keys; postage" },

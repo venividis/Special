@@ -48,7 +48,7 @@ throw.
 |---|---|---|---|
 | **viewer** | opaque origin | render Home from the baked state; print the `web3://` link, the `https://` template twin (§10) and the QR; if an EIP-1193 provider is injected: `eth_chainId`, then `eth_accounts` quietly, `rightsOf`, every `eth_call`, panel loading through `engine.panel(i)`, `eth_getLogs` | `eth_requestAccounts`, any signing or `wallet_*` method (so no `#switch` control: on a chain mismatch the crest prints the sentence and offers nothing), the picker, a slab, a `[data-go]`, storage, `fetch` |
 | **console** | real origin, no `?as=` | everything: discovery, the picker, connect on a gesture, every read, the slab, every write a panel builds | store anything but the picker's `rdns` (§2) |
-| **session** | real origin with `?as=0x<40 hex>` | Home for the key (§11), reads, panels read-only; connect to prove the wallet is the key | every holder control; any write (no `executeAsSession` composer until U17) |
+| **session** | real origin with `?as=0x<40 hex>` | Home for the key (§11), reads, panels read-only; connect to prove the wallet is the key | every holder control; any write (the agent lane's composer is a read here; the act is the console's, for the key's own wallet) |
 
 The viewer never enters session mode: a `data:` document has no query
 string, and the detector wins over `location.search` regardless.
@@ -192,7 +192,7 @@ connected account, §5 `act`).
 | `USE` | *"you are the user until <date>"* on Home (`#rights-sentence`, from `INTACT.clocks.userExpires`); the walk; no composer, no money, no traits |
 | `CUSTODY` | *"an operator may move the token, not speak"*; the transfer control after the checklist (§7); nothing else |
 | `GUARDIAN` | `pause`, `panic` (the guardian's list, §7), `revokeAllSessions`, `sealMax`, `approveFirstLaunch`; nothing else |
-| `SESSION` | *"a session speaks only through the Reach"*; the session's own facts; nothing to press until U17 |
+| `SESSION` | *"a session speaks only through the Reach"*; the session's own facts; the agent lane's act, offered to the key's own wallet in the console |
 | `DELEGATE`, `ROLE` | viewing only; printed as chips on Identity › rights of any address |
 
 In session mode (§11) the bits are masked to `SESSION` before they reach
@@ -470,7 +470,7 @@ mode, with `#viewer-note` carrying the §1 sentence only in the viewer);
 rule needs it; `#connect` and `#switch` carry `hidden` when they do not
 apply and are absent from the tree in the viewer. On the collection page
 the facts are `chain minted price engine catalog block`; on a token page
-they are the fifteen above. The agent stub's one id is `#agent-stub`.
+they are the fifteen above.
 There is no `#stand` and no `#still` in the MVB shell (cut for the byte
 budget; neither is in the table).
 
@@ -483,7 +483,7 @@ budget; neither is in the table).
 | launch | `#launch-coin` (the coin section), `#launch-spacing` (*next launch in N s*), `#launch-coin-form` (name, symbol, decimals, supply, raise share, salt; `HOLD` only), `#launch-coin-preview` (where `coinAt` says the coin would land), `#launch-raises .raise` (one button per `launchesOf(id)`: *SYM · state · raised X of Y ETH*), `#launch-raise` (the selected raise), `#launch-tax` (*99.00 %* / *no tax*), `#launch-tax-countdown` (*falls to nothing in N s*), `#launch-floor` (`dataset.raw` = `floorPerToken`), `#launch-window` (*you may still buy …*), `#launch-buy-in`, `#launch-buy-out`, `#launch-buy-fee`, `#launch-buy-snipe` (`dataset.raw` = `quoteBuy`'s three words), `#launch-create` (the raise form, `HOLD`; inputs `name=curve\|vq\|tgt\|win\|cap\|tax\|fee\|cr\|vest\|days`), `#launch-positions .sealed` (`dataset.key`), `#launch-locks .lock` (the key cell names the asset: *lock #<k> · native ETH* or *lock #<k> · token <short address>*), `[data-act=launch\|coinAt\|create\|buy\|sell\|graduate\|fail\|refund\|claim\|launchCollect\|contribute\|redeem\|lock\|lockRelease\|extend\|give\|approveFirstLaunch]` |
 | vault | `#vault-reach`, `#vault-holdings .row` (an ETH row, then one per manifest asset; *not measurable* when `measured` is false), `#vault-manifest`, `#vault-seal-note` (*only ever lengthens*), `#vault-seal-until` (an input whose `min` is the live `sealedUntil`; value `YYYY-MM-DD HH:MM UTC`), `#vault-execute` (inputs `name=to\|value\|data\|spender\|amount`; a typed spender lays `approve(spender, amount)` as the data at the press), `#vault-batch .row`, `#vault-batch-add`, `#vault-approvals .row .allowance[data-raw]` (a live `erc20.allowance(reach, spender)`), `#vault-revoke-all` (= `[data-act=revokeOpenApprovals]`), `#vault-grip`, `#vault-grip-warning` (precedes the address), `#vault-grip-address`, its QR `svg[role=img]` (`ethereum:<grip>@<chainId>`), `#vault-grip-eth` (ether only in the MVB; the Grip block's only buttons are `.copy`), `#vault-sessions .row` (the live keys the walk found), `#vault-session-key`, `#vault-session-info`, `#vault-session-walk`, `#vault-session-count` (*sessions: n* / *sessions: not counted*), `#vault-sessions [data-sel]` (grant chips; grant inputs `name=k\|d\|n\|t\|a\|c`), `#vault-steward`, `#vault-steward-status` (*nothing arranged · void (sold) · speaking · summonable · waiting · locked · bad hands · ready*; inputs `name=h\|s\|q\|o\|g\|th` to arrange, `sh\|ss` to summon, `ad\|an` to attest), `#vault-sell input[name=to]`, `#vault-checklist .revoked` / `.survives`, `#vault-panic-box`, `#vault-locked` (*locked: yes/no*), `#vault-panic` (`.red`), `#vault-panic-list`, `[data-act=execute\|executeBatch\|seal\|sealMax\|revokeOpenApprovals\|grantSession\|revokeSession\|revokeAllSessions\|arrange\|stillHere\|cancel\|summon\|attest\|stewardExecute\|panic\|release\|transfer]`. Cut for the byte ceiling and absent (§14): `[data-act=guard\|unguard\|grantRecipe]`, `stillHereUnderDuress`, the Grip's per-asset balances, the grant's `minInterval`/`uses` fields (sent as 0) |
 | identity | `#identity-status`, `#identity-status-rule` (verbatim *sessions act only while Active; a sale pauses the token; re-arm to let your keys act*), `#identity-rights-input`, `#identity-rights-chips .chip[data-right=<HOLD\|ACCOUNT\|USE\|CUSTODY\|ROLE\|DELEGATE\|GUARDIAN\|SESSION>][data-state=on\|off]` (rights names, distinct from Home's `data-bit` satellite names; class `on` when the bit is set), `#identity-rights-fact` (holder · custody epoch · bits), `#identity-fingerprint-baked`, `#identity-fingerprint-live` (*… — as rendered* / *… — changed since this document was rendered*), `#identity-delegate` (drawn by the panel from `ui.delegate()` on every paint: the known name as the Catalog spells it, *unknown delegate*, *unknown delegate · acknowledged*, *none: a plain account*, *not checked in the viewer*, *not connected*), `#ack-delegate`, `#identity-curve`, `#identity-name`, `#identity-guardian`, `#identity-user`, `#identity-agent`, `#identity-proposed` (*none* / *<addr> · pending: it accepts by sending*), `#identity-income`, `#identity-face`, `#identity-seal`, `#identity-key` (*no key bound* / *bound at epoch e · P-256 · key 0x…*), `#identity-registry` (holder only), `#identity-manifest` (rows engine, catalog, panel <name>), `input[name=curve\|name\|guardian\|user\|userDays\|wallet\|face\|sealDays\|operator\|opDays\|approvee]`, `[data-act=setTrait\|setStatus\|pause\|setGuardian\|setUser\|proposeAgentWallet\|acceptAgentWallet\|setFeesToGrip\|pinTokenURI\|unpinTokenURI\|sealTransfer\|setApprovalForAllUntil\|setApprovalForAll\|approve\|revokeAllApprovals\|setEncryptionKey\|bindKey]` (`setTrait` twice, curve and name; `setStatus` is offered only while Paused and `pause` only while Active); `[data-spend]` on exactly `approve`, `setApprovalForAll`, `setApprovalForAllUntil`, `setUser`, `proposeAgentWallet`; no `#identity-ens` exists on a band without a Nameplate |
-| agent | `#agent-stub` (the stub's one sentence: the catalogue is `/services.json`, sessions are granted in the Vault, a key opens `/k/<id>/<key>`, no `executeAsSession` composer until U17) and, in session mode, the key's facts plus one read a key can make for itself: a `target` field, a `selector` field and *may this key call it?*, answered from `reach.sessionAllows` as *allowed by the grant* / *not allowed by the grant* / *not reported: …* |
+| agent | `#agent-card-address` (the pinned AgentCard · *reported* / *not deployed on this chain* / *could not be read at block N*), `#agent-links .kv` (the agent routes as paths, never with a host: registration, card, llms, token llms, face 2, door), `#agent-face2` (*parses as registration-v1 · agentId N == #N*, or why not), `#agent-agentid` (*N in eip155:<chain>:<hub>*), `#agent-wallet` (*0x… — the Reach* / *— NOT the Reach*), `#agent-trust` (supportedTrust · x402Support · active · custody epoch), `#agent-hash-baked` (keccak of face 2's bytes as served), `#agent-hash-live` (`AgentCard.manifestHash(id)` read through the catalogue's `agentCard.manifestHash` row, *— equal to the bytes served* / *— moved since face 2 was served*), `#agent-services .svc` (one row per service: name → endpoint), `#agent-sessions .row` (`data-key`; *live* / *dead: revoked, expired or granted before the token last changed hands*), `#agent-session-count` (*sessions: n live of m ever granted* / *sessions: not counted — the grant log could not be walked on this endpoint (…)*), `#agent-key-facts` (one key's envelope: kind, expires, the grant epoch beside the token's, native cap and spent, uses left, interval, stored active, worst-case exposure, the token's status, the SESSION right), `#agent-refusal` (session mode: *this page acts as key 0x…; the connected wallet is 0x… — connect the key's wallet*), `#agent-composer` (inputs `name=key\|row\|target\|value\|data`; `#agent-args input[name=arg<i>]`, one per argument of the row's signature), `#agent-row-info`, `#agent-verdict` (*allowed by the grant · simulates: executeAsSession would land* / *allowed by the grant · would revert: <sentence>* / *not allowed by the grant: … — nothing is sent* / *not reported: …*), `#agent-calldata` (the `executeAsSession` bytes), `#agent-propose` (the read), `#agent-doors` (the probe), `#agent-allowed .row` (`data-row`, pressing one fills the composer) and its `p` (*n of m doors open for key …*), `[data-act=executeAsSession]` (need `SESSION`, `[data-spend]`; rendered only for a connected wallet whose `rightsOf` carries `SESSION`, in the console) |
 
 ### 6.3 The "not reported" chip rule
 
@@ -709,9 +709,11 @@ reads `"0"` — and `gate()` prints the session sentence for any other bit.
 Every holder control is hidden (`INTACT.ui.act` renders nothing in session
 mode; `propose` refuses). A connected wallet whose account is not the key
 is refused with *"this page acts as key 0x…; the connected wallet is 0x… —
-connect the key's wallet"*. The agent lane says *"no executeAsSession
-composer until U17"*. A malformed `as` is ignored and the page boots as
-the console.
+connect the key's wallet"*. The agent lane prints the key's envelope, the
+doors its grant opens and the composer as a read, and the refusal when the
+connected wallet is not the key; the shell never writes in session mode,
+so the act is offered in the console, where the key's wallet reads
+`SESSION`. A malformed `as` is ignored and the page boots as the console.
 
 ## 12. The clock (D11)
 
@@ -802,6 +804,10 @@ verbatim>")`, and INVARIANTS quotes that string.
 | the raise shows the tax as a countdown | `tools/verify-site/launch.mjs` |
 | the vault lists open approvals and revokes in one press | `tools/verify-site/vault.mjs` |
 | panic lists what it revokes | `tools/verify-site/vault.mjs` |
+| face 2 parses as registration-v1 with agentId == tokenId (U17) | `tools/verify-site/agent.mjs` |
+| the door refuses a wallet that is not the key (U17) | `tools/verify-site/agent.mjs` |
+| the Bankrbot transfer changes no bit and no session (U17) | `tools/verify-site/agent.mjs` |
+| a disallowed call never reaches the wallet (U17) | `tools/verify-site/agent.mjs` |
 
 Plus `identity.mjs` (Identity, the 7702 delegate, the key two-step), and
 in `boot.mjs` the collection page and the mint-from-the-page flow, session
@@ -820,7 +826,7 @@ printed them; the budgets they are held to stand beside them.
 | What | Measured | Budget / ceiling | Printed by |
 |---|---|---|---|
 | the shell, gzip | 14,955 B (45 B under) | 15,000 B, build-failing | `tools/build-app.mjs` |
-| the six panels, gzip | swap 8,172 · social 8,187 · launch 8,155 · vault 8,166 · identity 6,012 · agent 793 (the stub until U17) | 8,192 B each, build-failing | `tools/build-app.mjs` |
+| the six panels, gzip | swap 8,172 · social 8,187 · launch 8,155 · vault 8,166 · identity 6,012 · agent 4,883 (U17) | 8,192 B each, build-failing | `tools/build-app.mjs` |
 | `Chain.open()` + `deploySite` | 3.7–6.2 s with the compile cache warm, depending on what else the four cores carry (`agents` printed `world in 4.7s` inside the battery and `6.2s` beside two mutation gates) | — | `tools/verify-findings.mjs`, `tools/agents.mjs` |
 | the lanes through the shim | 513 passed, 0 failed in 3m 14s — the `verify:site` row of `tools/check.mjs`'s table on U12's run of the battery (four shared cores) | ≥ 150 assertions, build-failing | `tools/verify-site.mjs` |
 | the views, cold | `tokenURI` 7.64 M (72,544 B), `/token/1/live` 1.74 M (39,904 B), `/token/1/hash` 2.42 M, `/token/1/raw` 7.78 M; 79 probed cold with a transaction between each, 13.3 s — the `gas` row of the same run | 8 M · 2.5 M · 2.5 M; every view ≤ 16,777,216 | `tools/gas.mjs` |

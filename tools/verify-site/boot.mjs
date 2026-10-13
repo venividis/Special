@@ -618,7 +618,7 @@ export async function run(t, ctx) {
     t.eq(page.$("body").dataset.rights, "128", "the SESSION bit is the key's");
     for (const n of Object.keys(vctx.INTACT.panels)) await lane(page, n);
     t.ok(page.$$("[data-act]").length === 0 && page.$$("[data-go]").length === 0, "every holder control is hidden");
-    t.ok(/no executeAsSession composer until U17/.test(page.text("#lane-agent")), "the agent lane says what is missing (part 1: the §11 sentence, verbatim)", page.text("#lane-agent").slice(0, 160));
+    t.ok(/this page reads only: the act is offered in the console/.test(page.text("#lane-agent")) && page.$$("#lane-agent [data-act]").length === 0, "the agent lane reads only in session mode and says where the act is", page.text("#lane-agent").slice(0, 160));
     page.close();
     const { page: p6 } = await bootToken(1, { query: "?as=" + KEY, wallet: walletFor(c, me) });
     t.ok(/connected wallet is 0x/.test(p6.text("#session")) && p6.$("body").dataset.rights === "", "a wallet that is not the key is refused", `${p6.text("#session").slice(0, 160)} rights "${p6.$("body").dataset.rights}"`);
