@@ -99,7 +99,8 @@ import { spawn } from "node:child_process";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { compile, artifact, shipRule } from "./compile.mjs";
 import { enc, sel, decAddr, decUint, decBool, decString } from "./evm.mjs";
-import { adapt, deployIntact, bandOf, CONFIRM, SALTED, atomicWrite, parseArgs, readDist, awaitBlock, awaitCode, logsBy, ROOT } from "./deploy.mjs";
+import { adapt, deployIntact, bandOf, CONFIRM, SALTED, atomicWrite, parseArgs, readDist, awaitBlock, awaitCode, logsBy, ROOT,
+         SATELLITES, SATELLITE_ORDER, deploySatellite } from "./deploy.mjs";
 import { recover } from "./recover-record.mjs";
 import { encRequest, decResponse, ZERO } from "./site.mjs";
 
@@ -145,6 +146,10 @@ export const CAMPAIGN_GAS = {
   families: { fund: 42000n, mint: 595922n, launch: 1090563n, execute: 124234n, market: 364028n, swap: 224284n, speak: 180330n, social: 1012549n, raise: 1076687n, lock: 289104n, session: 332810n, seal: 46898n, panic: 116177n, steward: 280947n, clock: 0n, sale: 125635n }
 };
 export const CAMPAIGN_BUDGET_GAS = 30_000_000n;
+/// The post-MVB satellites' budget until a wire run has measured them:
+/// each is one `queue` and one `execute` through the Timelock, the
+/// execute carrying the satellite's initcode (deployments/README.md).
+export const SATELLITE_BUDGET_GAS = 2_500_000n;
 
 /*═══════════════════ signatures and topics ═══════════════════*/
 
@@ -360,8 +365,11 @@ async function main() {
   const price = args.price && args.price !== true ? BigInt(args.price) : (skipDeploy ? decUint(await c.read(JSON.parse(fs.readFileSync(RECORD, "utf8")).contracts.hub, "price()")) : 10n ** 16n);
   const secondFund = (secondGas * gasPrice * 15n) / 10n + l1PerStep * 12n + SECOND_SPEND + 2n * 27_300n * gasPrice;
   const campaignNeed = (campaignGas * gasPrice * 15n) / 10n + l1PerStep * steps + HOLDER_SPEND + 2n * price + secondFund;
-  const need = deployNeed + campaignNeed;
-  ok(bal >= need, `preflight · balance ${eth(bal)} ETH covers ${eth(need)} ETH: the deploy ${eth(deployNeed)} (120M gas × ${gasPrice} wei × 1.5 + L1) plus the campaign ${eth(campaignNeed)} (${campaignGas} gas ${measured ? `measured on ${CAMPAIGN_GAS.measuredOn}` : "BUDGET: no wire run measured yet"} × 1.5, two mints at ${eth(price)} ETH, ${eth(HOLDER_SPEND)} ETH the holder spends, ${eth(secondFund)} ETH funding the second key)`,
+  const hasArtifact = (f, n) => { try { artifact(out, f, n); return true; } catch { return false; } };
+  const satelliteKeys = SATELLITE_ORDER.filter((k) => (!SATELLITES[k].bands || SATELLITES[k].bands.includes(band.band)) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
+  const satelliteNeed = (BigInt(satelliteKeys.length) * SATELLITE_BUDGET_GAS * gasPrice * 15n) / 10n + l1PerStep * 2n * BigInt(satelliteKeys.length);
+  const need = deployNeed + campaignNeed + satelliteNeed;
+  ok(bal >= need, `preflight · balance ${eth(bal)} ETH covers ${eth(need)} ETH: the deploy ${eth(deployNeed)} (120M gas × ${gasPrice} wei × 1.5 + L1) plus the campaign ${eth(campaignNeed)} (${campaignGas} gas ${measured ? `measured on ${CAMPAIGN_GAS.measuredOn}` : "BUDGET: no wire run measured yet"} × 1.5, two mints at ${eth(price)} ETH, ${eth(HOLDER_SPEND)} ETH the holder spends, ${eth(secondFund)} ETH funding the second key)${satelliteKeys.length ? ` plus the satellites ${eth(satelliteNeed)} (${satelliteKeys.join(", ")}: ${SATELLITE_BUDGET_GAS} gas each, a budget, × 1.5)` : ""}`,
      `fund ${me} with at least ${eth(need - bal)} ETH more`);
   if (bal < need) throw refuse(`underfunded: ${eth(need)} ETH needed, ${eth(bal)} ETH held`);
   const preflight = { rpcChainId: c.chainId, blockA: blockA.toString(), blockB: blockB.toString(), latestTimestamp: String(BigInt(latest.timestamp)), wallClock: wall.toString(), skewSeconds: skew.toString(),
@@ -394,6 +402,23 @@ async function main() {
        `deploy · the record was written by deployIntact with ${record.recovered && record.recovered.checked} fields checked and 0 disagreeing: ${rel(RECORD)} (${M(record.gasTotal)} gas in all, ${M(record.gasThisRun)} this run, ${((Date.now() - tDeploy) / 1000).toFixed(0)} s)`);
     note(`door  web3://${record.contracts.premises}:${chainId}/`);
   }
+  /*═══════════════════ satellites (post-MVB, through the Timelock) ═══════════════════*/
+  head("satellites (the post-MVB contracts, through the Timelock's queue)");
+  if (!satelliteKeys.length) note("no satellite contract is compiled in this tree; the phase runs once one lands (U14–U18)");
+  for (const key of satelliteKeys) {
+    try {
+      const r = await deploySatellite(ad, record, key, { out, recordPath: RECORD, log: (s) => console.log("    " + s.trim()) });
+      if (r.queued) {
+        record = r.record;
+        ok(true, `satellites · ${key} queued on the Timelock (op ${r.op}), executable at ${r.eta}: this chain waits the seven days — land it then with tools/deploy.mjs --satellite ${key} (anyone may)`);
+      } else {
+        record = r;
+        ok(Boolean(record.contracts[key] && record.satellites[key].executed),
+           `satellites · ${key} landed at ${record.contracts[key]} through the Timelock's queue (${M(record.satellites[key].executed.gas)} gas to land it) and the record recovered with ${record.recovered.checked} fields, 0 disagreeing`);
+      }
+    } catch (e) { ok(false, `satellites · ${key}: ${e.message}`); }
+  }
+
   const S = record.contracts;
   const HUB = S.hub, POOL = S.pool, PARLEY = S.parley, POSTAGE = S.postage, KEYS = S.keys, KILN = S.kiln, PAD = S.launchpad, LOCKS = S.locks, STEWARD = S.steward, PREMISES = S.premises;
 
