@@ -1474,12 +1474,32 @@ contract Catalog {
     /// @notice The object `window.INTACT` is set to: valid JSON, valid JS.
     ///         `id == 0` is the collection's own block for the `/` page.
     function state(uint256 id) external view returns (bytes memory) {
+        return id == 0 ? _collectionState() : _state(id, stateOf(id));
+    }
+
+    /// @notice `state(id)` from a TokenState already read: the Renderer reads
+    ///         `stateOf(id)` once for face 0's JSON and crest and builds the
+    ///         document from the same reading, so every satellite is probed
+    ///         once per tokenURI rather than twice (the card builds its whole
+    ///         registration to answer its probe). The bytes equal `state(id)`'s
+    ///         in the same block, which the equality step holds.
+    function stateFrom(uint256 id, TokenState calldata s) external view returns (bytes memory) {
+        return id == 0 ? _collectionState() : _state(id, s);
+    }
+
+    /// @dev Id 0 is the collection page: no token state is read for it.
+    function _collectionState() internal view returns (bytes memory) {
+        IIntact hub = IIntact(HUB);
+        World memory w = _world(0);
+        return abi.encodePacked("{", STATE.world(w), STATE.collection(w, hub.price(), hub.minted()), STATE.tail(ENGINE, CATALOG_HASH));
+    }
+
+    function _state(uint256 id, TokenState memory s) internal view returns (bytes memory) {
         IIntact hub = IIntact(HUB);
         World memory w = _world(id);
-        bytes memory middle = id != 0
-            ? STATE.token(w, stateOf(id), hub.coreOf(id), hub.price(), hub.feeSink(id), hub.getTraitValue(id, Traits.NAME))
-            : STATE.collection(w, hub.price(), hub.minted());
-        return abi.encodePacked("{", STATE.world(w), middle, STATE.tail(ENGINE, CATALOG_HASH));
+        return abi.encodePacked("{", STATE.world(w),
+            STATE.token(w, s, hub.coreOf(id), hub.price(), hub.feeSink(id), hub.getTraitValue(id, Traits.NAME)),
+            STATE.tail(ENGINE, CATALOG_HASH));
     }
 
     /*═══════════════════ services.json and the directories ═══════════════════*/

@@ -130,7 +130,13 @@ async function buildProbes(chain, out) {
       skipped and says so, so the sweep above still runs alone.         */
   if (fs.existsSync(path.join(ROOT, "dist/shards.json"))) {
     const { deploySite, mint, encRequest } = await import("./site.mjs");
-    const site = await deploySite(chain, out);
+    const satellites = { market: Boolean(out.contracts["src/Market.sol"]?.Market) };
+    /*  Wave 4: the sweep measures the deployment shape a band will have once
+        the post-MVB satellites have landed — the card, the Roles (and the
+        Market as it lands) — since the Catalog's state block probes each
+        one and tokenURI carries the state block; a card-less world would
+        flatter the figure by what the card costs to answer.            */
+    const site = await deploySite(chain, out, { deployAgentCard: true, deployRoles: true, ...(satellites.market ? { deployMarket: true } : {}) });
     const { id } = await mint(chain, site);
     const route = (resource, cap, note) => probes.push({
       label: "/" + resource.join("/"), note: note || "Premises.request", cap, to: site.premises, data: encRequest(resource) });
@@ -145,7 +151,11 @@ async function buildProbes(chain, out) {
     route(["token", i, "live"], "live", "the console, on a real origin");
     route(["token", i, "raw"], "tokenURI");
     route(["token", i, "face", "1"], "face");
-    route(["token", i, "face", "2"], "face", "face 1 again until an AgentCard has code");
+    route(["token", i, "face", "2"], "face", "the ERC-8004 registration (U17)");
+    route([".well-known", "agent-registration.json"], "state", "the collection's registration (U17)");
+    route([".well-known", "agent-card.json"], "state", "the A2A card (U17)");
+    route(["llms.txt"], "state", "llms.txt for the collection (U17)");
+    route(["token", i, "llms.txt"], "state", "llms.txt for one token (U17)");
     route(["token", i, "crest.svg"], "crest");
     route(["token", i, "state.json"], "state");
     route(["token", i, "hash"], "live");
