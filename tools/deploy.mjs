@@ -179,7 +179,7 @@ export const SALTED = [
   "coreFacet", "rightsFacet", "mintFacet", "siteFacet", "hub",
   "keys", "roster", "postage", "parley", "locks", "pool", "kiln", "launchpad", "router", "steward", "premises"
 ];
-export const PLACEHOLDERS = ["market", "roles", "agentCard", "nameplate"];
+export const PLACEHOLDERS = ["market", "roles", "agentCard", "nameplate", "custodian"];
 /// AgentCard, LPCustodian, Market, Roles and the Nameplate land AFTER the
 /// MVB record (DESIGN §12's tail), at the addresses the hub, the Catalog,
 /// the Renderer and the Premises already pin — the same factory, the same
@@ -197,6 +197,14 @@ export const PLACEHOLDERS = ["market", "roles", "agentCard", "nameplate"];
 export const SATELLITES = {
   agentCard: { file: "src/AgentCard.sol", name: "AgentCard", pins: ["hub", "catalog", "premises"],
                args: (w) => encodeParams("address,address,address", [w.hub, w.catalog, w.premises]) },
+  /// the v4 launch path's custodian (U14): lands only where the venue table
+  /// names a probed PoolManager, PositionManager and Permit2 — contract
+  /// addresses probed for code on a dated commit, never recalled
+  custodian: { file: "src/LPCustodian.sol", name: "LPCustodian", pins: ["hub", "launchpad", "kiln"],
+               admits: (rec) => (rec.venues?.poolManager && rec.venues?.positionManager && rec.venues?.permit2 ? null
+                 : `chain ${rec.chainId} has no probed venue table with a PoolManager, a PositionManager and a Permit2 (VENUES in tools/deploy.mjs) — the custodian seeds v4 positions and lands nowhere without one`),
+               args: (w, rec) => encodeParams("address,address,address,address,address,address",
+                 [w.hub, w.launchpad, w.kiln, rec.venues.poolManager, rec.venues.positionManager, rec.venues.permit2]) },
   market:    { file: "src/Market.sol", name: "Market", pins: ["hub", "pool"],
                args: (w) => encodeParams("address,address", [w.hub, w.pool]) },
   roles:     { file: "src/Roles.sol", name: "Roles", pins: ["hub"],
@@ -211,7 +219,7 @@ export const SATELLITES = {
 };
 /// DESIGN §12's post-MVB order. `admits(rec)`, when present, names why a
 /// chain does not take the satellite (null when it does).
-export const SATELLITE_ORDER = ["agentCard", "market", "roles", "nameplate"];
+export const SATELLITE_ORDER = ["agentCard", "custodian", "market", "roles", "nameplate"];
 export const admitsSatellite = (key, rec) => (SATELLITES[key].admits ? SATELLITES[key].admits(rec) : null);
 /// DESIGN §12's order as one list, asserted against the journal before the
 /// record is written: the factory, the Timelock, the Engine (whose loads
@@ -377,14 +385,18 @@ export const PINS = [
   /// the post-MVB satellites' own pins, read back the moment one lands
   ["market", "HUB()", "hub"], ["market", "POOL()", "pool"],
   ["roles", "HUB()", "hub"],
-  ["agentCard", "HUB()", "hub"], ["agentCard", "CATALOG()", "catalog"], ["agentCard", "PREMISES()", "premises"]
+  ["agentCard", "HUB()", "hub"], ["agentCard", "CATALOG()", "catalog"], ["agentCard", "PREMISES()", "premises"],
+  ["launchpad", "CUSTODIAN()", "custodian"],
+  ["custodian", "HUB()", "hub"], ["custodian", "LAUNCHPAD()", "launchpad"], ["custodian", "KILN()", "kiln"],
+  ["custodian", "POOL_MANAGER()", "venuePoolManager"], ["custodian", "POSITION_MANAGER()", "venuePositionManager"], ["custodian", "PERMIT2()", "venuePermit2"]
 ];
 /// The venue table's addresses as PINS targets (`venue*` keys), so the
 /// Kiln's and the Router's venue immutables are read back like every other
 /// pin: a record that lies about `venues.poolManager` is caught by name,
 /// not only by the Router's codehash. Absent venues pin as address(0).
 export const venueTargets = (venues) => ({
-  venuePoolManager: venues?.poolManager || ZERO, venueSwapRouter02: venues?.swapRouter02 || ZERO, venueWeth: venues?.weth || ZERO
+  venuePoolManager: venues?.poolManager || ZERO, venueSwapRouter02: venues?.swapRouter02 || ZERO, venueWeth: venues?.weth || ZERO,
+  venuePositionManager: venues?.positionManager || ZERO, venuePermit2: venues?.permit2 || ZERO
 });
 /// The Router's bytes32 immutables: [getter, what the chain must say given
 /// the record]. POOL_HASH is the Pool's codehash at construction; the two
@@ -446,7 +458,14 @@ export async function deployIntact(ad, opts = {}) {
   const price = opts.price ?? 10n ** 16n;
   const chainId = ad.chainId;
   const band = opts.band || bandOf(chainId);
-  const venues = opts.venues !== undefined ? opts.venues : (VENUES[chainId] || null);
+  let venues = opts.venues !== undefined ? opts.venues : (VENUES[chainId] || null);
+  /// the Router pins ONE codehash for every launch's hook (DESIGN §6.2): the
+  /// LaunchHook carries no immutable, so the compiled runtime's keccak is
+  /// that number on every band; a venue table that does not name it gets it
+  /// here, and the record carries what the Router was told
+  const hookArt = (() => { try { return artifact(out, "src/LaunchHook.sol", "LaunchHook"); } catch { return null; } })();
+  const hookHash = hookArt ? kecHex(hookArt.deployed) : "0x" + "00".repeat(32);
+  if (venues && !venues.launchHookCodehash && hookArt) venues = { ...venues, launchHookCodehash: hookHash };
   const ship = { ...shipRule(out), limit: LIMIT, solc: toolchain().solc };
   if (ship.build !== "diamond" && ship.build !== "monolith") throw new Error(`the ship rule is ${ship.build}: ${ship.reason}`);
   const from = ad.from;
@@ -763,7 +782,7 @@ export async function deployIntact(ad, opts = {}) {
   const coinTemplate = { bytes: coinCode.length / 2, keccak: kecHex(coinCode) };
 
   await create3("kiln", "src/Kiln.sol", "Kiln", encodeParams("address,address,address", [got.hub, T.launchpad, venues ? venues.poolManager : ZERO]));
-  await create3("launchpad", "src/Launchpad.sol", "Launchpad", encodeParams("address,address,address,address", [got.hub, got.kiln, got.pool, got.locks]));
+  await create3("launchpad", "src/Launchpad.sol", "Launchpad", encodeParams("address,address,address,address,address", [got.hub, got.kiln, got.pool, got.locks, T.custodian]));
 
   /*── 19. Router, only where a probed venue table exists; else pinned zero ──*/
   if (venues) {

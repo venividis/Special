@@ -211,6 +211,20 @@ the wrapper still names the account for ninety days, and past those the
 name must be registered anew. `tools/verify-plate.mjs` walks every one of
 these paths on a local ENS fixture.
 
+### The custodian and the venue table
+
+`LPCustodian` (U14) lands like the others (`--satellite custodian`, salt
+`keccak("intact.v1.custodian")`, the address the Launchpad pinned as its
+fifth constructor argument at the MVB) but only on a chain whose venue
+table (`VENUES` in `tools/deploy.mjs`) names a PoolManager, a
+PositionManager and a Permit2 — contract addresses probed for code on a
+dated commit, never recalled; it seeds every v4 launch's position through
+them. No chain has a probed row yet, so on every rehearsal the custodian
+is refused by name and `Target.UniswapV4` stays `NotYet` (the owned-pool
+path is unaffected). The Router's `LAUNCH_HOOK_CODEHASH` is the keccak of
+`LaunchHook`'s compiled runtime, which the deployer writes into the venue
+table it records when the table does not name it.
+
 ## What a run leaves behind
 
 - `deployments/<chainId>.json` — the deployment record, schema

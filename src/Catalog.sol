@@ -737,7 +737,24 @@ contract CatalogRowsPost is RowTable {
         "nameHeldBy|I|heldBy(bytes32)|r|d|the token holding a wrapped ENS name, and whether it sits in the Grip;"
         "nameFor|I|tokenForName(bytes)|r|d|the token a DNS-wire name means - held, or <id>.intact.eth while the apex is held and live;"
         "nameExpiry|I|expiry(bytes32)|r|d|when the .eth registration under a label hash lapses, by the registrar;"
-        "contentcontract|I|contentcontract()|r|d|the site as eth:0x..., ERC-6821 in ERC-3770 form;";
+        "contentcontract|I|contentcontract()|r|d|the site as eth:0x..., ERC-6821 in ERC-3770 form;"
+        "createV4|L|createV4((uint256,address,uint128,uint128,uint128,uint64,uint64,uint128,uint16,uint16,uint16,uint16,uint64,uint8),(uint32,uint32,uint24,uint24,uint32),bytes32)|w|a|the v4 target: hook terms and the mined salt pinned beside the launch;"
+        "createV4Checked|L|createV4Checked((uint256,address,uint128,uint128,uint128,uint64,uint64,uint128,uint16,uint16,uint16,uint16,uint64,uint8),(uint32,uint32,uint24,uint24,uint32),bytes32,bytes32)|w|a|pins the terms, the hook terms and the salt the page showed;"
+        "v4TermsHash|L|v4TermsHash((uint256,address,uint128,uint128,uint128,uint64,uint64,uint128,uint16,uint16,uint16,uint16,uint64,uint8),(uint32,uint32,uint24,uint24,uint32),bytes32)|r|d|;"
+        "collect|U|collect(uint256)|w|d|anyone - every fee to feeSink(id);"
+        "release|U|release(uint256)|w|a|after unlocksAt, to the Reach only;"
+        "extend|U|extend(uint256,uint64)|w|a|only later, at most ten years;"
+        "resalt|U|resalt(uint256,bytes32)|w|a|a new hook salt before seeding - a new pool;"
+        "custodyOf|U|custodyOf(uint256)|r|d|;"
+        "hookTermsOf|U|hookTermsOf(address)|r|d|keyed by the coin;"
+        "hookOf|U|hookOf(uint256)|r|d|;"
+        "hookAt|U|hookAt(address,bytes32)|r|d|where a salt would put the coin's hook;"
+        "poolKeyOf|U|poolKeyOf(uint256)|r|d|;"
+        "poolIdOf|U|poolIdOf(uint256)|r|d|;"
+        "unlocksAt|U|unlocksAt(uint256)|r|d|the ratchet;"
+        "seededAt|U|seededAt(address)|r|d|zero before the pool is seeded;"
+        "spotOf|U|spotOf(uint256)|r|d|wei per 1e18 of the coin, off the pool;"
+        "launchOfCoin|U|launchOfCoin(address)|r|d|;";
 
     constructor(address[21] memory byLetter) RowTable(bytes(SERVICES), byLetter) {}
 }
@@ -799,6 +816,9 @@ contract CatalogText is Templated {
         "NoQuote(uint8);NoSuchStamp(uint256);NotEnoughCredit(uint256,uint256);NotEntitled();NotHeld();NotKiln();NotListed();"
         "NotLocked(uint256);NotOwnerOrApproved(uint256,address);NotPoolManager();PieceLeft(address,uint256);PiecesFull();"
         "Reentered();Stale(uint256);StampPending(uint256);StartsInThePast(uint64);StillLocked(uint256,uint64);TooManyFloors();TooManyRoles(uint256);ApprovalsUnsupported();"
+        "NotTheManager();NotOpenYet(uint64);StillLocked(uint64);ForeignKey();Unregistered(address);AlreadyRegistered(uint256);"
+        "NotRegistered(uint256);AlreadySeeded(uint256);NotSeeded(uint256);BadTerms();BadSalt(address,uint16);HookMismatch(address,address);"
+        "PriceOutOfRange(uint160);PriceOff(uint160,uint160);PositionNotHeld(uint256);UnexpectedEther();"
         "UnknownRecipe(uint8);UnsupportedCollection(address);UnsupportedSchedule();WrongChain();WrongCommitment();"
         "WrongPrice(uint256,uint256);WrongTarget();ZeroInput();ZeroRecipient()";
 
@@ -807,6 +827,9 @@ contract CatalogText is Templated {
         "said=Said(uint256,uint256,uint64,uint64,uint64,uint8,uint64,uint64,bytes);"
         "founded=Founded(uint256,uint256,uint256,bool,string);entered=Entered(uint256,uint256);"
         "keyBound=KeyBound(uint256,address,uint64,uint16,bytes32);"
+        "registered=Registered(uint256,uint256,address,address,bytes32);resalted=Resalted(uint256,address,bytes32);"
+        "seeded=Seeded(uint256,bytes32,address,uint256,uint160,uint160,uint256);collected=Collected(uint256,address,uint256,uint256);"
+        "released=Released(uint256,address,uint256,uint256);extended=Extended(uint256,uint64);"
         "orderPosted=OrderPosted(uint256,address,uint256,uint64,bytes32);delisted=Delisted(uint256);"
         "sold=Sold(uint256,address,address,uint256,uint256);claimed=Claimed(address,uint256);"
         "transfer=Transfer(address,address,uint256);minted=Minted(uint256,address,address,uint8);"

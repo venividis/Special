@@ -212,7 +212,7 @@ export async function deploySite(c, out, opts = {}) {
   const pool = await c.deploy(A("src/Pool.sol", "Pool").bytecode, encodeParams("address,address", [hub, P.launchpad]), "Pool");
   const kiln = await c.deploy(A("src/Kiln.sol", "Kiln").bytecode, encodeParams("address,address,address", [hub, P.launchpad, ZERO]), "Kiln");
   const launchpad = await c.deploy(A("src/Launchpad.sol", "Launchpad").bytecode,
-    encodeParams("address,address,address,address", [hub, kiln, pool, locks]), "Launchpad");
+    encodeParams("address,address,address,address,address", [hub, kiln, pool, locks, ZERO]), "Launchpad");   // no custodian in the harness world: Target.UniswapV4 stays NotYet
 
   const got = { catalogRows, catalogRowsPost, catalogText, catalogState, catalog, renderer, premises, coreFacet: facets.CoreFacet, rightsFacet: facets.RightsFacet,
                 mintFacet: facets.MintFacet, siteFacet: facets.SiteFacet, hub, locks, steward, postage, parley, roster,

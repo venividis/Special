@@ -85,7 +85,7 @@ end.
 | `price` | the initial mint price the hub's constructor wrote |
 | `timelock` | `admin` (the burner at deploy), `delay`, `grace`, and `disposition` — read from the chain, not written in advance: "the burner holds the admin…" while `admin` is the burner, "renounced" at address(0), "rotated to …" otherwise |
 | `burner` | `nonceAfter` and `balanceAfter`: the burner as the run left it, so a later reader can see whether it was ever used again |
-| `venues` | the probed venue table used for the Router and Kiln, or null (Router skipped, letter X pinned as address(0)). Read back by name: `kiln.POOL_MANAGER`, `router.SWAP_ROUTER02/POOL_MANAGER/WETH`, and the Router's four codehash immutables |
+| `venues` | the probed venue table used for the Router, the Kiln and the custodian, or null (Router skipped, letter X pinned as address(0)): `swapRouter02`, `poolManager`, `weth`, and since U14 `positionManager` and `permit2` (what `LPCustodian` seeds through) and `launchHookCodehash` (the keccak of `LaunchHook`'s compiled runtime, which the deployer fills in when the table does not name it — one codehash for every launch's hook, the same on every band). Read back by name: `kiln.POOL_MANAGER`, `router.SWAP_ROUTER02/POOL_MANAGER/WETH`, the Router's four codehash immutables, and the custodian's `POOL_MANAGER/POSITION_MANAGER/PERMIT2` once it has landed |
 | `gas`, `gasTotal` | gas per step label and the sum |
 | `toolchain` | solc version, optimizer runs, viaIR, evmVersion, `bytecodeHash: none`, the EIP-170 limit |
 | `confirmToken`, `journal`, `writtenAt`, `block`, `recovered` | the literal token the run carried, the journal's path, when, at which block, and how many fields the in-process recovery checked |

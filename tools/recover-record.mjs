@@ -82,7 +82,7 @@ const ARTIFACT = {
   coreFacet: "CoreFacet", rightsFacet: "RightsFacet", mintFacet: "MintFacet", siteFacet: "SiteFacet",
   keys: "KeyRegistry", roster: "Roster", postage: "Postage", parley: "Parley", locks: "Locks", pool: "Pool", kiln: "Kiln",
   launchpad: "Launchpad", router: "Router", steward: "Steward", premises: "Premises",
-  market: "Market", roles: "Roles", agentCard: "AgentCard", nameplate: "Nameplate"
+  market: "Market", roles: "Roles", agentCard: "AgentCard", nameplate: "Nameplate", custodian: "LPCustodian"
 };
 
 /**

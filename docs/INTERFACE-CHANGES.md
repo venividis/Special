@@ -162,3 +162,14 @@ shim reads the role through `recipientOf`). The wave-1 suites that read
 rights were rerun on both builds after the hub's one-line change (Rights
 5, Update 10, Panic 3, Bundle 7, each 0 failed); RightsFacet measures
 4,996 B (5,034 before).
+
+## U14 — the v4 launch path (additive)
+
+| File | Change | Why |
+|---|---|---|
+| `ILaunchpad.sol` | `function createV4(LaunchParams calldata p, HookTerms calldata h, bytes32 hookSalt) external returns (uint256 launchId);` (acts), `function createV4Checked(LaunchParams calldata p, HookTerms calldata h, bytes32 hookSalt, bytes32 expectedTermsHash) external returns (uint256 launchId);`, `function v4TermsHash(LaunchParams calldata p, HookTerms calldata h, bytes32 hookSalt) external pure returns (bytes32);` | `LaunchParams` is frozen and carries no hook terms; the v4 target needs the hook's terms and the mined salt pinned beside the launch, once, before any buy. `create`/`createChecked` with `Target.UniswapV4` revert `WrongTarget` (an error the interface already had) where a custodian is pinned and `NotYet` where none is. |
+| `ILaunchpad.sol` | `CUSTODIAN()` comment: `address(0)` on a band without an LPCustodian | was "until U14" |
+| `ILPCustodian.sol` (new file) | `PoolKey`, `ModifyLiquidityParams`, `SwapParams`, `HookPermissions`, `HookTerms`, `Custody`; `ILaunchHook`; `ILPCustodianEvents`; `ILPCustodian` | the v4 shapes declared by field type once, beside `Kiln.sol`'s (which keep its `Gate` compiling) |
+| `IKiln.sol` | unchanged; `deployHook(1, salt, bytes32(uint160(coin)))` and `recipeHash(1, bytes32(uint160(coin)))` are the kind-1 recipe | — |
+
+No error was added to `Launchpad`'s or `Kiln`'s ABI (the Catalog's error table, `tools/verify.mjs`'s drift gate, is untouched); the custodian's and the hook's errors are new contracts' and need Catalog rows only when the Catalog learns the custodian (below).
