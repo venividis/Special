@@ -211,8 +211,9 @@ disclose against.
 - **`static-audit` is a heuristic scan**, not a security audit; its own
   summary line says so.
 - **The mutation gate covers Parley and Postage only**: 19 one-token
-  mutations, 17 killed, 2 survivors named in INVARIANTS E1 with the test each
-  asks for. Every other contract's mutation evidence is the one-character
+  mutations, 18 killed (17 in a tree pruned to the two contracts and their
+  suites, P13 by `test/Bundle.t.sol` in the full tree), 1 survivor (P11) named
+  in INVARIANTS E1 with the test it asks for. Every other contract's mutation evidence is the one-character
   checks its unit recorded in its commit body, not a gate that can be rerun.
 - **Page-enforced rules protect a person using this console**; another
   client is free to build an unlimited approval or skip the epoch re-read,

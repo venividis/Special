@@ -181,8 +181,10 @@ minutes per mutation; run `--suites Parley,Postage` there and the three
 `Bundle` rows (`--only P2,P13,Q6`) in a full copy. Quote the result in
 INVARIANTS E1/E3 and in the commit body. On this tree the pruned gate reads
 17 killed, 2 survived (P11: no test hides at `seq ≥ 128`; P13: no Parley or
-Postage test buys a token back); a survivor is a test request written into
-E1, never a reason to drop the row. A mutant must be Solidity: `bytes32(1)`
+Postage test buys a token back) — and P13 is killed in the full tree by
+`test/Bundle.t.sol` (`test_aBuyBackRevivesNothingAnywhere`,
+`test_panicRevokesAcrossEverySatellite`), so P11 is the gate's one survivor;
+a survivor is a test request written into E1, never a reason to drop the row. A mutant must be Solidity: `bytes32(1)`
 does not compile (`bytes32(uint256(1))` does), and the gate prints the
 compiler's line when a row is not a mutation.
 
