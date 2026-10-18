@@ -31,6 +31,7 @@
     "verify:recover": "node tools/verify-recover.mjs",
     "verify:mcp": "node sdk/mcp.test.mjs",
     "verify:plate": "node tools/verify-plate.mjs",
+    "verify:venues": "node tools/verify-venues.mjs --chain all",
     "fuzz": "node tools/fuzz.mjs",
     "agents": "node tools/agents.mjs",
     "invariants": "node tools/invariants-check.mjs",

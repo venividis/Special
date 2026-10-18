@@ -110,9 +110,13 @@ rehearsal (`tools/testnet.mjs --chain 11155111`, a fresh funded nonce-0 burner, 
 gateway opened from `web3://`, and, from 2026-10-20, landing the three satellites queued on the Base Sepolia
 deployment with `tools/deploy.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --satellite all` from
 any funded key (the record then gains their `executed` transactions, and `tools/recover-record.mjs` must read
-0 disagreeing). Then the console's
-next round (observation 4), the venue table (a probed PoolManager, PositionManager and Permit2 per chain,
-so the custodian can land and the Router walk v4), and U19: two audits of `Intact`, `Reach`, `Pool`,
+0 disagreeing; the landing is scheduled for the window's opening, with a separate landing key). The venue
+table is filled since 2026-10-18 (Base Sepolia and Sepolia, from Uniswap's feed, probed and re-proved by
+`npm run verify:venues`, 24 passed), and `tools/testnet.mjs --fork` walked the whole rehearsal against forks of
+both chains (88 and 89 sentences, 0 failed): the Router, the custodian and every satellite landing, and the v4
+launch path against the real PoolManager, PositionManager and Permit2. The next live rehearsal on either chain
+carries the Router and the custodian; the deployment of 2026-10-13 predates the rows and keeps its shape. Then
+the console's next round (observation 4), and U19: two audits of `Intact`, `Reach`, `Pool`,
 `Launchpad` (and now `Market`, `Roles`, `LPCustodian`) on the deployed commit, the mainnet band, the Base
 launch. INVARIANTS rows pending: none (F6's gateway half still waits for a self-hosted gateway on a public
 chain, recorded in its status cell).

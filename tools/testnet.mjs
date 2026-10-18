@@ -21,15 +21,22 @@
     mint ×2 (ids from the Transfer log) → the Kiln launches a coin (the
     only ERC-20 a testnet is sure to have; the Reach holds the supply, the
     Launchpad the raise share) → the owned market opens on it with a native
-    quote (the Reach hands the holder inventory through `execute`; the
-    Router is skipped — there is no venue table on a testnet) → the second
+    quote (the Reach hands the holder inventory through `execute`) → the second
     key swaps both ways (exact-in with ETH, exact-out paid in coin; every
     deadline from the chain's clock) → the holder speaks at home → both
     tokens bind a sealing key; the second prices its inbox; the holder
     whispers SEALED with a stamp; the reply settles the postage, and
     `claimSettled` pays the recipient's feeSink → the raise: `create`,
     buys until the target, `graduate` into a sealed market, a trade on it,
-    `collect` pays the launcher's Reach; a buyer `claim`s its credits → a
+    `collect` pays the launcher's Reach; a buyer `claim`s its credits →
+    where the chain has a venue table, the Router: the second token's Reach
+    swaps on the owned market through it, and a caller that is not a Reach
+    is refused by selector → where the custodian has landed (a fork, or a
+    resumed run after the Timelock's delay), the v4 path: a coin from the
+    second token, the hook's salt mined, `createV4Checked`, buys, the
+    graduation that seeds the v4 position, swaps both ways through the
+    Router, `collect`, the release refused, the ratchet extended and a
+    shorter lock refused, and where the clock moves the release → a
     native lock to the Reach (released when due) → a session for the
     second key and one `executeAsSession` act (before the seal, so the
     coin may leave) → `seal` → `panic`, and its consequences read back →
@@ -75,6 +82,17 @@
     node tools/testnet.mjs --chain 31337 --confirm DEPLOY_INTACT_LOCAL --record /tmp/x/31337.json
         --journal /tmp/x/31337.journal.json --campaign /tmp/x/31337.campaign.json      # spawns hardhat on 8547
     node tools/testnet.mjs --chain 31337 --confirm DEPLOY_INTACT_LOCAL --rpc http://127.0.0.1:8547 …  # a running node
+    node tools/testnet.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --fork https://sepolia.base.org
+        # a hardhat fork of the chain at its latest block, spawned on 8548: records under out/fork/
+
+  The fork. `--fork <url>` runs the whole rehearsal against a hardhat fork
+  of a rehearsal chain (hardhat.fork.config.cjs: the chain's own id, cancun
+  rules), so the venue table, the Router, the custodian and the v4 launch
+  path meet the real venues' code and state before a live run spends
+  anything. A fork is nobody's chain: its burner is a fresh key the node
+  funds, its clock can be moved, so every satellite lands in-run through
+  the Timelock's queue, and its records go to out/fork/ — never under
+  deployments/, which holds only what a live chain did.
 
   Rules. The confirm token is checked before any file or socket is touched,
   so a mistyped command costs nothing; an option not in the list is refused.
@@ -100,7 +118,7 @@ import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { compile, artifact, shipRule } from "./compile.mjs";
 import { enc, sel, decAddr, decUint, decBool, decString } from "./evm.mjs";
 import { adapt, deployIntact, bandOf, CONFIRM, SALTED, atomicWrite, parseArgs, readDist, awaitBlock, awaitCode, logsBy, ROOT,
-         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite } from "./deploy.mjs";
+         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite, VENUES, checkVenues } from "./deploy.mjs";
 import { recover } from "./recover-record.mjs";
 import { encRequest, decResponse, ZERO } from "./site.mjs";
 
@@ -129,7 +147,11 @@ export const AMOUNTS = {
   inventory: 200n * WAD, marketBase: 100n * WAD, marketQuote: 2n * UNIT,
   swapIn: UNIT / 2n, swapOut: UNIT / 10n, sealedSwap: UNIT / 5n,
   postage: UNIT / 10n, replyWindow: 300n, lock: UNIT, lockSeconds: 120n,
-  sessionTransfer: WAD, sealDays: 30n, quiet: 30n * 86400n, notice: 14n * 86400n
+  sessionTransfer: WAD, sealDays: 30n, quiet: 30n * 86400n, notice: 14n * 86400n,
+  /// the Router family (where a venue table exists) and the v4 family (where the custodian has landed)
+  routerSwap: UNIT / 20n, v4Gas: 6_000_000n, v4EthIn: UNIT / 100n,
+  /// the v4 launch's hook terms: opens at once, locked a day, 10 % → 1 % over an hour
+  v4Terms: [0, 86400, 100000, 10000, 3600]
 };
 /// What the holder spends besides gas (two mints at the hub's price are
 /// added at run time), and what the second key is funded with besides gas.
@@ -150,9 +172,11 @@ export const CAMPAIGN_BUDGET_GAS = 30_000_000n;
 /// through the Timelock, the execute carrying the satellite's initcode
 /// (deployments/README.md). Measured on the 31337 rehearsal of 2026-10-13
 /// (the wave-4 integration tree): the card 3,023,544 gas (327,180 to queue,
-/// 2,696,364 to land), the Market 1,647,536, the Roles 1,524,439; the
-/// budget sits over the largest.
-export const SATELLITE_BUDGET_GAS = 3_500_000n;
+/// 2,696,364 to land), the Market 1,647,536, the Roles 1,524,439; and on the
+/// fork of Base Sepolia of 2026-10-18, the first chain with a venue table:
+/// the custodian 3,556,363 (387,918 to queue, 3,168,445 to land). The budget
+/// sits over the largest.
+export const SATELLITE_BUDGET_GAS = 4_000_000n;
 
 /*═══════════════════ signatures and topics ═══════════════════*/
 
@@ -181,13 +205,17 @@ const TOPIC = {
   stamped: topic("Stamped(uint256,uint256,uint256,uint256,address,uint128,uint64)"),
   settled: topic("Settled(uint256,address,address,uint128)"),
   said: topic("Said(uint256,uint256,uint64,uint64,uint64,uint8,uint64,uint64,bytes)"),
-  panicked: topic("Panicked(uint256,uint64,address)")
+  panicked: topic("Panicked(uint256,uint64,address)"),
+  launchCreated: topic("LaunchCreated(uint256,uint256,address,uint8,bytes32)"),
+  seeded: topic("Seeded(uint256,bytes32,address,uint256,uint160,uint160,uint256)"),
+  collected4: topic("Collected(uint256,address,uint256,uint256)"),
+  released4: topic("Released(uint256,address,uint256,uint256)")
 };
 
 /*═══════════════════ the CLI, the token first ═══════════════════*/
 
 export const CLI_OPTIONS = ["chain", "confirm", "rpc", "record", "journal", "campaign", "gateway", "endpoints",
-                            "preflight-only", "skip-deploy", "resume", "key-file", "price", "keep"];
+                            "preflight-only", "skip-deploy", "resume", "key-file", "price", "keep", "fork"];
 
 const args = parseArgs(process.argv.slice(2));
 for (const k of Object.keys(args)) {
@@ -203,10 +231,16 @@ if (!band.rehearsal) {
   process.exit(2);
 }
 const LOCAL = chainId === 31337;
-const RPC_PORT = 8547, GW_PORT = 8082;
-const RPC = args.rpc && args.rpc !== true ? String(args.rpc) : (process.env.RPC_URL || (LOCAL ? `http://127.0.0.1:${RPC_PORT}` : null));
+/// --fork <url>: a hardhat fork of a rehearsal chain, spawned here (the header says what it is for)
+const FORK = args.fork && args.fork !== true ? String(args.fork) : null;
+if (FORK && LOCAL) { console.error("--fork forks a rehearsal chain (84532, 11155111); 31337 is nobody's already"); process.exit(2); }
+if (FORK && (args["key-file"] || args.rpc || args["skip-deploy"] || args.resume)) { console.error("--fork spawns its own node and makes its own key for one run: --rpc, --key-file, --skip-deploy and --resume do not apply"); process.exit(2); }
+/// a chain whose clock this tool may move: 31337, or a fork
+const MOVABLE = LOCAL || Boolean(FORK);
+const RPC_PORT = 8547, GW_PORT = 8082, FORK_PORT = 8548;
+const RPC = FORK ? `http://127.0.0.1:${FORK_PORT}` : args.rpc && args.rpc !== true ? String(args.rpc) : (process.env.RPC_URL || (LOCAL ? `http://127.0.0.1:${RPC_PORT}` : null));
 const SCRATCH = path.join(os.tmpdir(), "intact-testnet");
-const where = (opt, name) => args[opt] && args[opt] !== true ? path.resolve(ROOT, String(args[opt])) : (LOCAL ? path.join(SCRATCH, name) : path.join(ROOT, "deployments", name));
+const where = (opt, name) => args[opt] && args[opt] !== true ? path.resolve(ROOT, String(args[opt])) : (LOCAL ? path.join(SCRATCH, name) : FORK ? path.join(ROOT, "out", "fork", name) : path.join(ROOT, "deployments", name));
 const RECORD = where("record", `${chainId}.json`);
 const JOURNAL = where("journal", `${chainId}.journal.json`);
 const CAMPAIGN = where("campaign", `${chainId}.campaign.json`);
@@ -253,6 +287,7 @@ async function until(fn, label, ms = 60000) {
 /// From --key-file, else PRIVATE_KEY, else (31337 only) hardhat's first
 /// account. Never printed; only its address is.
 function burnerKey() {
+  if (FORK) return kec(Buffer.concat([Buffer.from("intact.fork/1:", "utf8"), Buffer.from(String(Date.now())), keccak256(Buffer.from(String(Math.random())))]));
   if (args["key-file"] && args["key-file"] !== true) return fs.readFileSync(path.resolve(ROOT, String(args["key-file"])), "utf8").trim();
   if (process.env.PRIVATE_KEY) return process.env.PRIVATE_KEY.trim();
   return null;
@@ -303,9 +338,35 @@ async function main() {
   }
   const { RpcChain } = await import("./rpc.mjs");
   for (const p of [RECORD, JOURNAL, CAMPAIGN]) fs.mkdirSync(path.dirname(p), { recursive: true });
+  if (FORK) {
+    /*  A fork run is one-shot: its node and its key end with it, so the
+        files a previous fork run left are of a chain that no longer
+        exists. They are cleared; a path under deployments/ is refused,
+        because that directory holds only what a live chain did.      */
+    for (const p of [RECORD, JOURNAL, CAMPAIGN]) {
+      if (path.relative(path.join(ROOT, "deployments"), p).split(path.sep)[0] !== "..") { console.error(`  a fork's records never go under deployments/ (${rel(p)})`); process.exit(2); }
+      fs.rmSync(p, { force: true });
+    }
+  }
 
-  /*──────────────── the node (31337: a child, unless --rpc) ────────────────*/
+  /*──────────────── the node (31337: a child, unless --rpc; a fork: always a child) ────────────────*/
   let node = null;
+  let forkInfo = null;
+  if (FORK) {
+    head("the node (a fork)");
+    node = child("hardhat-fork", "npx", ["hardhat", "--config", "hardhat.fork.config.cjs", "node", "--port", String(FORK_PORT), "--hostname", "127.0.0.1"], { FORK_URL: FORK, FORK_CHAIN_ID: String(chainId) });
+    note(`npx hardhat --config hardhat.fork.config.cjs node --port ${FORK_PORT} (pid ${node.pid}), forking ${FORK}`);
+    const r0 = new RpcChain(RPC, key, chainId);
+    await until(() => r0.rpc("eth_chainId"), "the fork at " + RPC, 120000);
+    const meta = await r0.rpc("hardhat_metadata", []);
+    forkInfo = { url: FORK, block: meta.forkedNetwork ? String(meta.forkedNetwork.forkBlockNumber) : null, hash: meta.forkedNetwork ? meta.forkedNetwork.forkBlockHash : null };
+    /*  Execution at the fork block itself would need the forked chain's
+        hardfork history; a local block runs this node's own rules
+        (cancun), so the first thing the fork does is mine one.          */
+    await r0.rpc("evm_mine", []);
+    await r0.rpc("hardhat_setBalance", [r0.from.toString(), "0x" + (100n * WAD).toString(16)]);
+    note(`forked at block ${forkInfo.block}; the run's burner ${low(r0.from.toString())} is a fresh key holding 100 ETH on the fork, and nobody's`);
+  }
   if (LOCAL && !(args.rpc && args.rpc !== true)) {
     head("the node");
     node = child("hardhat", "npx", ["hardhat", "node", "--port", String(RPC_PORT), "--hostname", "127.0.0.1"]);
@@ -316,6 +377,7 @@ async function main() {
   /*═══════════════════ preflight (read-only) ═══════════════════*/
   head("preflight (read-only)");
   const c = await RpcChain.open(RPC, key);
+  if (FORK) c.fork = forkInfo;
   const ad = adapt(c);
   const me = low(c.from.toString());
   ok(c.chainId === chainId, `preflight · the node at ${RPC} is chain ${c.chainId}, as --chain says`, `expected ${chainId}`);
@@ -326,7 +388,7 @@ async function main() {
   const blockB = BigInt(await c.rpc("eth_blockNumber"));
   const wall = BigInt(Math.floor(Date.now() / 1000));
   const skew = wall - BigInt(latest.timestamp);
-  const stalled = !LOCAL && (blockB < blockA || skew > 600n);
+  const stalled = !MOVABLE && (blockB < blockA || skew > 600n);
   ok(!stalled, `preflight · the endpoint is live: block ${blockA} → ${blockB}; the latest block's clock is ${skew}s behind the wall clock${LOCAL ? " (a local node mines only on demand)" : ""}`, stalled ? "a replica going backwards, or more than ten minutes behind: refusing to send into it" : undefined);
   if (stalled) throw refuse("the endpoint is stalled");
   const gasPrice = BigInt(await c.rpc("eth_gasPrice"));
@@ -350,6 +412,13 @@ async function main() {
   const out = compile({ quiet: true });
   const ship = shipRule(out);
   ok(ship.build === "diamond" || ship.build === "monolith", `preflight · the ship rule: ${ship.build} — ${ship.reason}`);
+  // the venue table's row, re-proved against this chain before anything is sent
+  const venueRow = VENUES[chainId];
+  if (venueRow) {
+    let held = true;
+    for (const [s, v, d] of await checkVenues(ad, venueRow)) held = ok(v, `preflight · venue · ${s}`, d) && held;
+    if (!held) throw refuse("the venue table's row does not hold on this chain");
+  } else note(`no venue table for chain ${chainId}: the Router is skipped and the custodian refused`);
   // the budget: deploy + campaign
   const ORACLE = "0x420000000000000000000000000000000000000F";
   const oracle = (await ad.codeAt(ORACLE)) !== "0x";
@@ -369,7 +438,8 @@ async function main() {
   const secondFund = (secondGas * gasPrice * 15n) / 10n + l1PerStep * 12n + SECOND_SPEND + 2n * 27_300n * gasPrice;
   const campaignNeed = (campaignGas * gasPrice * 15n) / 10n + l1PerStep * steps + HOLDER_SPEND + 2n * price + secondFund;
   const hasArtifact = (f, n) => { try { artifact(out, f, n); return true; } catch { return false; } };
-  const satelliteKeys = SATELLITE_ORDER.filter((k) => !admitsSatellite(k, { chainId, band: { band: band.band } }) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
+  /// the budget's list, before any record exists: what this chain's band and venue table admit
+  const satelliteKeys = SATELLITE_ORDER.filter((k) => !admitsSatellite(k, { chainId, band: { band: band.band }, venues: VENUES[chainId] || null }) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
   const satelliteNeed = (BigInt(satelliteKeys.length) * SATELLITE_BUDGET_GAS * gasPrice * 15n) / 10n + l1PerStep * 2n * BigInt(satelliteKeys.length);
   const need = deployNeed + campaignNeed + satelliteNeed;
   ok(bal >= need, `preflight · balance ${eth(bal)} ETH covers ${eth(need)} ETH: the deploy ${eth(deployNeed)} (120M gas × ${gasPrice} wei × 1.5 + L1) plus the campaign ${eth(campaignNeed)} (${campaignGas} gas ${measured ? `measured on ${CAMPAIGN_GAS.measuredOn}` : "BUDGET: no wire run measured yet"} × 1.5, two mints at ${eth(price)} ETH, ${eth(HOLDER_SPEND)} ETH the holder spends, ${eth(secondFund)} ETH funding the second key)${satelliteKeys.length ? ` plus the satellites ${eth(satelliteNeed)} (${satelliteKeys.join(", ")}: ${SATELLITE_BUDGET_GAS} gas each, a budget, × 1.5)` : ""}`,
@@ -378,7 +448,7 @@ async function main() {
   const preflight = { rpcChainId: c.chainId, blockA: blockA.toString(), blockB: blockB.toString(), latestTimestamp: String(BigInt(latest.timestamp)), wallClock: wall.toString(), skewSeconds: skew.toString(),
                       gasPrice: gasPrice.toString(), deployer: me, nonce: nonce.toString(), balance: bal.toString(), deployBudget: deployNeed.toString(), campaignBudget: campaignNeed.toString(),
                       campaignGas: campaignGas.toString(), campaignGasMeasuredOn: CAMPAIGN_GAS.measuredOn, secondFund: secondFund.toString(), l1Oracle: oracle ? ORACLE : null, l1Deploy: l1Deploy.toString(), l1PerStep: l1PerStep.toString(),
-                      placeholder: Boolean(plan.placeholder), shipBuild: ship.build, shipReason: ship.reason, price: price.toString() };
+                      placeholder: Boolean(plan.placeholder), shipBuild: ship.build, shipReason: ship.reason, price: price.toString(), fork: forkInfo };
   if (args["preflight-only"]) {
     console.log(`\n  preflight only: nothing was sent. ${eth(need)} ETH is what the whole rehearsal needs at today's gas price.`);
     console.log(`\n  ${pass} passed, ${fail} failed\n`);
@@ -407,8 +477,10 @@ async function main() {
   }
   /*═══════════════════ satellites (post-MVB, through the Timelock) ═══════════════════*/
   head("satellites (the post-MVB contracts, through the Timelock's queue)");
-  if (!satelliteKeys.length) note("no satellite contract is compiled in this tree; the phase runs once one lands (U14–U18)");
-  for (const key of satelliteKeys) {
+  /// the landing's list, from the record itself: a recorded deployment with no venue table admits no custodian
+  const landKeys = SATELLITE_ORDER.filter((k) => !admitsSatellite(k, record) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
+  if (!landKeys.length) note("no satellite contract is compiled in this tree; the phase runs once one lands (U14–U18)");
+  for (const key of landKeys) {
     try {
       const r = await deploySatellite(ad, record, key, { out, recordPath: RECORD, log: (s) => console.log("    " + s.trim()) });
       if (r.queued) {
@@ -422,7 +494,7 @@ async function main() {
     } catch (e) { ok(false, `satellites · ${key}: ${e.message}`); }
   }
   for (const key of SATELLITE_ORDER) {
-    const why = admitsSatellite(key, { chainId, band: { band: band.band } });
+    const why = admitsSatellite(key, record);
     if (why && hasArtifact(SATELLITES[key].file, SATELLITES[key].name)) note(`${key}: not landed on ${chainId} — ${why}`);
   }
 
@@ -433,6 +505,7 @@ async function main() {
   head("campaign (every function family, live, with receipts)");
   const secondKey = deriveSecond(key);
   const c2 = await c.as(secondKey);
+  if (FORK) c2.fork = c.fork;
   const ad2 = adapt(c2);
   const second = low(c2.from.toString());
   let camp = {
@@ -454,7 +527,7 @@ async function main() {
   const save = () => atomicWrite(CAMPAIGN, camp);
   save();
   const V = camp.vars;
-  const landed = (label) => camp.steps.find((s) => s.label === label && (s.status === "0x1" || s.status === "refused" || s.status === "local-only" || s.status === "skipped"));
+  const landed = (label) => camp.steps.find((s) => s.label === label && (s.status === "0x1" || s.status === "refused" || s.status === "local-only" || s.status === "skipped" || s.status === "read"));
   /// One campaign step: run, record as soon as the receipt is in, hold the
   /// endpoint to the receipt's block before the next read.
   const step = async (label, family, actor, run) => {
@@ -488,9 +561,9 @@ async function main() {
   const idFromTransfer = (logs, to) => { const l = logsBy(logs, HUB, TOPIC.transfer).find((x) => low("0x" + x.topics[2].slice(26)) === low(to)); if (!l) throw new Error("no Transfer log for the mint"); return BigInt(l.topics[3]).toString(); };
   const deadline = async () => (await now(c)) + 900n;
   const warp = async (seconds, label) => step(label, "clock", "node", async () => {
-    if (!LOCAL) return { status: "skipped", notes: "a public chain's clock cannot be moved" };
+    if (!MOVABLE) return { status: "skipped", notes: "a public chain's clock cannot be moved" };
     await c.rpc("evm_increaseTime", [Number(seconds)]); await c.rpc("evm_mine", []);
-    return { status: "local-only", notes: `evm_increaseTime(${seconds}) + evm_mine on 31337: the chain's clock reads ${await now(c)}` };
+    return { status: "local-only", notes: `evm_increaseTime(${seconds}) + evm_mine on ${LOCAL ? "31337" : `a fork of ${chainId}`}: the chain's clock reads ${await now(c)}` };
   });
 
   let campaignFailed = null;
@@ -669,6 +742,194 @@ async function main() {
       return { fn: SIG.collect, to: POOL, r, notes: `${delta} wei reached Reach ${reachA} (feeSink of ${A}), exactly the fee owed` };
     });
 
+    /*── the Router: the only door a Reach trades through ──*/
+    const ROUTER = S.router || null;
+    const REQ = "(uint8,address,address,uint256,uint256,uint64,uint256,bytes,(address,address,uint24,int24,address),uint160)";
+    const NOKEY = [ZERO, ZERO, 0, 0, ZERO];
+    if (ROUTER) {
+      await step("the Reach of token 2 swaps ETH for coin on the owned market through the Router", "router", "second", async () => {
+        const amountIn = AMOUNTS.routerSwap;
+        const q = decUint(await read(POOL, "quote(uint256,bool,uint256)", [A, false, amountIn]));
+        const minOut = q - q / 100n;
+        const before = decUint(await read(COIN, "balanceOf(address)", [reachB]));
+        const req = [0, ZERO, COIN, amountIn, minOut, await deadline(), A, "0x", NOKEY, 0n];
+        const r = await ad2.exec(reachB, SIG.execute, [ROUTER, amountIn, enc(`swap(${REQ})`, [req]), 0], { label: "execute → Router.swap" });
+        const got = decUint(await read(COIN, "balanceOf(address)", [reachB])) - before;
+        if (got < minOut) throw Object.assign(new Error(`the Router paid ${got}, under its floor ${minOut}`), { r });
+        return { fn: SIG.execute, to: reachB, r, notes: `${eth(amountIn)} ETH of the Reach's own in, ${got} coin units out (floor ${minOut}), market ${A} by its key` };
+      });
+      await step("a caller that is not a Reach is refused by the Router (proved by its selector)", "refusal", "second", async () => {
+        const req = [0, ZERO, COIN, AMOUNTS.routerSwap, 0n, await deadline(), A, "0x", NOKEY, 0n];
+        const x = await refusal(c, second, ROUTER, `swap(${REQ})`, [req], "NotReach(address)", AMOUNTS.routerSwap);
+        if (!x.refused) throw new Error(x.notes);
+        return { fn: `swap(${REQ})`, to: ROUTER, status: "refused", notes: x.notes };
+      });
+    } else note("no Router on this chain (no venue table): the router family is skipped");
+
+    /*── the v4 path: a raise graduates into a Uniswap v4 pool the custodian holds ──*/
+    const CUST = S.custodian && (await ad.codeAt(S.custodian)) !== "0x" ? S.custodian : null;
+    if (CUST && ROUTER) {
+      const TERMS4 = "(uint32,uint32,uint24,uint24,uint32)";
+      const PARAMS4 = "(uint256,address,uint128,uint128,uint128,uint64,uint64,uint128,uint16,uint16,uint16,uint16,uint64,uint8)";
+      const POSM = record.venues.positionManager, PM = record.venues.poolManager, PERMIT2 = record.venues.permit2;
+      const MIN_SQRT = 4295128739n, MAX_SQRT = 1461446703485210103287273052203988822378723970342n;
+      await step("fund the second key for the v4 path", "v4", "holder", async () => {
+        const gp = BigInt(await c.rpc("eth_gasPrice"));
+        const need = (AMOUNTS.v4Gas * gp * 15n) / 10n;
+        const have = await c.balanceOf(second);
+        if (have >= need) return { status: "skipped", notes: `the second key holds ${eth(have)} ETH, the v4 steps' ${AMOUNTS.v4Gas} gas at ${gp} wei × 1.5 needs ${eth(need)}` };
+        const raw = await c.send({ to: second, value: need - have, label: "fund" });
+        return { fn: "(transfer)", to: second, r: { gas: raw.gas, hash: raw.hash, block: raw.block, logs: [] }, notes: `${eth(need - have)} ETH: the v4 steps' ${AMOUNTS.v4Gas} gas at ${gp} wei × 1.5` };
+      });
+      await step("launch a coin from token 2 for the v4 target", "v4", "second", async () => {
+        const r = await ad2.exec(KILN, SIG.launch, [B, "Rehearsal Four", "RHRS4", 18, AMOUNTS.supply, "0x" + "04".padStart(64, "0"), AMOUNTS.raise], { label: "launch" });
+        const ev = logsBy(r.logs, KILN, TOPIC.launched);
+        if (ev.length !== 1) throw new Error(`expected one Launched log, saw ${ev.length}`);
+        const coin = low("0x" + ev[0].topics[1].slice(26));
+        await awaitCode(ad, coin, "the coin");
+        return { fn: SIG.launch, to: KILN, r, notes: `coin ${coin} from the Launched log, token 2's first launch`, vars: { coin4: coin } };
+      });
+      const COIN4 = V.coin4;
+      const arg4 = "0x" + COIN4.slice(2).padStart(64, "0");
+      await step("mine the hook's salt for exactly its three permissions (a free eth_call)", "v4", "node", async () => {
+        const rh = await read(KILN, "recipeHash(uint8,bytes32)", [1, arg4]);
+        const hash = word(rh, 0), flags = decUint(rh, 1);
+        for (let f = 0n; f < 1_000_000n; f += 8192n) {
+          const m = await read(KILN, "mine(bytes32,uint16,uint256,uint256)", [hash, Number(flags), f, 8192n]);
+          if (decUint(m, 0) !== 1n) continue;
+          const salt = word(m, 1), at = addrAt(m, 2);
+          const predicted = addrAt(await read(CUST, "hookAt(address,bytes32)", [COIN4, salt]));
+          if (predicted !== at) throw new Error(`the custodian predicts ${predicted}, the Kiln mined ${at}`);
+          return { status: "read", notes: `salt ${salt.slice(0, 18)}… within ${f + 8192n} tries; the hook will live at ${at} with flags ${flags} in its low bits, and the custodian predicts the same address`, vars: { hookSalt: salt, hookAt: at } };
+        }
+        throw new Error("no salt in a million tries");
+      });
+      await step("createV4Checked: the v4 target, the hook terms and the mined salt", "v4", "second", async () => {
+        const dl = (await now(c)) + 7n * 86400n;
+        const p = [B, COIN4, AMOUNTS.curve, AMOUNTS.virtualQuote, AMOUNTS.target, 0, 0, 2n ** 128n - 1n, 0, 0, 0, 0, dl, 1];
+        const h = AMOUNTS.v4Terms;
+        const termsHash = await read(PAD, `v4TermsHash(${PARAMS4},${TERMS4},bytes32)`, [p, h, V.hookSalt]);
+        const r = await ad2.exec(PAD, `createV4Checked(${PARAMS4},${TERMS4},bytes32,bytes32)`, [p, h, V.hookSalt, termsHash], { label: "createV4Checked" });
+        const ev = logsBy(r.logs, PAD, TOPIC.launchCreated);
+        if (ev.length !== 1) throw new Error(`expected one LaunchCreated log, saw ${ev.length}`);
+        const launchId = BigInt(ev[0].topics[1]).toString();
+        const cu = await read(CUST, "custodyOf(uint256)", [BigInt(launchId)]);
+        if (addrAt(cu, 0) !== low(COIN4) || addrAt(cu, 3) !== low(V.hookAt)) throw Object.assign(new Error("the custodian did not register the coin and the hook"), { r });
+        return { fn: "createV4Checked", to: PAD, r, notes: `launch ${launchId}, target ${eth(AMOUNTS.target)} ETH; the custodian registered the coin and the hook at ${V.hookAt}; opens at once, locked ${h[1]} s, fee ${h[2] / 10000} % → ${h[3] / 10000} % over ${h[4]} s`, vars: { launchV4: launchId } };
+      });
+      const L4 = BigInt(V.launchV4);
+      for (let i = 1; i <= 4; i++) {
+        if (decUint(await read(PAD, "raisedOf(uint256)", [L4])) >= AMOUNTS.target) break;
+        await step(`the holder buys credits on the v4 launch (${i})`, "v4", "holder", async () => {
+          const r = await ad.exec(PAD, SIG.buy, [L4, 0, await deadline(), 0], { value: AMOUNTS.buy, label: "buy" });
+          return { fn: SIG.buy, to: PAD, r, notes: `${eth(AMOUNTS.buy)} ETH; raised ${eth(decUint(await read(PAD, "raisedOf(uint256)", [L4])))} of ${eth(AMOUNTS.target)} ETH` };
+        });
+      }
+      await step("graduate into a Uniswap v4 pool: the custodian seeds the position through the PositionManager", "v4", "holder", async () => {
+        const r = await ad.exec(PAD, SIG.graduate, [L4], { label: "graduate v4" });
+        const ev = logsBy(r.logs, CUST, TOPIC.seeded);
+        if (ev.length !== 1) throw Object.assign(new Error(`expected one Seeded log, saw ${ev.length}`), { r });
+        const poolId = ev[0].topics[2], hook = low("0x" + ev[0].topics[3].slice(26));
+        const tokenId = decUint(ev[0].data, 0), terminal = decUint(ev[0].data, 1), live = decUint(ev[0].data, 2), liquidity = decUint(ev[0].data, 3);
+        const owner = addrAt(await read(POSM, "ownerOf(uint256)", [tokenId]));
+        const held = decUint(await read(POSM, "getPositionLiquidity(uint256)", [tokenId]));
+        const slot0 = BigInt(await read(PM, "extsload(bytes32)", [kec(Buffer.from(poolId.slice(2) + "06".padStart(64, "0"), "hex"))])) & ((1n << 160n) - 1n);
+        const hookHash = kec(Buffer.from((await ad.codeAt(hook)).slice(2), "hex"));
+        const al = await read(PERMIT2, "allowance(address,address,address)", [CUST, COIN4, POSM]);
+        const checks = [
+          [owner === low(CUST), `the position is the custodian's (ownerOf says ${owner})`],
+          [held === liquidity, `the PositionManager holds the Seeded liquidity for it (${held})`],
+          [slot0 === live, `the PoolManager's slot0 is the seeded price (${slot0})`],
+          [low(hookHash) === low(record.venues.launchHookCodehash), "the hook's codehash is the Router's LAUNCH_HOOK_CODEHASH"],
+          [decUint(al, 0) === 0n, "the custodian's Permit2 allowance is back to zero"],
+          [(await c.balanceOf(CUST)) === 0n, "the custodian holds no ether"],
+          [decUint(await read(COIN4, "balanceOf(address)", [CUST])) === 0n, "nor coin"]];
+        const bad = checks.filter(([v]) => !v).map(([, s]) => s);
+        if (bad.length) throw Object.assign(new Error(bad.join("; ")), { r });
+        return { fn: SIG.graduate, to: PAD, r, notes: `pool ${poolId.slice(0, 12)}… initialised at the terminal sqrt price ${terminal} (slot0 ${live}); position ${tokenId} of the PositionManager, the custodian's, ${liquidity} liquidity; the hook at ${hook} with the codehash the Router pins; Permit2's allowance back to zero, nothing left in the custodian`, vars: { v4TokenId: tokenId.toString(), poolId, v4Hook: hook } };
+      });
+      const key4 = async () => { const k = await read(CUST, "poolKeyOf(uint256)", [L4]); return [addrAt(k, 0), addrAt(k, 1), Number(decUint(k, 2)), Number(BigInt.asIntN(24, decUint(k, 3))), addrAt(k, 4)]; };
+      const quote4 = async (req) => {
+        let d = null;
+        try { await c.call(ROUTER, enc(`quoteExactIn(${REQ})`, [req]), reachB); }
+        catch (e) { d = typeof e.data === "string" ? e.data : (e.data && typeof e.data.data === "string" ? e.data.data : null); if (!d) throw new Error(`the quote failed: ${e.message.slice(0, 200)}`); }
+        if (!d || d.slice(0, 10) !== sel("QuoteResult(uint256,uint256,uint160)")) throw new Error(`no QuoteResult: ${d ? d.slice(0, 10) : "the quote did not revert"}`);
+        return { spent: decUint("0x" + d.slice(10), 0), received: decUint("0x" + d.slice(10), 1) };
+      };
+      await step("the Reach of token 2 approves the Router for exactly the v4 swap", "v4", "second", async () => {
+        const amt = decUint(await read(COIN4, "balanceOf(address)", [reachB])) / 1000n;
+        const r = await ad2.exec(reachB, SIG.execute, [COIN4, 0, enc(SIG.approve, [ROUTER, amt]), 0], { label: "execute → approve" });
+        return { fn: SIG.execute, to: reachB, r, notes: `${amt} coin units, exactly the swap's input`, vars: { v4CoinIn: amt.toString() } };
+      });
+      await step("swap coin for ETH through the Router on the v4 pool: the hook's fee applies", "v4", "second", async () => {
+        const k = await key4(), amountIn = BigInt(V.v4CoinIn);
+        const at = (minOut) => [2, COIN4, ZERO, amountIn, minOut, 0n, 0n, "0x", k, MAX_SQRT - 1n];
+        const dl = await deadline();
+        const q = await quote4([...at(0n).slice(0, 5), dl, ...at(0n).slice(6)]);
+        const minOut = q.received - q.received / 100n;
+        const before = await c.balanceOf(reachB);
+        const r = await ad2.exec(reachB, SIG.execute, [ROUTER, 0, enc(`swap(${REQ})`, [[...at(minOut).slice(0, 5), dl, ...at(minOut).slice(6)]]), 0], { label: "execute → Router.swap v4" });
+        const got = (await c.balanceOf(reachB)) - before;
+        if (got < minOut) throw Object.assign(new Error(`the Reach received ${got} wei, under the floor ${minOut}`), { r });
+        const fee = decUint(await read(V.v4Hook, "feeAt(uint64)", [await now(c)]));
+        return { fn: SIG.execute, to: reachB, r, notes: `${amountIn} coin units in, ${got} wei out (quoted ${q.received}); the hook's fee at this block ${Number(fee) / 10000} %` };
+      });
+      await step("swap ETH for coin through the Router on the v4 pool", "v4", "second", async () => {
+        const k = await key4(), amountIn = AMOUNTS.v4EthIn, dl = await deadline();
+        const at = (minOut) => [2, ZERO, COIN4, amountIn, minOut, dl, 0n, "0x", k, MIN_SQRT + 1n];
+        const q = await quote4(at(0n));
+        const minOut = q.received - q.received / 100n;
+        const before = decUint(await read(COIN4, "balanceOf(address)", [reachB]));
+        const r = await ad2.exec(reachB, SIG.execute, [ROUTER, amountIn, enc(`swap(${REQ})`, [at(minOut)]), 0], { label: "execute → Router.swap v4" });
+        const got = decUint(await read(COIN4, "balanceOf(address)", [reachB])) - before;
+        if (got < minOut) throw Object.assign(new Error(`the Reach received ${got} coin units, under the floor ${minOut}`), { r });
+        return { fn: SIG.execute, to: reachB, r, notes: `${eth(amountIn)} ETH of the Reach's own in, ${got} coin units out (quoted ${q.received})` };
+      });
+      await step("collect: the v4 position's fees to feeSink(2), by anyone", "v4", "holder", async () => {
+        const sink = addrAt(await read(HUB, "feeSink(uint256)", [B]));
+        const e0 = await c.balanceOf(sink), c0 = decUint(await read(COIN4, "balanceOf(address)", [sink]));
+        const r = await ad.exec(CUST, "collect(uint256)", [L4], { label: "collect v4" });
+        const ev = logsBy(r.logs, CUST, TOPIC.collected4);
+        if (ev.length !== 1) throw Object.assign(new Error(`expected one Collected log, saw ${ev.length}`), { r });
+        const a0 = decUint(ev[0].data, 0), a1 = decUint(ev[0].data, 1);
+        const e1 = await c.balanceOf(sink), c1 = decUint(await read(COIN4, "balanceOf(address)", [sink]));
+        if (a0 === 0n || a1 === 0n || e1 - e0 !== a0 || c1 - c0 !== a1) throw Object.assign(new Error(`Collected ${a0} wei and ${a1} coin units; the sink moved ${e1 - e0} and ${c1 - c0}`), { r });
+        return { fn: "collect(uint256)", to: CUST, r, notes: `${a0} wei and ${a1} coin units of fees reached feeSink(2) ${sink}, collected by token 1's holder, nothing through the custodian` };
+      });
+      await step("release is refused before the unlock (proved by its selector)", "refusal", "second", async () => {
+        const x = await refusal(c, second, CUST, "release(uint256)", [L4], "StillLocked(uint64)");
+        if (!x.refused) throw new Error(x.notes);
+        return { fn: "release(uint256)", to: CUST, status: "refused", notes: `${x.notes}: the principal waits for unlocksAt` };
+      });
+      await step("the ratchet: extend the lock by a day", "v4", "second", async () => {
+        const before = decUint(await read(CUST, "unlocksAt(uint256)", [L4]));
+        const r = await ad2.exec(CUST, "extend(uint256,uint64)", [L4, before + 86400n], { label: "extend" });
+        const after = decUint(await read(CUST, "unlocksAt(uint256)", [L4]));
+        if (after !== before + 86400n) throw Object.assign(new Error(`unlocksAt ${after}, not ${before + 86400n}`), { r });
+        return { fn: "extend(uint256,uint64)", to: CUST, r, notes: `unlocksAt ${before} → ${after}`, vars: { v4Unlocks: after.toString() } };
+      });
+      await step("a shorter lock is refused (proved by its selector)", "refusal", "second", async () => {
+        const x = await refusal(c, second, CUST, "extend(uint256,uint64)", [L4, BigInt(V.v4Unlocks) - 1n], "RatchetOnly()");
+        if (!x.refused) throw new Error(x.notes);
+        return { fn: "extend(uint256,uint64)", to: CUST, status: "refused", notes: x.notes };
+      });
+      if (MOVABLE) {
+        await warp(BigInt(V.v4Unlocks) - (await now(c)) + 60n, "move the chain's clock past the v4 lock");
+        await step("release: the principal home to the Reach once the lock has passed", "v4", "second", async () => {
+          const e0 = await c.balanceOf(reachB), c0 = decUint(await read(COIN4, "balanceOf(address)", [reachB]));
+          const r = await ad2.exec(CUST, "release(uint256)", [L4], { label: "release v4" });
+          const ev = logsBy(r.logs, CUST, TOPIC.released4);
+          if (ev.length !== 1) throw Object.assign(new Error(`expected one Released log, saw ${ev.length}`), { r });
+          const a0 = decUint(ev[0].data, 0), a1 = decUint(ev[0].data, 1);
+          const e1 = await c.balanceOf(reachB), c1 = decUint(await read(COIN4, "balanceOf(address)", [reachB]));
+          let left = null;
+          try { left = decUint(await read(POSM, "getPositionLiquidity(uint256)", [BigInt(V.v4TokenId)])); } catch { left = 0n; }
+          if (a0 === 0n || a1 === 0n || e1 - e0 !== a0 || c1 - c0 !== a1 || left !== 0n) throw Object.assign(new Error(`Released ${a0} wei and ${a1} coin units; the Reach moved ${e1 - e0} and ${c1 - c0}; liquidity left ${left}`), { r });
+          return { fn: "release(uint256)", to: CUST, r, notes: `${eth(a0)} ETH and ${a1 / WAD} coin of principal and fees reached Reach ${reachB}, only the Reach; the position is burned` };
+        });
+      } else note("a public chain's clock cannot be moved: the release waits for unlocksAt (refused above, by its selector)");
+    } else note(`the v4 family is skipped: ${!ROUTER ? "no Router on this chain (no venue table)" : "the custodian has not landed here yet — it waits for the Timelock's delay; a fork (--fork) walks this path in-run"}`);
+
     /*── a lock to the Reach ──*/
     await step("lock ETH to the Reach, due in two minutes", "lock", "holder", async () => {
       const due = (await now(c)) + AMOUNTS.lockSeconds;
@@ -720,7 +981,7 @@ async function main() {
       const r = await ad.exec(STEWARD, SIG.arrange, [A, h, AMOUNTS.quiet, AMOUNTS.notice, [], 0], { label: "arrange" });
       return { fn: SIG.arrange, to: STEWARD, r, notes: `wouldPass ${decUint(await read(STEWARD, "wouldPass(uint256)", [A]))} (2 = SPEAKING), quiet 30 d, notice 14 d` };
     });
-    if (LOCAL) {
+    if (MOVABLE) {
       await warp(AMOUNTS.quiet + 60n, "move the chain's clock past the quiet period");
       await step("summon the heir after the silence", "steward", "second", async () => {
         const r = await ad2.exec(STEWARD, SIG.summon, [A, second, SALT], { label: "summon" });
@@ -753,7 +1014,7 @@ async function main() {
     await step("release the lock when due", "lock", "second", async () => {
       const id = BigInt(V.lockId), due = BigInt(V.lockDue);
       for (let i = 0; i < 60 && (await now(c)) < due; i++) {
-        if (LOCAL) { await c.rpc("evm_increaseTime", [Number(due - (await now(c)) + 1n)]); await c.rpc("evm_mine", []); break; }
+        if (MOVABLE) { await c.rpc("evm_increaseTime", [Number(due - (await now(c)) + 1n)]); await c.rpc("evm_mine", []); break; }
         await nap(5000);
       }
       const releasable = decUint(await read(LOCKS, "releasable(uint256)", [id]));
@@ -820,7 +1081,7 @@ async function main() {
   };
   let gw = null;
   const gatewayUrl = args.gateway && args.gateway !== true ? String(args.gateway).replace(/\/$/, "") : null;
-  if (gatewayUrl || LOCAL) {
+  if (gatewayUrl || MOVABLE) {
     let url = gatewayUrl;
     if (!url) {
       gw = child("gateway", process.execPath, ["tools/gateway.mjs", "--record", RECORD, "--port", String(GW_PORT), "--host", "127.0.0.1"], { RPC_URL: RPC });
@@ -877,7 +1138,10 @@ async function main() {
   ok(true, `disposition · Timelock admin ${admin}: ${disposition}`);
   ok(true, `disposition · the burner ${me} ends at nonce ${finalNonce} with ${eth(finalBal)} ETH; the second key ${second} keeps ${eth(secondBal)} ETH`);
   save();
-  if (args["key-file"] && args["key-file"] !== true && campaignFailed && !KEEP) {
+  if (FORK) {
+    camp.disposition.keyFile = "a fork's own key, made for this run: nothing to destroy";
+    ok(true, "disposition · the fork's key was made for this run and lives nowhere else; the fork ends with the node");
+  } else if (args["key-file"] && args["key-file"] !== true && campaignFailed && !KEEP) {
     /*  A campaign that stopped is resumed with --resume by the same key:
         destroying it now would strand the deployment's holder, its tokens
         and the burner's remainder (the first Base Sepolia rehearsal did).

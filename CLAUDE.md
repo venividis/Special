@@ -24,6 +24,8 @@ node tools/check.mjs --only verify:pool,invariants   # a PARTIAL run (never call
 npm run mutations                     # tools/mutations.mjs: the E1/E3 mutation gate (not in check; minutes per mutation)
 npm run drive                         # tools/testnet-drive.mjs: the console journey over a wire (hardhat on 8546, the gateway on 8081)
 npm run testnet -- --chain 31337 --confirm DEPLOY_INTACT_LOCAL   # tools/testnet.mjs: the rehearsal over a wire (hardhat on 8547, the gateway on 8082); docs/DEPLOYMENT.md
+npm run testnet -- --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --fork https://sepolia.base.org   # the same against a fork of the chain (8548): the real venues, the v4 path, records under out/fork/
+npm run verify:venues                 # tools/verify-venues.mjs: the venue table re-proved against the chains (RPC_URL_<id>)
 ```
 
 The first viaIR compile of `src/` takes about three minutes; `src/` plus
@@ -148,6 +150,19 @@ after wave 0: a change is additive only and goes in
   latest block the endpoint reports (`tag()`, shared by every `as()` key),
   and `call` retries "header not found" for up to a minute as lag, never as
   an answer. A campaign that stops keeps its key for `--resume`.
+- **A hardhat fork runs nothing at the fork block.** Executing at the
+  forked block itself needs the forked chain's hardfork history, which
+  the node is not given (`chains` in a config did not take, hardhat
+  2.29.1), so `tools/testnet.mjs --fork` mines one local block before it
+  reads anything; from a local block the node's own rules (cancun) apply.
+  The forked endpoint must keep that block's state for the whole run, and
+  some public ones do not.
+- **The venue table is evidence, not memory.** A `VENUES` row is filled
+  only from a source that names the addresses (Uniswap's deployment feed)
+  and only after a probe; it carries the probe (`probed`: date, block,
+  codehashes) and `checkVenues` re-proves it before every deploy over a
+  wire. A row whose code moved refuses the deploy by name; re-probe it in
+  a dated commit, never edit a hash to match.
 - **hardhat must run cancun.** Left to default it runs Osaka, where
   EIP-7825 caps a transaction at 2^24 gas and applies that cap to
   `eth_call` too, so `tokenURI` fails with a bare revert while every

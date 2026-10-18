@@ -46,6 +46,9 @@ const fetcher = async (url) => {
     compiling, mostly) surfaces as "other side closed" on the next request.
     That is not the node failing — retry on transport errors only, never on
     an RPC error, which is an answer.                                    */
+/// What a replica behind the pin says: lag, retried. Anything else the node
+/// says ("Method not found", a revert) is an answer and thrown at once.
+const LAG = /header not found|unknown block|block not found|missing trie node|missing block/i;
 const call = async (url, method, params = []) => {
   let last, lagged = 0;
   for (let attempt = 0; attempt < 7; attempt++) {
@@ -67,7 +70,7 @@ const call = async (url, method, params = []) => {
           replica the balancer picks, and a replica one block behind reports
           a pinned read as "header not found". That is lag, not an answer —
           retry it like a transport error.                               */
-      if (e.rpc && !/not found|header|missing|unknown block/i.test(e.message)) throw e;
+      if (e.rpc && !LAG.test(e.message)) throw e;
       last = e;
       /*  Lag has its own patience: a replica can sit a few blocks behind
           the one the pin names, and every retry is another draw from the
