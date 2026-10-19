@@ -60,8 +60,44 @@
     precision; dates in UTC; the clock is the chain's (ui.clock) for the
     grant's expiry and the panic list's seal date.
 
-    Cut from this lane for the byte ceiling (8,192 B gzip, build-failing;
-    measured 8,166 B with everything below in): guard/unguard (the manifest
+    V2 (W10, docs/V2.md §3.1, docs/v2/W10-vault.md): KEEPSAKES, the first
+    section, where the Keepsake reports (S.bits.keepsake by S.reported /
+    S.absent; elsewhere the §6.3 chip and not one read of the codeless
+    address). A keepsake is coins locked together under one schedule,
+    kept or given, freed slowly, optionally sold slowly:
+      · found from the Keepsake's Transfer logs to the connected wallet and
+        to this token's Reach, in one eth_getLogs (topic 2 an "any of"
+        list), each id kept while ownerOf still names one of the two; a
+        refused range is a sentence, never an empty list;
+      · drawn as its orb (its own tokenURI image, accepted only as a base64
+        data:image/svg+xml), its coins (symbol and decimals read live; what
+        each still holds), the schedule as a bar and "<n> % free · fully
+        free on <date>" on the chain's clock (ui.clock), what a claim pays
+        now (claimable), its slow sale in words ("sells slowly, never below
+        P OUT per IN"), its note;
+      · claim is anyone's and says whom it pays; lengthen (only ever
+        later: a non-positive count is refused in words), the slow sale set
+        in human terms (P OUT per IN is P × 10^decOut × 1e18 / 10^decIn,
+        rounded up) or stopped, give ("the keepsake and everything in it
+        becomes theirs") and a memory into its own journal are the
+        holder's: its wallet directly, or this token's Reach through
+        execute (HOLD, and [data-spend] as every execute is);
+      · made from the page: ETH and up to seven coins by address, "locked
+        for N days, then freed over M days", for you or a gift to an
+        address with a note of at most 280 bytes, a slow sale only on one
+        you keep; ui.approveExactThen lays each coin's exact approval
+        first, then wrap with value the ETH to the wei; the new number is
+        read from the receipt's Wrapped log, never from a read after it.
+    No row serves tokenURI(uint256): its calldata is laid by hand
+    (0xc87b56dd) and sent through ui.request's eth_call; ownerOf is the
+    hub's ownerOf(uint256) row, the same ERC-721 selector, read at the
+    Keepsake. The Grip's copy button no longer throws in a data: frame
+    (navigator.clipboard is undefined there): it says copying is not
+    available. Every field carries its label as its accessible name.
+
+    Cut from this lane for the byte ceiling (8,192 B gzip in V1, build-
+    failing; measured 8,166 B with everything below in; V2's ceiling is
+    12,288 B and W10 measured 12,209 B with the keepsakes in): guard/unguard (the manifest
     is read, never edited here), grantRecipe (an allowlist session is the
     one grant), stillHereUnderDuress, getWill/getObit prose (the status
     word and the controls it admits are the plan's whole surface here),
@@ -74,6 +110,19 @@
 
     Elements this panel introduces (CONSOLE §6.2; the suite reads them
     scoped to #lane-vault):
+      #vault-keepsakes (V2: the section; its .chip[data-state=absent|unread] "keepsake: …" where the Keepsake does
+                      not report), #vault-keepsakes-status ("<n> held by this wallet or #<id>'s Reach" / "none held
+                      by … yet" / "the keepsakes could not be found on this endpoint: …"),
+                      #vault-keepsakes-list .keepsake[data-id=<id>] (img the orb, p.k, p.s "made by … · held by …" or
+                      "a gift from … · held by …", p.note, .kv per coin, progress[value] (aria-hidden), p.free,
+                      p.claimable, p.drip, [data-act=claim]; the holder's details: "lengthen it" input name=more
+                      [data-act=extend], "sell it slowly as it frees" inputs name=dsell|dmkt|dfloor|dmax
+                      [data-act=setDrip|clearDrip], "give it" input name=give [data-act=give], "write a memory
+                      into it" input name=memory [data-act=inscribe], or the journal's chip)
+      #vault-make (inputs name=eth, .coin rows of name=token|amount with p.s "<SYM> · <d> decimals", name=lock|over|to|note,
+                      a details of name=dsell|dmkt|dfloor|dmax), #vault-make-add, [data-act=wrap], #vault-keepsake-made
+                      ("keepsake #<id> is made[, a gift to 0x… … ] · its number from the Wrapped log")
+      [data-spend] on wrap, give, and every change of a keepsake the Reach holds
       #vault-reach, #vault-holdings .row (ETH, then one per manifest asset: a measurement or
                                    "not measurable"), #vault-manifest
       #vault-seal-note, #vault-seal-until (input, min = the live sealedUntil; a date as
@@ -97,7 +146,10 @@
     Sentences the group proves (tools/verify-site/vault.mjs): "the vault
     lists open approvals and revokes in one press", "panic lists what it
     revokes", and the Reach's half of "every approval the slab builds is
-    exact" (F10, owned by swap.mjs).                                       */
+    exact" (F10, owned by swap.mjs). V2 adds the V0–V6 blocks there (on a
+    deploySite({ v2: true }) chain) and the keepsake journey in
+    tools/verify-console.mjs's vault group; docs/v2/W10-vault.md lists
+    every sentence and the rows they propose.                              */
 (function () {
   var S = window.INTACT, ui = S && S.ui;
   if (!ui) return;
@@ -107,16 +159,21 @@
     var el = ui.el, kv = ui.kv, note = ui.note, act = ui.act, read = ui.read, say = ui.say, fmt = ui.fmt, short = ui.short, propose = ui.propose, clock = ui.clock, isAddr = ui.isAddr, cks = ui.checksum;
     var GRANT = "grantSession(address,uint64,uint128,(address,uint128)[],address[],bytes4[],uint32,uint32)", BATCH = "executeBatch((address,uint256,bytes)[])";
     /* the rows this panel calls and nothing else, by contract word; ui.rows holds every signature to the selector the chain baked */
-    var M = {};
-    [["reach", "execute(address,uint256,bytes,uint8)", BATCH, "seal(uint64)", "sealMax()", "revokeOpenApprovals()", GRANT, "revokeSession(address)", "revokeAllSessions()",
+    var decl = function (L) { var M = {}; L.forEach(function (r) { r.slice(1).forEach(function (s) { M[r[0] + "." + s.split("(")[0]] = s; }); }); ui.rows(M); };
+    decl([["reach", "execute(address,uint256,bytes,uint8)", BATCH, "seal(uint64)", "sealMax()", "revokeOpenApprovals()", GRANT, "revokeSession(address)", "revokeAllSessions()",
       "sessionOf(address)", "sessionExposure(address)", "openApprovals()", "holdings()", "pieces()", "sealedUntil()"],
      ["steward", "arrange(uint256,bytes32,uint64,uint64,address[],uint8)", "stillHere(uint256)", "cancel(uint256)", "summon(uint256,address,bytes32)", "attest(uint256,address,uint32)",
       "execute(uint256)", "wouldPass(uint256)", "heirHashOf(address,bytes32)", "heirHashOfToken(uint256,bytes32)"],
      ["hub", "panic(uint256)", "release(uint256)", "transferFrom(address,address,uint256)", "isCanonicalAccount(address,uint256,bool)", "coreOf(uint256)", "rightsOf(uint256,address)"],
      ["parley", "keyOf(uint256)"], ["postage", "inboxOf(uint256)"], ["launchpad", "firstLaunchApproved(uint256)", "launchesOf(uint256)"], ["pool", "marketOf(uint256)"], ["locks", "lockCountOf(address)"],
      ["erc20", "allowance(address,address)", "symbol()", "decimals()", "approve(address,uint256)"]
-    ].forEach(function (r) { r.slice(1).forEach(function (s) { M[r[0] + "." + s.split("(")[0]] = s; }); });
-    ui.rows(M);
+    ]);
+    /* V2: the Keepsake's rows, and the Journal's for a keepsake's own memories, are declared only where each reports,
+       so a band whose Catalog predates them still opens this lane. No keepsake.ownerOf or keepsake.tokenURI row is
+       served: ownerOf is the hub's ERC-721 row (the same selector, held to the chain's by ui.rows) read at the Keepsake */
+    var KS = S.keepsake, KB = S.bits.keepsake, JB = S.bits.journal, DT = "(uint8,uint256,uint256,uint256)", ETH = { s: "ETH", d: 18 }, made = "";
+    if (S.reported & KB) decl([["keepsake", "wrap(((address,uint256)[],(uint64,uint64,uint64),address,string," + DT + "))", "claim(uint256)", "claimable(uint256)", "extend(uint256,uint64)",
+      "setDrip(uint256," + DT + ")", "clearDrip(uint256)", "transferFrom(address,address,uint256)", "keepsakeOf(uint256)"], ["hub", "ownerOf(uint256)"]].concat(S.reported & JB ? [["journal", "inscribe(address,uint256,uint8,bytes,bytes32)"]] : []));
 
     /*── words ──*/
     var lower = function (s) { return String(s).toLowerCase(); };
@@ -133,7 +190,8 @@
     var v = function (x, f) { return x.v ? f(x.v) : x.e; };
     var WORDS = ["nothing arranged", "void (sold)", "speaking", "summonable", "waiting", "locked", "bad hands", "ready"];
     var U32 = 4294967295n, gen = 0, batch = [], armed = null, armedP = false, can, hold, gd, cu, bits, seenBits, seenAcct;
-    var fld = function (p, k, label, d) { var i = ui.field(p, label, d); i.value = d; i.name = k; return i; };
+    /* the label is also the input's accessible name: ui.field draws it as text beside the box, not as a <label> */
+    var fld = function (p, k, label, d) { var i = ui.field(p, label, d); i.value = d; i.name = k; i.setAttribute("aria-label", label); return i; };
     var digits = function (i, max, what) { var s = i.value.trim(); if (!/^\d+$/.test(s) || BigInt(s) > max) throw Error(what + ": a whole number up to " + max); return BigInt(s); };
     /* one address, or a comma-separated list of them */
     var addr = function (i, what, many) { var xs = i.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean); if (!xs.every(isAddr) || !many && xs.length !== 1) throw Error(what + ": " + (many ? "addresses separated by commas" : "an address")); return many ? xs : xs[0]; };
@@ -259,7 +317,8 @@
       note(b, "the hand that only holds: nothing can ever leave it, by no function, key, holder or sale; what goes in is permanent", "warn").id = "vault-grip-warning";
       a.id = "vault-grip-address"; b.append(a);
       try { b.append(ui.qr("ethereum:" + GR + "@" + S.chainId)); } catch (e) {}
-      ui.button(b, "copy", true, function () { navigator.clipboard.writeText(GR).then(function () { say("copied", "ok"); }, oops); }).classList.add("copy");
+      /* a data: frame is no secure context: navigator.clipboard is undefined there (W7's observation), so it is said, not thrown */
+      ui.button(b, "copy", true, function () { var c = navigator.clipboard; c ? c.writeText(GR).then(function () { say("copied", "ok"); }, oops) : say("copying is not available in this frame; select the address above to copy it", "err"); }).classList.add("copy");
       var bal = slot(b, "ETH", "vault-grip-eth");
       ui.request("eth_getBalance", [GR, "latest"]).then(function (h) { if (g === gen) bal.textContent = eth(BigInt(h)); }, bad(g, bal));
     }
@@ -268,7 +327,7 @@
     function sessions(g) {
       var b = sect("vault-sessions", "sessions");
       note(b, "the Reach keeps no list of its keys: the grant log is walked, and each key is confirmed by the hub");
-      var ki = ui.field(b, "inspect a key", "0x…"), info = slot(b, "key", "vault-session-info"); ki.id = "vault-session-key"; info.textContent = "";
+      var ki = ui.field(b, "inspect a key", "0x…"), info = slot(b, "key", "vault-session-info"); ki.id = "vault-session-key"; ki.setAttribute("aria-label", "inspect a key"); info.textContent = "";
       ki.addEventListener("input", function () {
         var k = ki.value.trim(); if (!isAddr(k)) return info.textContent = "";
         info.textContent = "reading…";
@@ -425,6 +484,167 @@
       b.append(ls);
     }
 
+    /*═══════════ keepsakes: coins locked together, kept or given, freed slowly, sold slowly (V2 §3.1) ═══════════*/
+    var VIEW = ["address", "address", "uint64", "(uint64,uint64,uint64)", "(address,uint256)[]", "uint256[]", "uint256[]", "(address,uint256)[]", "string", DT, "uint64"];
+    var metaOf = function (t) { return same(t, ZERO) ? Promise.resolve(ETH) : meta(t); };
+    var and = function (xs) { return xs.length > 1 ? xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1] : xs[0]; };
+    var sc = function (a) { return short(cks(a)); }, whose = function (h) { return same(h, seenAcct) ? "you" : same(h, RE) ? RCH : sc(h); };
+    /* progressive depth: what is optional or the holder's opens on a tap, a native disclosure */
+    var dd = function (p, t) { var d = el("details"); d.append(el("summary", "", t)); p.append(d); return d; };
+    /* the orb is the keepsake's own tokenURI image, a data: SVG and nothing else. No row serves tokenURI(uint256),
+       so its calldata is laid here: 0xc87b56dd is selector("tokenURI(uint256)"), which the suite recomputes */
+    var orb = function (id) {
+      return ui.request("eth_call", [{ to: KS, data: "0xc87b56dd" + E.W(id) }, "latest"]).then(function (h) {
+        var j = atob(decodeURIComponent(h.slice(130, 130 + 2 * parseInt(h.slice(66, 130), 16)).replace(/../g, "%$&")).split(",")[1]).match(/"image":"(data:image\/svg\+xml;base64,[\w+\/=]+)"/);
+        return j && j[1];
+      });
+    };
+    /* the holder acts: its own wallet directly, or this token's Reach through execute, which is HOLD's and, as every
+       execute is, a spending control (CONSOLE §3) */
+    var hs = function (k, to, key, args, lines, sentence, o) {
+      var r = same(k.h, RE);
+      return propose(Object.assign({ to: r ? RE : to, key: r ? "reach.execute" : key, args: r ? [to, 0n, ui.data(key, args), 0n] : args, need: r ? R.HOLD : 0, spend: r, lines: lines, sentence: sentence, then: paint }, o));
+    };
+    /* a slow sale in a person's words — a coin of the keepsake by its symbol or address, a Pool market, the floor as a
+       price — becomes DripTerms: P OUT per IN is P × 10^decOut × 1e18 / 10^decIn, rounded up, so nothing sells below
+       the price typed (W1: the floor is output units per 1e18 input units) */
+    var price = function (fl, ci, co) { return fmt(fl * 10n ** BigInt(ci.d), co.d + 18, co.d + 18) + " " + co.s + " per " + ci.s; };
+    var dripF = function (p) { return [fld(p, "dsell", "sell slowly: which coin", ""), fld(p, "dmkt", "in Pool market #", String(ID)), fld(p, "dfloor", "never below this price, for one", ""), fld(p, "dmax", "at most each time", "")]; };
+    var dripOf = function (f, xs) {
+      var q = lower(f[0].value.trim()), i = xs.findIndex(function (a) { return lower(a[2].s) === q || same(a[0], q); }), a = xs[i], s = f[1].value.trim(), m = /^\d{1,78}$/.test(s) && BigInt(s);
+      if (!a || a[2].d == null) throw Error("sell which coin?");
+      if (m === false || m >> 256n) throw Error("the market: its number");
+      return rd(S.pool, "pool.marketOf", [m]).then(function (r) {
+        var o = same(r.a(0), a[0]) ? r.a(1) : same(r.a(1), a[0]) && r.a(0);
+        if (!r.b(7) || !o) throw Error("market #" + m + " does not trade " + a[2].s);
+        return metaOf(o);
+      }).then(function (c) {
+        var P = f[2].value.trim(), X = f[3].value.trim(), fl, mx, w;
+        if (c.d == null || !+P || !+X) throw Error("a slow sale needs a price and an amount");
+        fl = (ui.parse(P, c.d + 18) + 10n ** BigInt(a[2].d) - 1n) / 10n ** BigInt(a[2].d); mx = ui.parse(X, a[2].d); w = price(fl, a[2], c);
+        return { t: [i, m, fl, mx], w: "anyone may sell its " + a[2].s + " as it frees, at most " + amt(mx, a[2]) + " each time, into market #" + m + ", never below " + w,
+          l: [["Terms", "asset " + i + " · market #" + m + " · floor " + fl + " per 1e18 · at most " + mx]] };
+      });
+    };
+    /*  Found from the Keepsake's Transfer logs to the connected wallet and to this token's Reach, in one walk; each id
+        kept only while ownerOf still names one of the two. A refused range is a sentence, never an empty list. */
+    function keepsakes(g) {
+      var b = sect("vault-keepsakes", "keepsakes");
+      if (three(b, KB, "keepsake")) return;
+      note(b, "coins locked together: nothing frees before the lock ends, then it frees slowly to whoever holds the keepsake");
+      var st = el("p", "s", "reading…"), ls = el("div"), who = seenAcct ? [seenAcct, RE] : [RE], here = (seenAcct ? "this wallet or " : "") + RCH, now = clock();
+      st.id = "vault-keepsakes-status"; ls.id = "vault-keepsakes-list"; b.append(st, ls); now.catch(function () {});
+      ui.walkLogs({ address: KS, topics: [S.topics.transfer, null, who.map(function (a) { return "0x" + E.A(a); })], fromBlock: "0x0", toBlock: "latest" }).then(function (logs) {
+        var ids = []; (logs || []).forEach(function (l) { var i = BigInt(l.topics[3]); if (ids.indexOf(i) < 0) ids.push(i); });
+        return Promise.all(ids.map(function (i) { return rd(KS, "hub.ownerOf", [i]).then(function (r) { return { id: i, h: r.a(0) }; }); }));
+      }).then(function (xs) {
+        if (g !== gen) return;
+        xs = xs.filter(function (k) { return who.some(function (a) { return same(a, k.h); }); });
+        st.textContent = xs.length ? xs.length + " held by " + here : "none held by " + here + " yet";
+        xs.forEach(function (k) { card(ls, k, g, now); });
+      }).catch(function (e) { if (g === gen) st.textContent = "the keepsakes could not be found on this endpoint: " + (e && e.message); });
+      if (can) make(b);
+    }
+    /* one keepsake: its orb, its coins, the schedule as a filling bar on the chain's clock, what a claim pays now, its
+       slow sale in words, its note; a claim for anyone, the rest for its holder */
+    function card(ls, k, g, now) {
+      var id = k.id, tk = "keepsake #" + id, c = el("div", "card keepsake"), o = el("img");
+      c.dataset.id = String(id); ls.append(c); c.append(el("p", "k", tk));
+      o.alt = tk + "'s orb"; o.style.cssText = "display:block;width:150px;margin:auto;border-radius:50%";
+      orb(id).then(function (s) { if (s && g === gen) { o.src = s; c.insertBefore(o, c.childNodes[1]); } }, function () {});
+      Promise.all([rd(KS, "keepsake.keepsakeOf", [id]), rd(KS, "keepsake.claimable", [id]), now]).then(function (x) {
+        var v = x[0].tuple(0, VIEW), fr = x[1].arr(0, "(address,uint256)"), pr = x[1].arr(1, "(address,uint256)");
+        return Promise.all(v[4].concat(pr).map(function (a) { return metaOf(a[0]); })).then(function (ms) {
+          if (g !== gen) return;
+          var xs = v[4].map(function (a, i) { return [a[0], a[1], ms[i]]; }), s0 = v[3][0], cl = v[3][1], e = v[3][2], t = x[2], dr = v[9], bar = el("progress"),
+              pc = t < cl ? 0n : t < e ? (t - s0) * 100n / (e - s0) : 100n, due = fr.concat(pr).map(function (a, i) { return a[1] ? amt(a[1], ms[i]) : ""; }).filter(Boolean);
+          c.append(el("p", "s", (same(v[1], k.h) ? "made by " : "a gift from ") + whose(v[1]) + " · held by " + whose(k.h)));
+          if (v[8]) c.append(el("p", "blurb note", "“" + v[8] + "”"));
+          xs.forEach(function (a, i) { kv(c, a[2].s, amt(a[1] - v[5][i] - v[6][i], a[2])); });
+          /* the bar fills on the chain's clock; the sentence beside it says the same, so the bar is hidden from readers */
+          bar.max = 100; bar.setAttribute("value", pc); bar.setAttribute("aria-hidden", "true"); bar.style.cssText = "width:100%;accent-color:var(--a)";
+          c.append(bar, el("p", "s free", pc + " % free · " + (t < cl ? "nothing frees before " + date(cl) + " · " : "") + "fully free " + (t < e ? "on " : "since ") + date(e)),
+            el("p", "v claimable", due.length ? "ready to claim now: " + and(due) : "nothing to claim yet"));
+          var dp = el("p", "s drip", dr[2] ? "reading…" : "no slow sale"), a = xs[Number(dr[0])]; c.append(dp);
+          if (dr[2]) rd(S.pool, "pool.marketOf", [dr[1]]).then(function (r) { return metaOf(same(r.a(0), a[0]) ? r.a(1) : r.a(0)); }).then(function (m) {
+            if (g === gen) dp.textContent = "sells slowly, never below " + price(dr[2], a[2], m) + " · at most " + amt(dr[3], a[2]) + " each time, in market #" + dr[1];
+          }).catch(bad(g, dp));
+          if (can && due.length) act(c, "claim", "claim for its holder", 0, function () {
+            return propose({ to: KS, key: "keepsake.claim", args: [id], need: 0, lines: [["Keepsake", "#" + id], ["Pays", whose(k.h)], ["Now", and(due)]], then: paint,
+              sentence: "pays " + tk + "'s holder, " + whose(k.h) + ", what has freed — now " + and(due) + "; whoever presses is paid nothing" });
+          });
+          if (can && (same(k.h, seenAcct) || same(k.h, RE) && hold)) manage(c, k, v, xs);
+        });
+      }).catch(function (e) { if (g === gen) c.append(el("p", "s", unread(e))); });
+    }
+    /* the holder's changes, each its own disclosure, so the card stays a list of what can be done */
+    function manage(c, k, v, xs) {
+      var id = k.id, tk = "keepsake #" + id, e = v[3][2], need = same(k.h, RE) ? R.HOLD : 0, K1 = [["Keepsake", "#" + id]];
+      var m = dd(c, "lengthen it");
+      /* through the Reach every change is an execute, so every button is a spending one there; a give is one anywhere */
+      var ac = function (n, l, f, s) { return act(m, n, l, need, guard(f), { spend: s || !!need }); };
+      var xi = fld(m, "more", "by how many days", "30");
+      ac("extend", "review the extension", function () {
+        var s = xi.value.trim(), d = /^-?\d+$/.test(s) ? BigInt(s) : 0n, n = e + d * 86400n;
+        if (d < 1n) throw Error("a keepsake only lengthens, by whole days: it never ends sooner");
+        return hs(k, KS, "keepsake.extend", [id, n], K1.concat([["Ends", date(e) + " → " + date(n)]]), "lengthens " + tk + " by " + d + " days: fully free on " + date(n) + ", not " + date(e) + "; it only lengthens, never shortens");
+      });
+      var df = dripF(m = dd(c, "sell it slowly as it frees"));
+      ac("setDrip", "review the slow sale", function () { return dripOf(df, xs).then(function (d) { return hs(k, KS, "keepsake.setDrip", [id, d.t], K1.concat(d.l), "on " + tk + ", " + d.w + "; what it earns waits there for its holder"); }); });
+      if (v[9][2]) ac("clearDrip", "stop the slow sale", function () { return hs(k, KS, "keepsake.clearDrip", [id], K1, "stops the slow sale of " + tk + "; what has freed stays to be claimed"); });
+      var gi = fld(m = dd(c, "give it"), "give", "to whom, an address", "");
+      ac("give", "review the gift", function () { var t = addr(gi, "the recipient"); return hs(k, KS, "keepsake.transferFrom", [k.h, t, id], K1.concat([["To", cks(t)]]), "gives " + tk + " to " + sc(t) + ": the keepsake and everything in it becomes theirs", { spend: true }); }, 1);
+      if (three(c, JB, "journal")) return;
+      var mi = fld(m = dd(c, "write a memory into it"), "memory", "a memory, public and for good", "");
+      ac("inscribe", "review the memory", function () {
+        var t = mi.value.trim(), b = [].map.call(new TextEncoder().encode(t), function (x) { return (x + 256).toString(16).slice(1); }).join("");
+        if (!t || b.length > 2048) throw Error("a memory is 1 to 1,024 bytes");
+        return hs(k, S.journal, "journal.inscribe", [KS, id, 0, "0x" + b, "0x" + E.W(0)], K1.concat([["Memory", t]]), "writes a memory into " + tk + ", public and for good: “" + t + "”");
+      });
+    }
+    /*  Make one: ETH and up to seven coins by address (decimals read live), "locked for N days, then freed over M days",
+        for you or a gift with a note; the exact approvals first (ui.approveExactThen), then wrap with value the ETH
+        exactly. The new keepsake's number is read from the Wrapped log of the receipt, never from a read after it. */
+    function make(b) {
+      var f = h3(el("div"), "make a keepsake"), cs = el("div"), rows = [], out = el("p", "v ok", made); f.id = "vault-make"; out.id = "vault-keepsake-made"; b.append(f);
+      var ei = fld(f, "eth", "ETH to lock, 0 for none", "0"); f.append(cs);
+      var add = function () {
+        if (rows.length > 6) return say("seven coins beside ETH at most", "err");
+        var r = el("div", "coin"), t = fld(r, "token", "a coin to lock, by its address", ""), a = fld(r, "amount", "how much of it", ""), s = el("p", "s"); r.append(s); cs.append(r); rows.push([t, a]);
+        t.addEventListener("input", function () { var x = t.value.trim(); s.textContent = ""; if (isAddr(x)) meta(x).then(function (m) { if (t.value.trim() === x) s.textContent = m.d == null ? "its decimals did not answer: it cannot be locked" : m.s + " · " + m.d + " decimals"; }); });
+      };
+      add(); ui.button(f, "add another coin", true, add).id = "vault-make-add";
+      var li = fld(f, "lock", "locked for, in days", "30"), oi = fld(f, "over", "then frees slowly over, in days", "30"), ti = fld(f, "to", "a gift to, an address; empty keeps it yours", ""), ni = fld(f, "note", "a note for its face, up to 280 bytes", "");
+      var df = dripF(dd(f, "sell it slowly as it frees? only one you keep"));
+      act(f, "wrap", "review the keepsake", 0, guard(function () {
+        var me = seenAcct, to = ti.value.trim() ? addr(ti, "the recipient") : me, gift = !same(to, me), nt = ni.value.trim(), nb = new TextEncoder().encode(nt).length,
+            eth = ui.parse(ei.value || "0", 18), N = digits(li, 3650n, "the lock"), Mo = digits(oi, 3650n, "the release"), dp = df[2].value.trim(),
+            ps = rows.filter(function (r) { return r[0].value.trim() || r[1].value.trim(); }).map(function (r) { return [addr(r[0], "a coin"), r[1].value]; });
+        if (nb > 280) throw Error("the note is " + nb + " bytes; 280 at most");
+        if (gift && dp) throw Error("a slow sale only on a keepsake you keep: a giver never sells a recipient's gift");
+        if (!N && !Mo) throw Error("lock it, or free it, over a day at least");
+        return Promise.all(ps.map(function (p) { return meta(p[0]); })).then(function (ms) {
+          var xs = (eth ? [[ZERO, eth, ETH]] : []).concat(ps.map(function (p, i) { if (ms[i].d == null) throw Error(sc(p[0]) + ": its decimals did not answer: it cannot be locked"); return [p[0], ui.parse(p[1], ms[i].d), ms[i]]; }));
+          if (!xs.length || xs.some(function (a, i) { return !a[1] || xs.findIndex(function (y) { return same(y[0], a[0]); }) < i; })) throw Error("lock ETH or a coin, each once, each above zero");
+          return Promise.all([clock(), dp && dripOf(df, xs)]).then(function (y) {
+            var d = y[1], st = N ? y[0] + N * 86400n : 0n, en = (N ? st : y[0]) + Mo * 86400n, l = and(xs.map(function (a) { return amt(a[1], a[2]); })), fr = xs.length > 1 ? "they free" : "it frees";
+            return ui.approveExactThen(xs.filter(function (a) { return a[0] !== ZERO; }).map(function (a) { return { token: a[0], spender: KS, amount: a[1], symbol: a[2].s, decimals: a[2].d }; }), function () {
+              return propose({ to: KS, key: "keepsake.wrap", args: [[xs.map(function (a) { return [a[0], a[1]]; }), [st, 0n, en], to, nt, d ? d.t : [0, 0, 0, 0]]], value: eth, need: 0, spend: true,
+                sentence: "You lock " + l + (N ? " for " + N + " days, then " + (Mo ? fr + " slowly over " + Mo + " days" : "all of it frees at once") : "; " + fr + " slowly over " + Mo + " days") +
+                  (gift ? "; it is a gift to " + sc(to) + (nt ? " with your note" : "") : "; it is yours" + (nt ? ", with your note" : "")) + (d ? "; as it frees, " + d.w : "") + ".",
+                lines: [["Assets", l], ["Schedule", (N ? "nothing frees before " + date(st) : "starts when it lands") + "; all free on " + date(en)], ["For", (gift ? "a gift to " : "you, ") + cks(to)], ["Note", nt || "none"], ["Slow sale", d ? d.w : "none"]].concat(d ? d.l : []),
+                then: function (rc) {
+                  var w = (rc.logs || []).find(function (x) { return same(x.address, KS) && same(x.topics[0], S.topics.wrapped); });
+                  made = w && "keepsake #" + BigInt(w.topics[1]) + " is made" + (gift ? ", a gift to " + sc(to) : "") + " · its number from the Wrapped log";
+                  paint();
+                } });
+            });
+          });
+        });
+      }), { spend: true });
+      f.append(out);
+    }
+
     /*═══════════ paint ═══════════*/
     function paint() {
       var g = ++gen; host.replaceChildren(); armed = null; armedP = false; batch = [];
@@ -434,7 +654,7 @@
           stranger's, so even the anyone-controls wait for a rights read that answered */
       can = ui.gate(host, bits === null ? R.HOLD : 0); hold = !!(can && bits & R.HOLD); gd = !!(can && bits & GH); cu = !!(can && bits & (R.HOLD | R.CUSTODY));
       if (can && !gd && !cu) ui.gate(host, R.HOLD);
-      reach(g); grip(g); sessions(g); steward(g); sell(g); panic(g);
+      keepsakes(g); reach(g); grip(g); sessions(g); steward(g); sell(g); panic(g);
       S.loaded.vault = true;
     }
     paint();

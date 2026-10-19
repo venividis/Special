@@ -1516,6 +1516,111 @@ async function groupVault(t, ctx) {
     await pg.close();
   }
   t.ok(Lp, "panic lists what it revokes");
+
+  /* V2 (W10): keepsakes, on a band with the V2 satellites, by a person's path */
+  const v2 = await ctx.fresh({ v2: true });
+  try { await keepsakeJourney(t, v2); } finally { await v2.close(); }
+}
+
+/*  The make-a-gift journey and the claim, every control clicked or filled as a person would (Playwright's
+    actionability: visible, enabled, not covered), on a chain deployed with the V2 satellites: #1's holder
+    locks 0.1 ETH and 100 USDC as a gift to `buyer` with a note (the exact approval first, then wrap), the
+    page names the new keepsake from the Wrapped log; the buyer finds it in their own vault, time passes,
+    and the buyer's claim pays the buyer. Then the Grip's copy button in a data: frame, where
+    navigator.clipboard is undefined: it says so in words and throws nothing (W7's observation). */
+async function keepsakeJourney(t, v) {
+  const { c, site, A } = v;
+  const { me, buyer } = v.actors;
+  const ME = me.from.toString(), BUYER = buyer.from.toString(), K = site.keepsake, U6 = 10n ** 6n, DAY = 86400n;
+  const usdc = await c.deploy(A("test/mocks/MockERC20.sol", "MockERC20").bytecode, encodeParams("string,string,uint8,uint256,bool", ["USD Coin", "USDC", 6, 0, false]), "USDC");
+  await mint(c, site, ME);
+  await c.exec(usdc, "mint(address,uint256)", [ME, 1_000n * U6]);
+  const L = (s) => "#lane-vault " + s, bal = async (who) => decUint(await c.read(usdc, "balanceOf(address)", [who]));
+  let G = true, T = 0n;
+  const g = (cond, name, d) => { t.ok(cond, name, d); G = G && !!cond; };
+  t.head("V · keepsakes: a gift made and claimed, by a person's path");
+  {
+    const W = v.wallet(me);
+    const pg = await v.open({ wallet: W });
+    await pg.lane("vault");
+    await pg.until(() => /none held by/.test(__t("#lane-vault #vault-keepsakes-status")) && __e("#lane-vault #vault-make input[name=eth]"), null, 15000);
+    await pg.fill(L("#vault-make input[name=eth]"), "0.1");
+    await pg.fill(L("#vault-make input[name=token]"), usdc);
+    await pg.fill(L("#vault-make input[name=amount]"), "100");
+    await pg.fill(L("#vault-make input[name=lock]"), "0");
+    await pg.fill(L("#vault-make input[name=over]"), "10");
+    await pg.fill(L("#vault-make input[name=to]"), BUYER);
+    await pg.fill(L("#vault-make input[name=note]"), "for your first day");
+    await pg.until(() => __t("#lane-vault #vault-make .coin p.s") === "USDC · 6 decimals", null, 10000);
+    g(await pg.text(L("#vault-make .coin p.s")) === "USDC · 6 decimals" && await pg.visible(L("[data-act=wrap]")), "the coin typed by its address is named from the chain, and the review button is in view", await pg.text(L("#vault-make .coin p.s")));
+    await pg.press(L("[data-act=wrap]"));
+    g(await pg.fn() === "approve(address,uint256)" && lower(await pg.text("#cslab [data-to]")) === lower(usdc) && word(await pg.slabCd(), 1) === 100n * U6 && await pg.line("Never") === "unlimited", "the first press asks for the exact approval of 100 USDC to the Keepsake", await pg.fn());
+    await pg.sign(W, 1);
+    T = v.now();   // the gift starts in the block the wrap lands in: this one, since nothing is sent before it
+    await pg.press(L("[data-act=wrap]"));
+    const sen = await pg.text("#cslab [data-sentence]");
+    g(await pg.fn() === "wrap(((address,uint256)[],(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))" && sen === `You lock 0.1 ETH and 100 USDC; they free slowly over 10 days; it is a gift to ${short(checksum(BUYER))} with your note.` && await pg.line("For") === "a gift to " + checksum(BUYER) &&
+      await pg.ds("#cslab [data-value]", "wei") === String(10n ** 17n) && await pg.line("Note") === "for your first day" && await pg.line("Schedule") === `starts when it lands; all free on ${dateOf(T + 10n * DAY)}`,
+      "the same button again shows the gift in one plain sentence before the signature: what is locked, how it frees, for whom, with a note", sen);
+    await pg.sign(W, 2);
+    await pg.until(() => /is made/.test(__t("#lane-vault #vault-keepsake-made")), null, 10000);
+    g(await pg.text(L("#vault-keepsake-made")) === `keepsake #1 is made, a gift to ${short(checksum(BUYER))} · its number from the Wrapped log` && lower(decAddr(await c.read(K, "ownerOf(uint256)", [1]))) === lower(BUYER) && [...W.receipts.values()].every((r) => r.status === "0x1") && pg.clean(),
+      "the gift lands: the page names keepsake #1 from the Wrapped log, the buyer holds it, and nothing threw", `${await pg.text(L("#vault-keepsake-made"))} ${pg.problems()}`);
+    await pg.close();
+  }
+  {
+    v.warp(T + 5n * DAY);
+    const WB = v.wallet(buyer);
+    const pb = await v.open({ wallet: WB });
+    await pb.lane("vault");
+    const C = L('.keepsake[data-id="1"]');
+    await pb.until((s) => { const k = document.querySelector(s); return !!k && !!k.querySelector("[data-act=claim]") && !!k.querySelector("img"); }, C, 15000);
+    const card = await pb.text(C), alt = await pb.attr(C + " img", "alt"), src = await pb.attr(C + " img", "src"), drawn = await pb.evaluate((s) => { const i = document.querySelector(s); return !!i && i.complete && i.naturalWidth > 0; }, C + " img");
+    g(card.includes("“for your first day”") && card.includes("a gift from " + short(checksum(ME)) + " · held by you") && /^data:image\/svg\+xml;base64,/.test(src || "") && drawn && /orb/.test(alt || "") && /^\d+ % free · fully free on /.test(await pb.text(C + " .free")),
+      "the buyer finds the gift in their own vault: its orb drawn by Chromium from the data: SVG, its note, its giver, and how far it has freed", card.slice(0, 260));
+    /* claimable(1): two offsets, then the freed array — its length, (ETH, amount), (USDC, amount) — so word 6 is the USDC */
+    const u0 = await bal(BUYER), due = decUint(await c.call(K, enc("claimable(uint256)", [1])), 6);
+    await pb.click(C + " [data-act=claim]");
+    await pb.until(() => __on("#cbox") && (document.querySelector("#cslab [data-gas]") || { textContent: "" }).textContent !== "estimating…", null, 15000);
+    const cs = await pb.text("#cslab [data-sentence]");
+    g(await pb.fn() === "claim(uint256)" && cs.startsWith("pays keepsake #1's holder, you, what has freed — now ") && cs.endsWith("; whoever presses is paid nothing"), "the claim, pressed by the buyer, says who is paid before the signature", cs);
+    await pb.sign(WB, 1);
+    g(await bal(BUYER) - u0 === due && due === 50n * U6 && pb.clean(), "half way through its ten days the claim pays the buyer exactly half the coins, and nothing threw", `+${await bal(BUYER) - u0} of ${due} ${pb.problems()}`);
+    /* the keyboard on a phone: every control of the section, its four disclosures open, is tabbed to; each focused one
+       must be in view, not under the crest bar or the dock (its centre hits itself), and show its focus ring */
+    await pb.page.setViewportSize({ width: 390, height: 844 });
+    await pb.until(() => __e("#lane-vault #vault-make input[name=eth]") && __e('#lane-vault .keepsake[data-id="1"] details'), null, 10000);
+    await pb.evaluate(() => { for (const d of document.querySelectorAll("#lane-vault #vault-keepsakes details")) d.open = true; document.querySelector("#lane-vault #vault-keepsakes").querySelector("summary,button,input").focus(); });
+    await pb.page.keyboard.press("Shift+Tab"); await pb.page.keyboard.press("Tab"); await pb.page.waitForTimeout(60);
+    const seen = [];
+    for (let i = 0; i < 80; i++) {
+      const f = await pb.evaluate(() => {
+        const e = document.activeElement; if (!e || !e.closest("#vault-keepsakes")) return null;
+        const r = e.getBoundingClientRect(), h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2), cs = getComputedStyle(e);
+        return { what: e.tagName + (e.name ? "[" + e.name + "]" : e.dataset.act ? "[" + e.dataset.act + "]" : ""), seen: !!h && (h === e || e.contains(h)) && r.top >= 0 && r.bottom <= innerHeight, ring: cs.outlineStyle !== "none" && cs.outlineWidth !== "0px" || cs.boxShadow !== "none" };
+      });
+      if (!f) break;
+      seen.push(f);
+      await pb.page.keyboard.press("Tab");
+      await pb.page.waitForTimeout(60);
+    }
+    const hidden = seen.filter((f) => !f.seen), bare = seen.filter((f) => !f.ring);
+    g(seen.length >= 25 && hidden.length === 0 && bare.length === 0, `at 390×844 every control of the keepsakes takes focus in view and ringed, never under the crest bar or the dock (${seen.length} tabbed)`, `hidden ${hidden.map((f) => f.what).join(",")} unringed ${bare.map((f) => f.what).join(",")}`);
+    await pb.close();
+  }
+  {
+    /* a marketplace's data: frame: no secure context, no navigator.clipboard */
+    const pv = await v.openData("/token/1/live", { wallet: v.wallet(me) });
+    await pv.lane("vault");
+    await pv.until(() => __e("#lane-vault #vault-grip button.copy"), null, 15000);
+    const clip = await pv.evaluate(() => typeof navigator.clipboard);
+    await pv.click(L("#vault-grip button.copy"));
+    await pv.until(() => /copying is not available/.test(__t("#tick")), null, 5000);
+    g(clip === "undefined" && await pv.text("#tick") === "copying is not available in this frame; select the address above to copy it" && pv.log.errors.length === 0,
+      "in a data: frame, where navigator.clipboard is undefined, the Grip's copy button says in words that copying is unavailable, and throws nothing", `${clip} "${await pv.text("#tick")}" ${pv.log.errors.join(" | ")}`);
+    await pv.close();
+  }
+  t.ok(G, "a keepsake made as a gift with its exact approval, found by its recipient and claimed, clicked by a person's path");
 }
 
 /*──────────────── launch ────────────────*/
