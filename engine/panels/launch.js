@@ -130,8 +130,8 @@
         typed, is the address the press sends to; a new paint (a receipt)
         reads a new clock and so a new salt;
       · the launch is studio.launch(persona, spec, salt), need HOLD|ACCOUNT;
-        the spec is a tuple, so the slab draws no [data-arg] rows and every
-        field is a line (CONSOLE §4.2);
+        every field of the spec, a tuple, is a line, and the slab draws the
+        tuple's own row from the calldata beside them (CONSOLE §4.2, W14);
       · this token's collections (studio.collectionsOf(persona)): the terms
         from spec(), minted of supply from the Minted log (a walk the
         endpoint refuses is "not counted", never 0), what each owes this
@@ -487,7 +487,7 @@
     }
 
     /*── a raise: createChecked pins the terms by their hash, read in the same press; the tuple is laid by
-         hand (data() builds no tuples) and every argument is a line, since the slab draws no [data-arg] ──*/
+         hand and every argument is a line; the slab draws the tuple's row from the calldata beside them ──*/
     function create(b, xs, g) {
       var f = el("div"); f.id = "launch-create"; b.append(f);
       f.append(el("h3", "", "start a raise"));
@@ -716,8 +716,9 @@
       row.dataset.address = c; row.append(h); b.append(row);
       var mi = line("minted", "reading…"), ow = line("owes " + tok, "reading…");
       row.append(cl); line("mint link", LINK);
-      /* a QR on a light ground, as Home draws #qr: its modules carry no fill of their own */
-      try { var q = ui.qr(LINK); q.setAttribute("style", "width:184px;background:#fff;border-radius:16px"); row.append(q); } catch (e) {}
+      /* a QR on a light ground, as Home draws #qr: its modules carry no fill of their own, and the shell's .qr
+         (engine/app.css, W14) is its white card at 184 px */
+      try { row.append(ui.qr(LINK)); } catch (e) {}
       /* the room is Agora's collectionKey, keccak(4 ‖ collection), as each token's page prints {{room}} */
       var rm = line("room", String(key).slice(0, 10) + "…"), fa = line("family", "reading…");
       rm.dataset.room = key; go.href = "#social"; rm.append(go);

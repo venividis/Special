@@ -786,4 +786,49 @@ export async function run(t, ctx) {
       pg.close();
     }
   }
+
+  /*═══════════ H · the key through Agora, on a band where Agora reports (W14, INTEGRATION L6) ═══════════*/
+  t.head("H · the key through Agora: keyOf(persona) read beside Parley's, and bindKey(persona) offered");
+  {
+    /* a band without Agora — this group's own chain — keeps V1's key section: Parley's row and nothing of Agora's */
+    {
+      const { page, S } = await bootToken(1, { wallet: walletFor(c, me) });
+      await lane(page, "identity");
+      await page.until(() => /no key bound|bound at/.test(T(page, "identity-key")) && !!L(page, "[data-act=setEncryptionKey]"), 80);
+      t.ok(!(S.reported & S.bits.agora) && !L(page, "#identity-agora-key") && !acts(page).includes("agoraBindKey") && !!L(page, "#identity-key") && page.errors.length === 0,
+        "on a band without Agora the key section is V1's: Parley's bound key and no Agora row or control", acts(page).join(","));
+      page.close();
+    }
+    const X = await ctx.fresh({ v2: true });
+    const xc = X.c, xs = X.site, xme = X.actors.me, XME = xme.from.toString(), xhub = xs.hub, agora = xs.agora;
+    await X.mint(xc, xs, XME);
+    const P1 = (BigInt(xhub) << 96n) | 1n;
+    const W = X.walletFor(xc, xme);
+    const { page, S } = await X.bootToken(1, { wallet: W });
+    await X.lane(page, "identity");
+    /* soft: the sentence below reads both rows itself, and fails by name when the Agora row is not there */
+    await page.until(() => T(page, "identity-agora-key") === "no key bound" && T(page, "identity-key") === "no key bound" && !!L(page, "[data-act=setEncryptionKey]"), 80, { soft: true });
+    t.ok(!!(S.reported & S.bits.agora) && T(page, "identity-agora-key") === "no key bound" && T(page, "identity-key") === "no key bound" && !L(page, "[data-act=agoraBindKey]") && !L(page, "[data-act=bindKey]") &&
+      (await xc.read(agora, "keyOf(uint256)", [P1])).length === 2 + 64 * 4,
+      "where Agora reports, the lane reads the token's key there too, under its persona: no key bound beside Parley's, and no binding offered before a key is published",
+      `agora "${T(page, "identity-agora-key")}" parley "${T(page, "identity-key")}" acts ${acts(page).join(",")}`);
+    /* the registry key, published from the chain by the holder's wallet, as block A publishes it from the page */
+    const mine = await sealKey(xme, S.chainId, xhub);
+    for (let k = 0; k < 3; k++) await page.settle();   // the page quiet before the suite writes (W11: a read in flight and a write share a nonce)
+    await xme.exec(xs.keys, "setEncryptionKey(uint16,bytes)", [3, mine.pk], { label: "setEncryptionKey" });
+    await repaint(page, page.ctx);
+    await page.until(() => !!L(page, "[data-act=agoraBindKey]") && !!L(page, "[data-act=bindKey]"), 60);
+    await press(page, L(page, "[data-act=agoraBindKey]"));
+    const cd = slabCd(page);
+    t.ok(fn(page) === "bindKey(uint256)" && lower(page.text("#cslab [data-to]")) === lower(agora) && word(cd, 0) === P1 &&
+      page.text("#cslab [data-sentence]") === "binds this wallet's registry key to #1 in Agora at custody epoch 1; a sale or a panic unbinds it" && /^\d+ units$/.test(gasRow(page)) && W.sent() === 0,
+      "the Agora binding is bindKey(#1's persona) to Agora, stamped with custody epoch 1 in its sentence, beside Parley's bindKey(1)", `to ${page.text("#cslab [data-to]")} w0 ${word(cd, 0)} "${page.text("#cslab [data-sentence]")}"`);
+    await sign(page, W, 1);
+    await page.until(() => /^bound at epoch 1/.test(T(page, "identity-agora-key")), 60);
+    const ko = await xc.read(agora, "keyOf(uint256)", [P1]);
+    t.ok(/^bound at epoch 1 · P-256 · key 0x[0-9a-f]{8}…$/.test(T(page, "identity-agora-key")) && T(page, "identity-agora-key").includes(("0x" + ko.slice(66, 130)).slice(0, 10)) && decUint(ko, 0) === 3n &&
+      lower("0x" + ko.slice(2 + 64 * 4, 2 + 64 * 4 + 130)) === lower(mine.pk) && T(page, "identity-key") === "no key bound" && page.errors.length === 0,
+      "Sign → Agora's keyOf(persona) answers (3, keccak(pk), pk) and the lane reads bound at epoch 1 under Agora, Parley's still unbound", `agora "${T(page, "identity-agora-key")}" parley "${T(page, "identity-key")}"`);
+    page.close();
+  }
 }

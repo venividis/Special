@@ -34,7 +34,18 @@
     4 · Chromium at http://127.0.0.1:8081/ with the holder's wallet (dev
         key 1, connected: false) and the buyer's (dev key 2): mint → open
         → connect → swap → speak → launch → seal → sell → the buyer's clean
-        rightsOf, each receipt status 0x1 from the node.
+        rightsOf, each receipt status 0x1 from the node. Where the record's
+        Studio reports, the Studio room opens on "A collection" and the
+        journey presses "A coin" first (verify-console's toCoin, W14).
+
+  Every wait the journey makes throws by name when it times out (verify-
+  console's until, W14): the journey stops there and the drive prints
+  "the journey threw: until timed out after N ms in group the journey over
+  the wire, waiting at tools/verify-console.mjs:L ← …: <the condition>".
+  The receipt's sentence is read from the ticker's log, never from one poll
+  of its text, so the sale — whose landing the page replaces with "ownership
+  or epoch changed — review again" within the same receipt (CONSOLE §4.7) —
+  is seen land however fast the node answers the two reads after it.
 
     node tools/testnet-drive.mjs                      # spawns the node
     node tools/testnet-drive.mjs --rpc http://127.0.0.1:8546 --keep
@@ -51,7 +62,7 @@ import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
 import { compile, artifact } from "./compile.mjs";
 import { RpcChain, DEV_KEYS } from "./rpc.mjs";
-import { harness, openBrowser, openPage, journey, hexN, lower } from "./verify-console.mjs";
+import { harness, openBrowser, openPage, journey, hexN, lower, setGroup } from "./verify-console.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const ARGV = process.argv.slice(2);
@@ -229,6 +240,8 @@ async function main() {
   console.log(`      Chromium ${browser.version()} at ${GATEWAY}`);
   const site = record.contracts;
   let ok = false;
+  /* a wait that times out names where it was */
+  setGroup("the journey over the wire");
   try {
     ok = await journey(t, {
       open: (o) => openPage(browser, { origin: GATEWAY, ...o }),

@@ -47,7 +47,8 @@
         []). The seller's own live listings offer Seaport.cancel([components]).
       · mint from any studio.isCollection address: spec() is read and shown
         before the signature, then mint(to, via) with the price exactly; via
-        is a ?via= in the link, a persona, or 0.
+        is the link's ?via= — a hub token's number (the Studio lane's link),
+        taken as its persona, or a persona as it stands — or 0.
       · "include OpenSea": the Bridges door is read and printed beside a
         switch that stays off and disabled, with the sentence of why. No
         fetch is made, here or anywhere in this file.
@@ -136,7 +137,10 @@
     var nameOf = function (t) { return (same(t.c, HUB) ? "INTACT" : short(cs(t.c))) + " #" + t.id; };
     var KIND = ["a note", "a trade", "a gift", "a milestone", "sealed"];
     var gen = 0, acct = null, can = false, cur = { c: HUB, id: ID || null }, DRAFT = null, PUB = null, PR = null, BEST = null, NS = (document.querySelector("svg") || {}).namespaceURI;
-    var VIA = (function () { try { var v = new URLSearchParams(location.search).get("via"); return /^\d{1,78}$/.test(v || "") ? BigInt(v) : 0n; } catch (e) { return 0n; } })();
+    /*  the link's ?via=, in either form a link carries (W12-9): a token number below 2^96 — the Studio lane's own
+        link, ?via=<id> — is that hub token's persona, hub << 96 | id; a number at or above it is a persona as it
+        stands. The two never overlap, since a persona's top 160 bits are its collection */
+    var VIA = (function () { try { var v = new URLSearchParams(location.search).get("via"); v = /^\d{1,78}$/.test(v || "") ? BigInt(v) : 0n; return v && !(v >> 96n) ? BigInt(HUB) << 96n | v : v; } catch (e) { return 0n; } })();
     /* the CSP a token's own page runs under, inside the sandbox: inline script and style, data: images, and no network at all */
     var CSP = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:\">";
 
@@ -361,7 +365,7 @@
                 sentence: "buys " + nameOf(t) + " for " + money(pr.v, c) + " on Seaport: the seller is paid and the token is yours in the same transaction",
                 recheck: function () { return standing(o).then(function (n) { return n.ok && n.same && !n.cancelled && !n.filled ? "" : MOVED; }); } });
             };
-            return c ? ui.approveExactThen([{ token: c.token, spender: SEA, amount: pr.v, symbol: c.sym, decimals: c.dec }], tx) : tx();
+            return c ? ui.approveExactThen([{ token: c.token, spender: SEA, amount: pr.v, symbol: c.sym, decimals: c.dec, who: "Seaport" }], tx) : tx();
           }, { spend: true });
         });
       }).catch(function (e) { if (g === gen) { w.textContent = e && e.message || String(e); state.textContent = "unread"; state.dataset.state = "unread"; } });

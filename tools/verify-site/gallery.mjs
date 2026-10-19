@@ -42,6 +42,7 @@
 ───────────────────────────────────────────────────────────────────────────*/
 import { SEAPORT, ITEM, KIND, PARAMS_T, ORDER_T, FLOORS_T, SIG, TOPIC, orderOf, componentsOf, orderHashOf, decodeValidated, etherListing, pinHashOf } from "../verify-bazaar.mjs";
 import { KEEPSAKE_PLACEHOLDER, JOURNAL_PLACEHOLDER, BAZAAR_PLACEHOLDER, BRIDGES_PLACEHOLDER, STUDIO_PLACEHOLDER } from "../site.mjs";
+import { argWords } from "../verify-console.mjs";
 
 const WAD = 10n ** 18n, DAY = 86_400n;
 const lower = (s) => String(s).toLowerCase();
@@ -52,6 +53,9 @@ const persona = (c, id) => (BigInt(c) << 96n) | BigInt(id);
 const SPEC_T = "(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes)";
 const LAUNCH = `launch(uint256,${SPEC_T},bytes32)`;
 const VALIDATE = `validate(${ORDER_T}[])`, FULFILL = `fulfillOrder(${ORDER_T},bytes32)`;
+/// the slab's [data-arg] rows, as words, are the calldata decoded apart from the shell — one row per argument, a
+/// tuple's and an array of tuples' too since W14 (CONSOLE §4.2, INTEGRATION L7)
+const argsAgree = (page, sig) => { const rows = page.$$("#cslab [data-arg]"), want = argWords(sig, page.text("#cslab [data-calldata]")); return rows.length === want.length && rows.every((r, i) => r.dataset.arg === String(i) && r.textContent === want[i]); };
 /// A token page with every hole a Studio template has and one script, as small as a page can be.
 const PAGE = '<!doctype html><html><head><meta charset="utf-8"><title>Lantern #{{id}}</title><style>body{background:#05040a;color:#f4f1ff}</style></head>' +
   '<body><h1 id="t">Lantern #{{id}} of {{supply}}</h1><p id="h">{{holder}}</p><p>{{memories}} memories · epoch {{epoch}} · room {{room}}</p>' +
@@ -244,6 +248,17 @@ export async function run(t, ctx0) {
     const orb = Buffer.from(j.image.split(",")[1], "base64").toString("utf8");
     t.ok(!!img && img.getAttribute("src") === j.image && amb.length === 2 && amb.every((a) => orb.replace(/\s+/g, "").includes(a)),
       "and its image, the Collection's own SVG orb, lights the frame with the orb's own colours", `${amb.join(" | ")}`);
+    /* W14 (INTEGRATION W12-9): the Studio lane's own link carries a hub token's number, ?via=2, where this one carried a
+       persona; the two forms never overlap (a persona's top bits are its collection), and either names the same referrer */
+    const W2 = walletFor(c, me);
+    const { page: p2 } = keep(await gallery(ctx, 1, { wallet: W2, query: "?via=2" }));
+    await open(p2, LANTERN, null);
+    await p2.until(() => !!L(p2, "#gallery-mint [data-act=mint]"), 80);
+    const via2 = T(p2, "#gallery-via");
+    await press(p2, L(p2, "#gallery-mint [data-act=mint]"));
+    t.ok(via2 === "persona " + persona(hub, 2) + " (from the link's ?via=)" && fnRow(p2) === "mint(address,uint256)" && word(slabCd(p2), 1) === persona(hub, 2) && W2.sent() === 0,
+      "a link's ?via= that is a token's number, as the Studio lane's link carries it, names that token's persona: ?via=2 mints through #2's", `"${via2}" · via word ${word(slabCd(p2), 1)}`);
+    await dismiss(p2);
   }
 
   /*═══════════ E · a foreign ERC-721 whose metadata lives off chain ═══════════*/
@@ -306,7 +321,7 @@ export async function run(t, ctx0) {
     const fp = await fpOf(1), zh = pinHashOf(bazaar, 1n, fp, []);
     await press(page, L(page, "#gallery-steps [data-act=validate]"));
     const vcd = slabCd(page);
-    t.ok(fnRow(page) === VALIDATE && lower(page.text("#cslab [data-to]")) === lower(SEAPORT) && !page.$("#cslab [data-value]") && page.$$("#cslab [data-arg]").length === 0 &&
+    t.ok(fnRow(page) === VALIDATE && lower(page.text("#cslab [data-to]")) === lower(SEAPORT) && !page.$("#cslab [data-value]") && argsAgree(page, VALIDATE) &&
       vcd.includes(zh.slice(2)) && vcd.includes(lower(bazaar).slice(2)) && line(page, "Signature") === "none: validating from your wallet is the authority" && /^\d+ units$/.test(gasRow(page)),
       "validate carries the order zoned to the Bazaar under pinHash(id, the live fingerprint, no floors), from the wallet, with no signature, every argument in words", `${line(page, "Order")} gas ${gasRow(page)}`);
     await sign(page, W, 3);
@@ -402,6 +417,29 @@ export async function run(t, ctx0) {
       "a plain NFT listing is published from the lane and bought by a second account at exactly the price", `owner ${await ownerOf(MOCK, 7)}`);
     await repaint(pb);
     t.ok(/^sold for 0\.05 ETH to /.test(T(pb, "#gallery-sales .sale")), "and its sale is found by the offerers that published it, though the contract emits no Transfer", T(pb, "#gallery-sales"));
+  }
+
+  /*═══════════ N · a price in an ERC-20: the buy's exact approval names Seaport (W14, INTEGRATION L7) ═══════════*/
+  t.head("N · an NFT priced in WETH: the buy's exact approval names Seaport as the one who pulls");
+  {
+    const PRICE = WAD / 20n, Z = "0x" + "0".repeat(40), Z32_ = "0x" + "0".repeat(64);
+    await c.exec(MOCK, "mint(address,uint256)", [ME, 8]);
+    await c.exec(MOCK, "approve(address,uint256)", [SEAPORT, 8]);
+    const o = { offerer: ME, zone: Z, offer: [{ itemType: ITEM.ERC721, token: MOCK, id: 8n, start: 1n, end: 1n }],
+      consideration: [{ itemType: ITEM.ERC20, token: ctx.weth, id: 0n, start: PRICE, end: PRICE, recipient: ME }],
+      orderType: KIND.FULL_OPEN, startTime: now(), endTime: now() + 30n * DAY, zoneHash: Z32_, salt: 8n, conduitKey: Z32_ };
+    await c.exec(SEAPORT, VALIDATE, [[orderOf(o)]]);
+    await c.exec(bazaar, SIG.publish, [orderOf(o), []]);
+    const WB = offchain(walletFor(c, buyer));
+    const { page } = keep(await gallery(ctx, 1, { wallet: WB }));
+    await open(page, MOCK, 8);
+    await page.until(() => !!L(page, "#gallery-listings [data-act=buy]"), 120);
+    await press(page, L(page, "#gallery-listings [data-act=buy]"));
+    const cd = slabCd(page);
+    t.ok(fnRow(page) === "approve(address,uint256)" && lower(page.text("#cslab [data-to]")) === lower(ctx.weth) && lower("0x" + cd.slice(34, 74)) === lower(SEAPORT) && word(cd, 1) === PRICE &&
+      line(page, "Lets") === "Seaport pull exactly 0.05 WETH" && line(page, "Never") === "unlimited" && WB.sent() === 0,
+      "an NFT priced in WETH asks an exact approval first, and its line names who pulls it: Lets · Seaport pull exactly 0.05 WETH", `${fnRow(page)} · "${line(page, "Lets")}"`);
+    await dismiss(page);
   }
 
   /*═══════════ I · the INTACT Market's own listing ═══════════*/

@@ -23,7 +23,8 @@
     lines, tx) became ui.propose with a sentence, lines and, for the
     tuples data() cannot build (grantSession's (address,uint128)[], the
     batch's (address,uint256,bytes)[]), bytes laid with ui.enc and every
-    argument carried in the lines (CONSOLE §4.2 — no [data-arg] rows).
+    argument carried in the lines (CONSOLE §4.2; since W14 the slab also
+    draws each tuple's row, decoded from the calldata).
 
     What INTACT adds, and the lane encodes:
       · the Reach keeps no session list (D2): a key is inspected by
@@ -628,7 +629,7 @@
           if (!xs.length || xs.some(function (a, i) { return !a[1] || xs.findIndex(function (y) { return same(y[0], a[0]); }) < i; })) throw Error("lock ETH or a coin, each once, each above zero");
           return Promise.all([clock(), dp && dripOf(df, xs)]).then(function (y) {
             var d = y[1], st = N ? y[0] + N * 86400n : 0n, en = (N ? st : y[0]) + Mo * 86400n, l = and(xs.map(function (a) { return amt(a[1], a[2]); })), fr = xs.length > 1 ? "they free" : "it frees";
-            return ui.approveExactThen(xs.filter(function (a) { return a[0] !== ZERO; }).map(function (a) { return { token: a[0], spender: KS, amount: a[1], symbol: a[2].s, decimals: a[2].d }; }), function () {
+            return ui.approveExactThen(xs.filter(function (a) { return a[0] !== ZERO; }).map(function (a) { return { token: a[0], spender: KS, amount: a[1], symbol: a[2].s, decimals: a[2].d, who: "the Keepsake" }; }), function () {
               return propose({ to: KS, key: "keepsake.wrap", args: [[xs.map(function (a) { return [a[0], a[1]]; }), [st, 0n, en], to, nt, d ? d.t : [0, 0, 0, 0]]], value: eth, need: 0, spend: true,
                 sentence: "You lock " + l + (N ? " for " + N + " days, then " + (Mo ? fr + " slowly over " + Mo + " days" : "all of it frees at once") : "; " + fr + " slowly over " + Mo + " days") +
                   (gift ? "; it is a gift to " + sc(to) + (nt ? " with your note" : "") : "; it is yours" + (nt ? ", with your note" : "")) + (d ? "; as it frees, " + d.w : "") + ".",

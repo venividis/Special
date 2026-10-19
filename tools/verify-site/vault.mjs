@@ -110,9 +110,13 @@
   inscribe]; from the shell the slab's [data-sentence], [data-value] and
   lines.
 ───────────────────────────────────────────────────────────────────────────*/
+import { argWords } from "../verify-console.mjs";
 const WAD = 10n ** 18n;
 const EXEC = "execute(address,uint256,bytes,uint8)", BATCH = "executeBatch((address,uint256,bytes)[])";
 const GRANT = "grantSession(address,uint64,uint128,(address,uint128)[],address[],bytes4[],uint32,uint32)";
+/// the slab's [data-arg] rows, as words, are the calldata decoded apart from the shell — one row per argument, a
+/// tuple's and an array of tuples' too since W14 (CONSOLE §4.2, INTEGRATION L7)
+const argsAgree = (page, sig) => { const rows = page.$$("#cslab [data-arg]"), want = argWords(sig, page.text("#cslab [data-calldata]")); return rows.length === want.length && rows.every((r, i) => r.dataset.arg === String(i) && r.textContent === want[i]); };
 const SWAP_IN = "swapExactIn(uint256,bool,uint256,uint256,address,uint64)", WITHDRAW = "withdraw(uint256,uint256,uint256,address)";
 const APPROVE = "approve(address,uint256)", ARRANGE = "arrange(uint256,bytes32,uint64,uint64,address[],uint8)";
 const lower = (s) => String(s).toLowerCase();
@@ -246,8 +250,8 @@ export async function run(t, ctx) {
     page.type(field(page, "#vault-execute", "amount"), "2"); page.click(L(page, "#vault-batch-add")); await page.settle();
     await press(page, L(page, "[data-act=executeBatch]"));
     const bcd = slabCd(page);
-    k(fn(page) === BATCH && word(bcd, 1) === 2n && page.$$("#cslab [data-arg]").length === 0 && /1 ETH|0 ETH/.test(line(page, "Call 1") || "") && (line(page, "Call 2") || "").includes(sel(APPROVE)) && LL(page, "#vault-batch .row").length === 2,
-      "K24 two batch rows → executeBatch((address,uint256,bytes)[]) with a decoded array length of 2; a tuple gets no [data-arg] rows, so every call is a line", `fn ${fn(page)} len ${word(bcd, 1)} line1 "${line(page, "Call 1")}"`);
+    k(fn(page) === BATCH && word(bcd, 1) === 2n && argsAgree(page, BATCH) && /1 ETH|0 ETH/.test(line(page, "Call 1") || "") && (line(page, "Call 2") || "").includes(sel(APPROVE)) && LL(page, "#vault-batch .row").length === 2,
+      "K24 two batch rows → executeBatch((address,uint256,bytes)[]) with a decoded array length of 2; every call is a line, and the batch's [data-arg] row is decoded from the calldata", `fn ${fn(page)} len ${word(bcd, 1)} line1 "${line(page, "Call 1")}"`);
     await ready(page);
     await sign(page, W, 3);
     k(W.sent() === 3 && await allowance() === 2n && await ledgerLen() === 1n, "K24 Sign → one transaction for the batch; the last approve stands and the ledger still lists the pair once", `sent ${W.sent()} allowance ${await allowance()} ledger ${await ledgerLen()}`);
@@ -288,6 +292,11 @@ export async function run(t, ctx) {
     const gw = L(page, "#vault-grip-warning"), ga = L(page, "#vault-grip-address"), svg = L(page, "#vault-grip svg[role=img]"), kids = LL(page, "#vault-grip *");
     k(!!ga && lower(ga.textContent) === lower(S.grip) && !!svg && svg.getAttribute("aria-label") === "ethereum:" + S.grip + "@1" && !!gw && /cannot ever leave|can ever leave|permanent/i.test(gw.textContent) && kids.indexOf(gw) < kids.indexOf(ga) && kids.indexOf(ga) < kids.indexOf(svg),
       "K9 the Grip warns before any way in: the warning precedes the address, and the QR names ethereum:<grip>@1", `address ${ga && ga.textContent} label ${svg && svg.getAttribute("aria-label")} warning "${gw && gw.textContent}"`);
+    /* W14 (INTEGRATION W12-3): a QR in a lane is drawn on a white card of the shell's, never dark on the lane's glass;
+       the shim reads the hook and the rule, Chromium reads the paint (verify-console's vault group) */
+    const SHIPPED = ctx.fs.readFileSync(ctx.path.join(ctx.ROOT, "dist/app.html"), "utf8");
+    t.ok(!!svg && svg.getAttribute("class") === "qr" && !svg.getAttribute("style") && /\.qr\{[^}]*width:184px[^}]*background:#fff/.test(SHIPPED),
+      "the Grip's QR carries the shell's qr class, the white 184 px card the shipped stylesheet draws under a code in a lane", `class "${svg && svg.getAttribute("class")}"`);
     const gb = LL(page, "#vault-grip button");
     k(gb.length >= 1 && gb.every((b) => b.classList.contains("copy")) && LL(page, "#vault-grip [data-act]").length === 0 && LL(page, "#vault-grip input").length === 0,
       "K10 the Grip offers nothing outbound: its only buttons are .copy, no control, no input", gb.map((b) => b.className).join(","));
@@ -303,8 +312,8 @@ export async function run(t, ctx) {
     const gcd = slabCd(page), gr = decodeGrant(gcd);
     k(fn(page) === GRANT && lower(page.text("#cslab [data-to]")) === lower(reach1) && gr.selectors.length === 1 && gr.selectors[0] === sel(SWAP_IN) && gr.targets.length === 1 && lower(gr.targets[0]) === lower(pool) && lower(gr.key) === lower(BUYER) && gr.expires === now() + 86400n && gr.cap === WAD / 2n && gr.caps.length === 0 && since(W, mark12).some((x) => x.method === "eth_getBlockByNumber"),
       "K12 the grant's calldata is exactly the chips pressed: one selector, the Pool as the one target, the key, an expiry one day on the chain's clock", `fn ${fn(page)} sels ${gr.selectors} targets ${gr.targets} expires ${gr.expires} vs ${now() + 86400n}`);
-    k(/Exposure/.test(page.text("#cslab")) && /native cap 0\.5 ETH/.test(line(page, "Exposure") || "") && /no asset cap/.test(line(page, "Exposure") || "") && page.$$("#cslab [data-arg]").length === 0 && (line(page, "Selectors") || "").includes("pool.swapExactIn " + sel(SWAP_IN)),
-      "K13 the exposure is printed before Sign — the native cap and each asset cap in words — and, the tuple drawing no [data-arg] rows, every argument is a line", `"${line(page, "Exposure")}" / "${line(page, "Selectors")}"`);
+    k(/Exposure/.test(page.text("#cslab")) && /native cap 0\.5 ETH/.test(line(page, "Exposure") || "") && /no asset cap/.test(line(page, "Exposure") || "") && argsAgree(page, GRANT) && (line(page, "Selectors") || "").includes("pool.swapExactIn " + sel(SWAP_IN)),
+      "K13 the exposure is printed before Sign — the native cap and each asset cap in words — and every argument is a line beside the [data-arg] rows decoded from the calldata", `"${line(page, "Exposure")}" / "${line(page, "Selectors")}"`);
     await ready(page);
     await sign(page, W, 5);
     k(await allows(BUYER, pool, sel(SWAP_IN)) === true && await allows(BUYER, pool, sel(WITHDRAW)) === false && await allows(BUYER, hub, sel(SWAP_IN)) === false,
@@ -656,6 +665,8 @@ async function keepsakes(t, v, h) {
   const a1 = slabCd(page);
   ok(fn(page) === "approve(address,uint256)" && lower(page.text("#cslab [data-to]")) === lower(usdc) && lower("0x" + a1.slice(34, 74)) === lower(K) && word(a1, 1) === 500n * U6 && line(page, "Never") === "unlimited" && W.sent() === 0,
     "the first press is the exact approval of the first coin: approve(Keepsake, 500 USDC in base units) and nothing more", `fn ${fn(page)} to ${page.text("#cslab [data-to]")} amount ${word(a1, 1)}`);
+  /* W14 (INTEGRATION L7): the approval's line names who pulls, not "the market" */
+  t.ok(line(page, "Lets") === "the Keepsake pull exactly 500 USDC", "the exact approval's line names who pulls it: Lets · the Keepsake pull exactly 500 USDC", line(page, "Lets"));
   await ready(page); await sign(page, W, ++sent);
   await press(page, L(page, "[data-act=wrap]"));
   const a2 = slabCd(page);
@@ -666,7 +677,7 @@ async function keepsakes(t, v, h) {
   const st1 = T1 + 30n * DAY, en1 = st1 + 60n * DAY;
   const want1 = enc(WRAP, [[[[ZERO, WAD / 5n], [usdc, 500n * U6], [weth, 3n * WAD]], [st1, 0, en1], ME, "for the long road", [0, 0, 0, 0]]]);
   const sen1 = page.text("#cslab [data-sentence]");
-  ok(fn(page) === WRAP && slabCd(page) === lower(want1) && ds(page.$("#cslab [data-value]"), "wei") === String(WAD / 5n) && page.$$("#cslab [data-arg]").length === 0 &&
+  ok(fn(page) === WRAP && slabCd(page) === lower(want1) && ds(page.$("#cslab [data-value]"), "wei") === String(WAD / 5n) && argsAgree(page, WRAP) &&
     sen1 === "You lock 0.2 ETH, 500 USDC and 3 WETH for 30 days, then they free slowly over 60 days; it is yours, with your note." &&
     line(page, "Assets") === "0.2 ETH, 500 USDC and 3 WETH" && line(page, "Schedule") === `nothing frees before ${dateOf(st1)}; all free on ${dateOf(en1)}` && line(page, "For") === "you, " + cks(ME) && line(page, "Note") === "for the long road" && line(page, "Slow sale") === "none" && /^\d+ units$/.test(gasRow(page)),
     "the third press is wrap: its bytes are exactly the Wrap the form says, the value is the ETH to the wei, and the sentence is plain words", `sentence "${sen1}" calldata equal ${slabCd(page) === lower(want1)}`);
