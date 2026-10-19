@@ -223,16 +223,62 @@ fifth constructor argument at the MVB) but only on a chain whose venue
 table (`VENUES` in `tools/deploy.mjs`) names a PoolManager, a
 PositionManager and a Permit2 — contract addresses probed for code on a
 dated commit, never recalled; it seeds every v4 launch's position through
-them. No chain has a probed row yet, so on every rehearsal the custodian
-is refused by name and `Target.UniswapV4` stays `NotYet` (the owned-pool
-path is unaffected). The Router's `LAUNCH_HOOK_CODEHASH` is the keccak of
-`LaunchHook`'s compiled runtime, which the deployer writes into the venue
-table it records when the table does not name it.
+them. The table has two rows since 2026-10-18, Base Sepolia and Sepolia,
+taken from Uniswap's own deployment feed
+(`developers.uniswap.org/deployments.json`, generated 2026-09-22 from
+`github.com/Uniswap/contracts` at `a677c0d`), and each row carries its
+evidence in `probed`: the date, the block it was read at, the v3 factory
+SwapRouter02 must name, and the codehash of every venue. The row is
+re-proved, by name, in three places: `npm run verify:venues` against the
+live chains (`RPC_URL_84532`, `RPC_URL_11155111`; 24 passed, 0 failed on
+2026-10-18), the read-only preflight of every rehearsal, and `deployIntact`
+itself before it sends anything over a wire — code at every address with
+the codehash probed, the PositionManager naming this PoolManager and this
+Permit2, the PositionManager and SwapRouter02 naming the row's WETH, and
+SwapRouter02 naming the v3 factory. With a row, the Router lands in the
+MVB and the custodian is a satellite like the others; a chain with no row
+skips the Router (letter X pinned as address(0)) and refuses the custodian
+by name, and so does a record written before its chain had a row —
+`deployments/84532.json` among them: its Kiln pins no PoolManager, and
+its Timelock's admin was the rehearsal's destroyed burner, so the v4 path
+arrives on Base Sepolia with the next rehearsal's deployment. The Router's
+`LAUNCH_HOOK_CODEHASH` is the keccak of `LaunchHook`'s compiled runtime,
+which the deployer writes into the venue table it records when the table
+does not name it.
+
+### A fork first
+
+`--fork <url>` runs the whole rehearsal against a hardhat fork of the
+chain at its latest block, with the chain's own id
+(`hardhat.fork.config.cjs`), before a live run spends anything:
+
+```sh
+node tools/testnet.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --fork https://sepolia.base.org
+node tools/testnet.mjs --chain 11155111 --confirm DEPLOY_INTACT_TO_SEPOLIA --fork https://sepolia.drpc.org
+```
+
+The fork's burner is a fresh key the node funds, the venues are the real
+contracts with their real state, the clock can be moved, so every
+satellite lands in-run through the Timelock's queue and the v4 family of
+the campaign runs: a second token launches a coin for the v4 target, its
+hook's salt is mined in a free `eth_call`, `createV4Checked` registers
+the terms with the custodian, the raise graduates and the custodian
+initialises the pool and mints the full-range position through the real
+PositionManager and Permit2, the Reach of the second token swaps both ways
+through the Router on that pool (the hook's dynamic fee applying), anyone
+collects the fees to `feeSink`, the release is refused before the unlock,
+the ratchet extends and refuses to shorten, and after the clock moves the
+principal goes home to the Reach and the position is burned. The records
+go to `out/fork/`, never under `deployments/`, and a fork run clears its
+own previous files. A public endpoint must keep the fork block's state for
+the length of the run: `ethereum-sepolia-rpc.publicnode.com` answered
+"historical state … is not available" a minute into a Sepolia deploy on
+2026-10-18, and `sepolia.drpc.org` carried the same run to the end.
 
 ## What a run leaves behind
 
 - `deployments/<chainId>.json` — the deployment record, schema
-  `intact.deployment/1`, written by `deployIntact` as its last act after
+  `intact.deployment/2` (schema 1 before the Catalog pinned the Nameplate), written by `deployIntact` as its last act after
   an in-process recovery with 0 disagreeing (`deployments/README.md`,
   "The schema").
 - `deployments/<chainId>.campaign.json` — the campaign record, schema
@@ -347,6 +393,17 @@ the campaign 0.026866 ETH, of which two mints at the default 0.01 ETH
 price are 0.020 and the second key's funding 0.001713 — and the run ended
 with "fund `<address>` with at least 0.027946 ETH more", exit 1.
 
+On forks of both rehearsal chains, 2026-10-18, this tree (`--fork`, above):
+
+| What | Base Sepolia fork (block 48,296,720) | Sepolia fork (block 11,943,880) |
+|---|---|---|
+| sentences | 88 passed, 0 failed, 110 s | 89 passed, 0 failed, 174 s |
+| the MVB | 28 contracts with the Router, 91.46 M gas; 379 fields, 0 disagreeing | the same |
+| satellites, queued and landed in-run | the card 3,023,544 gas · the custodian 3,556,363 (387,918 + 3,168,445) · the Market 1,647,536 · the Roles 1,524,439; 412 fields, 0 disagreeing | the same four, and the Nameplate 1,969,351 (244,049 + 1,725,302) against Sepolia's ENS; 415 fields, 0 disagreeing |
+| campaign | 59 steps, 10,303,189 gas: the router family 214,508, the v4 family 14 steps 4,180,972 (graduation into the v4 pool 1,392,875) | 59 steps, 10,303,105 gas, the v4 family 4,180,912 |
+| `tokenURI(1)` | estimated at 3,783,343 gas, 78,125 bytes | 3,786,119 gas, 78,137 bytes |
+| the gateway | 240 passed; the tamper fixture 243 | the same |
+
 The hub's `tokenURI` budget in CI is 8,000,000 (`tools/gas.mjs`, 3.62 M
 measured cold in the battery on the landed shape, after the encoder's
 rewrite — DESIGN §15, decision 39); the 3.78 M the node estimates is the
@@ -377,14 +434,14 @@ BUILD-PLAN.md's criterion for waves 0–3, and where each item is proved:
 - [ ] open the site from `web3://` — a `web3://` client or a self-hosted `web3url-gateway` against the Base Sepolia deployment: the operator's step, with `verify-gateway` as the check.
 - [x] connect — `verify-console` (the EIP-6963 picker, the gesture), Chromium.
 - [x] swap on the owned market — the campaign's exact-in and exact-out (wire); `verify-console`.
-- [ ] quote elsewhere — needs the Router, which needs a probed venue table (`VENUES` in `tools/deploy.mjs`); no testnet row exists, so the Router is skipped on every rehearsal chain and the quote-elsewhere path is `verify-site`'s and `verify-console`'s against the in-process venue mocks only.
+- [ ] quote elsewhere — the venue table has rows for Base Sepolia and Sepolia since 2026-10-18, and on forks of both the Router quoted and swapped on a real v4 pool for a Reach, both ways, and on the owned market (`--fork`, "Measured"); the deployment of 2026-10-13 predates the rows and has no Router, so on a live chain the path arrives with the next rehearsal's deployment.
 - [x] speak and whisper — the campaign's `speak` at home and the stamped SEALED whisper, settled by the reply (wire).
 - [x] launch a coin and a raise that graduates into a sealed market whose `collect` pays the Reach — the campaign's launch → create → buys → graduate → collect, the fee read as the Reach's balance delta (wire).
 - [x] seal — the campaign's `seal`, and `panic`'s seal to the maximum (wire).
 - [x] lock — the campaign's native lock to the Reach, released when due (wire).
 - [x] grant a session that dies on sale — the campaign's grant and act, then `sessionCurrent` false after `panic` and `rightsOf(id, key)` 0 (wire); the sale's revocation of a live session is `verify-console`'s journey and `test/Bundle.t.sol`.
 - [x] sell the whole bundle with the buyer's `rightsOf` showing the seller holds nothing — the campaign's `transferFrom`, `rightsOf(id, seller)` read back as 0 and the Reach answering to the buyer (wire).
-- [ ] the same on Base Sepolia and Sepolia, with `deployments/84532.json`, `deployments/11155111.json` and their campaign records committed — awaiting a funded burner: the command is the second one in "The commands".
+- [ ] the same on Base Sepolia and Sepolia, with `deployments/84532.json`, `deployments/11155111.json` and their campaign records committed — Base Sepolia is done (2026-10-13: the forty steps, "Measured"); Sepolia awaits a funded burner, and its fork already walked the whole run, the Nameplate included.
 
 ## The rollout order (DESIGN §12), and what comes after
 

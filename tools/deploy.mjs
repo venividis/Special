@@ -135,13 +135,84 @@ export const CONFIRM = {
   31337: "DEPLOY_INTACT_LOCAL", 84532: "DEPLOY_INTACT_TO_BASE_SEPOLIA", 11155111: "DEPLOY_INTACT_TO_SEPOLIA",
   8453: "DEPLOY_INTACT_TO_BASE", 1: "DEPLOY_INTACT_TO_ETHEREUM", 10: "DEPLOY_INTACT_TO_OP"
 };
-/// Per-chain venue addresses for the Router and the Kiln: SwapRouter02, the
-/// v4 PoolManager and the wrapped native token. IPSEITY's rule applies —
-/// every address here must have been PROBED for code on the date noted,
-/// never recalled — and no chain has been probed yet, so the table is empty
-/// and the Router is skipped (pinned as address(0) in the Catalog's letter
-/// X, as the harness does). Filling a row is a deliberate, dated commit.
-export const VENUES = {};
+/// Per-chain venue addresses for the Router, the Kiln and the custodian:
+/// SwapRouter02, the v4 PoolManager and PositionManager, Permit2 and the
+/// wrapped native token. IPSEITY's rule applies — every address here was
+/// PROBED for code on the date noted, never recalled — and a chain with no
+/// row skips the Router (pinned as address(0) in the Catalog's letter X, as
+/// the harness does) and refuses the custodian. Filling a row is a
+/// deliberate, dated commit; `probed` is its evidence, re-proved by
+/// `tools/verify-venues.mjs` against the chain and before every deploy
+/// over a wire (`checkVenues`): code at every address with the codehash
+/// recorded here, the PositionManager naming this PoolManager, this Permit2
+/// and the WETH that SwapRouter02 names, SwapRouter02 naming the v3 factory.
+/// The addresses come from Uniswap's own deployment feed
+/// (developers.uniswap.org/deployments.json, generated 2026-09-22 from
+/// github.com/Uniswap/contracts at a677c0d); the WETH is the one both
+/// routers name on chain, which on Base Sepolia is the OP-stack predeploy.
+export const VENUES = {
+  84532: {
+    swapRouter02: "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4",
+    poolManager: "0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408",
+    positionManager: "0x4B2C77d209D3405F41a037Ec6c77F7F5b8e2ca80",
+    permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    weth: "0x4200000000000000000000000000000000000006",
+    probed: {
+      on: "2026-10-18", block: 48296154, v3Factory: "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
+      codehashes: {
+        swapRouter02: "0x60e9352f5af4eee63b41456f85bf80c63044e98123ad599d41d87f2d068de0be",
+        poolManager: "0x03c45db6d09b14da7c1f7239a5a49697f976d395277e6d2acb6fbed3f9e0249f",
+        positionManager: "0xe8329b35b8b34290b6cf03affc0836f7b23205229cc96ffdc66544b93112c076",
+        permit2: "0xdcde65555316946c298e4c60c6213eb5c3aeab4354d1f3fac5427236bcbb9ebe",
+        weth: "0x83f731a17e6c0cdd04bc6f60b15d3e789e215b71403087b84b48650a1e5cbb21"
+      }
+    }
+  },
+  11155111: {
+    swapRouter02: "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
+    poolManager: "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
+    positionManager: "0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4",
+    permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    weth: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+    probed: {
+      on: "2026-10-18", block: 11943880, v3Factory: "0x0227628f3F023bb0B980b67D528571c95c6DaC1c",
+      codehashes: {
+        swapRouter02: "0xe7f98ee73dfe6d5c96cbf8936920f496b1b82f24326d6a415b4144a2252271de",
+        poolManager: "0x09930125a49f5b95caf8052991cc14d1240dca8b43f42b899115b86867e4bce1",
+        positionManager: "0xcffd746f78c2b50aafd19076bbe9c48f14446e5248fc5d76b9b4896610e51aab",
+        permit2: "0x96d9f5c3f0fb0423426b7f970186235b7347027f4e5c19c40c412b7d97fc3751",
+        weth: "0xc864e10689f2da18833652a3b075d43106e87f0f90d95ee64f6f0b33bc026083"
+      }
+    }
+  }
+};
+
+/// A venue row's evidence, re-proved against the chain about to be used:
+/// one [sentence, ok, detail] per claim the row makes. `read` is
+/// { codeAt(addr) → hex, call(to, data) → hex } — the deploy adapter, or an
+/// RpcChain's pinned reads (tools/verify-venues.mjs).
+export const VENUE_KEYS = ["swapRouter02", "poolManager", "positionManager", "permit2", "weth"];
+export async function checkVenues(read, row) {
+  const out = [];
+  const say = (sentence, ok, detail) => out.push([sentence, Boolean(ok), detail]);
+  const addrOf = (hex) => (hex && hex.length >= 66 ? low("0x" + hex.replace(/^0x/, "").slice(24, 64)) : null);
+  const ask = async (to, sig) => { try { return await read.call(to, enc(sig, [])); } catch { return null; } };
+  for (const k of VENUE_KEYS) {
+    const code = row[k] ? await read.codeAt(row[k]) : "0x";
+    const h = code && code !== "0x" ? kecHex(code) : null;
+    const want = row.probed?.codehashes?.[k];
+    say(`the venue ${k} at ${row[k]} holds the code probed on ${row.probed?.on}`, h && want && low(h) === low(want), h ? `codehash ${h}, probed ${want}` : "no code there");
+  }
+  const pm = addrOf(await ask(row.positionManager, "poolManager()"));
+  say("the PositionManager names this PoolManager", pm === low(row.poolManager), pm);
+  const p2 = addrOf(await ask(row.positionManager, "permit2()"));
+  say("the PositionManager names this Permit2", p2 === low(row.permit2), p2);
+  const w1 = addrOf(await ask(row.positionManager, "WETH9()")), w2 = addrOf(await ask(row.swapRouter02, "WETH9()"));
+  say("the PositionManager and SwapRouter02 name this WETH", w1 === low(row.weth) && w2 === low(row.weth), `${w1} and ${w2}`);
+  const f = addrOf(await ask(row.swapRouter02, "factory()"));
+  say("SwapRouter02 names the v3 factory the feed names", f === low(row.probed?.v3Factory), f);
+  return out;
+}
 
 /// The bands tile the edition exactly once (IPSEITY `assertTiles`, verbatim
 /// in intent): runs at import, throws on a backwards band, an overlap, a
@@ -296,7 +367,9 @@ export function adapt(c) {
     };
     /// the clock moves only on a chain that is nobody's: in-process, or hardhat
     ad.warp = async (t) => { EVM.warp(BigInt(t)); };
-  } else if (ad.chainId === 31337) {
+  } else if (ad.chainId === 31337 || c.fork) {
+    /// 31337, or a hardhat fork of a rehearsal chain (tools/testnet.mjs --fork):
+    /// nobody's chain, whatever its id
     ad.warp = async (t) => { await c.rpc("evm_setNextBlockTimestamp", [Number(t)]); await c.rpc("evm_mine", []); };
     ad.setCode = (addr, codeHex) => c.rpc("hardhat_setCode", [addr, codeHex]);
   }
@@ -367,6 +440,8 @@ export const PINS = [
   ["catalog", "MARKET()", "market"], ["catalog", "ROLES()", "roles"], ["catalog", "TIMELOCK()", "timelock"],
   ["catalog", "PREMISES()", "premises"], ["catalog", "RENDERER()", "renderer"],
   ["catalog", "TEXT()", "catalogText"], ["catalog", "STATE()", "catalogState"],
+  /// from schema 2 (the console round) the Catalog pins the Nameplate too; a schema-1 record's Catalog predates the getter
+  ["catalog", "NAMEPLATE()", "nameplate", 2],
   ["catalogState", "TEXT()", "catalogText"], ["catalogText", "ROWS()", "catalogRows"], ["catalogText", "ROWS_POST()", "catalogRowsPost"],
   ["renderer", "HUB()", "hub"], ["renderer", "ENGINE()", "engine"], ["renderer", "CREST()", "crest"],
   ["renderer", "CATALOG()", "catalog"], ["renderer", "AGENTCARD()", "agentCard"],
@@ -390,6 +465,13 @@ export const PINS = [
   ["custodian", "HUB()", "hub"], ["custodian", "LAUNCHPAD()", "launchpad"], ["custodian", "KILN()", "kiln"],
   ["custodian", "POOL_MANAGER()", "venuePoolManager"], ["custodian", "POSITION_MANAGER()", "venuePositionManager"], ["custodian", "PERMIT2()", "venuePermit2"]
 ];
+/// The record schema this tree writes, and whether a PINS row applies to a
+/// record: a row with a fourth element exists in records of that schema or
+/// later, because its holder's code in an older record has no such getter
+/// (2: the Catalog's NAMEPLATE). Every walker of PINS asks this first.
+export const RECORD_SCHEMA = 2;
+export const schemaOf = (rec) => Number((String(rec?.schema || "").match(/^intact\.deployment\/(\d+)$/) || [])[1] || 0);
+export const pinApplies = (row, rec) => !row[3] || schemaOf(rec) >= row[3];
 /// The venue table's addresses as PINS targets (`venue*` keys), so the
 /// Kiln's and the Router's venue immutables are read back like every other
 /// pin: a record that lies about `venues.poolManager` is caught by name,
@@ -466,6 +548,13 @@ export async function deployIntact(ad, opts = {}) {
   const hookArt = (() => { try { return artifact(out, "src/LaunchHook.sol", "LaunchHook"); } catch { return null; } })();
   const hookHash = hookArt ? kecHex(hookArt.deployed) : "0x" + "00".repeat(32);
   if (venues && !venues.launchHookCodehash && hookArt) venues = { ...venues, launchHookCodehash: hookHash };
+  /// over a wire, the venue row is re-proved before anything is sent: a
+  /// venue whose code is not the code probed, or a PositionManager naming
+  /// another PoolManager, refuses the deploy by name
+  if (venues && !ad.inProcess && venues.probed) {
+    const bad = (await checkVenues(ad, venues)).filter(([, ok]) => !ok);
+    if (bad.length) throw new Error(`the venue table's row for chain ${chainId} does not hold on this chain — re-probe it (tools/verify-venues.mjs):\n    ${bad.map(([s, , d]) => `${s}: ${d}`).join("\n    ")}`);
+  }
   const ship = { ...shipRule(out), limit: LIMIT, solc: toolchain().solc };
   if (ship.build !== "diamond" && ship.build !== "monolith") throw new Error(`the ship rule is ${ship.build}: ${ship.reason}`);
   const from = ad.from;
@@ -741,7 +830,7 @@ export async function deployIntact(ad, opts = {}) {
   await create3("catalog", "src/Catalog.sol", "Catalog", encodeParams(CATALOG_CONFIG_TYPE, [[
     T.hub, engine, T.router, T.roster, T.postage, T.keys, T.kiln, T.agentCard,
     got.reachImpl, got.gripImpl, T.pool, T.parley, T.launchpad, T.locks, T.steward, T.market, T.roles,
-    got.timelock, T.premises, T.renderer, band.band, band.first, band.last, got.catalogText, got.catalogState]]),
+    got.timelock, T.premises, T.renderer, band.band, band.first, band.last, got.catalogText, got.catalogState, T.nameplate]]),
     [code("catalogText"), code("catalogState")]);
 
   /*── 8. Renderer ──*/
@@ -900,7 +989,7 @@ export async function deployIntact(ad, opts = {}) {
                     : admin === ZERO ? "renounced" : `rotated to ${admin} (through the queue; the burner no longer holds it)`;
   const burner = { nonceAfter: (await ad.nonceNow()).toString(), balanceAfter: (await ad.balanceOf(from)).toString() };
   const record = {
-    schema: "intact.deployment/1",
+    schema: "intact.deployment/" + RECORD_SCHEMA,
     chainId, network: band.name,
     band: { band: band.band, lo: band.first.toString(), hi: band.last.toString(), rehearsal: band.rehearsal },
     deployer: from,
@@ -985,11 +1074,14 @@ export async function deploySatellite(ad, rec, key, opts = {}) {
   if (rec.contracts?.[key] && low(rec.contracts[key]) !== want) throw new Error(`the record's ${key} is ${rec.contracts[key]}, the salt predicts ${want}; refusing`);
   const onChain = low(decAddr(await ad.read(factory, "predict(bytes32)", [salt])));
   if (onChain !== want) throw new Error(`the factory predicts ${onChain} for ${key}, the arithmetic ${want} — a contradiction; refusing`);
-  const world = { ...(rec.placeholders || {}), ...(rec.contracts || {}) };
+  /// the record's world as recover-record builds it: contracts, placeholders, and the venue
+  /// table's addresses as `venue*` targets (the custodian pins three of them)
+  const world = { ...(rec.placeholders || {}), ...(rec.contracts || {}), ...venueTargets(rec.venues) };
   for (const p of sat.pins) if (!world[p]) throw new Error(`the record has no ${p}, which ${key}'s constructor pins; refusing`);
   /// every holder that pinned this satellite at the MVB pinned THIS address
-  for (const [holder, getter, target] of PINS) {
-    if (target !== key || !rec.contracts?.[holder]) continue;
+  for (const row of PINS) {
+    const [holder, getter, target] = row;
+    if (target !== key || !rec.contracts?.[holder] || !pinApplies(row, rec)) continue;
     const have = low(decAddr(await ad.read(rec.contracts[holder], getter)));
     if (have !== want) throw new Error(`the ${holder}'s ${getter.replace("()", "")} is ${have}, the ${key} salt predicts ${want}; refusing`);
   }

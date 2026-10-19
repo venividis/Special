@@ -310,6 +310,7 @@ contract PremisesTest is SiteFixture {
         assertTrue(s.reported & 16 != 0, "the locks reported");
         assertTrue(s.reported & 1024 != 0, "the key registry reported a zero key, which is a zero and not an absence");
         assertTrue(s.reported & 4096 == 0, "no AgentCard until U17");
+        assertTrue(s.reported & 2048 == 0 && s.absent & 2048 != 0, "no Nameplate on this band: its bit is clear and absent says why");
         bytes memory st = catalog_.state(id);
         assertTrue(has(st, bytes('"home":null')), "the block says null for the home room, never a number");
         assertTrue(has(st, bytes('"reachLocks":0,')), "and a reported zero is the number zero, unquoted");

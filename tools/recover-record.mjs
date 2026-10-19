@@ -58,7 +58,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decAddr, decUint, decBool } from "./evm.mjs";
 import { REGISTRY, REGISTRY_RUNTIME, ZERO, PANELS, predictCreate, encRequest, decResponse } from "./site.mjs";
-import { PINS, BAND_GETTERS, SALTED, PLACEHOLDERS, RECORD_KEYS, ROUTER_HASHES, venueTargets, DEPLOYED_TOPIC,
+import { PINS, pinApplies, BAND_GETTERS, SALTED, PLACEHOLDERS, RECORD_KEYS, ROUTER_HASHES, venueTargets, DEPLOYED_TOPIC,
          saltOf, predictCreate3, kec, decWords, decAddrs, decBytes4s, adapt } from "./deploy.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -175,8 +175,9 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
        (a contradiction: two chain answers to "where is the pool?") ──*/
   const world = { ...C, ...(rec.placeholders || {}), ...venueTargets(rec.venues) };
   if (!C.router) world.router = ZERO;
-  for (const [holder, getter, target] of PINS) {
-    if (!C[holder]) continue;
+  for (const row of PINS) {
+    const [holder, getter, target] = row;
+    if (!C[holder] || !pinApplies(row, rec)) continue;          // a schema-1 record's Catalog has no NAMEPLATE()
     const have = await addrOf(C[holder], getter);
     say(`${holder}.${getter.replace("()", "")} → ${target}`, world[target] ?? ZERO, or(have));
     if (predictedOnChain[target] && have && !(target === "router" && !C.router)) {

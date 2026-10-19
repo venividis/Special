@@ -19,6 +19,13 @@ import {SSTORE2} from "./lib/SSTORE2.sol";
 import {LibNum} from "./lib/LibNum.sol";
 import {Web} from "./lib/Web.sol";
 
+/// @dev The one question the Catalog asks band 0's ENS resolver (U18,
+///      `src/Nameplate.sol`): does it answer at all. Declared here and not
+///      in `src/interfaces/` because nothing else asks it.
+interface INameplateProbe {
+    function APEX() external view returns (bytes32);
+}
+
 /*═══════════════════════════════════════════════════════════════════════════
 
   CATALOG — one call, and it cannot revert on you
@@ -124,6 +131,7 @@ struct World {
     address catalog;
     address engine;
     address agentCard;
+    address nameplate;      // band 0's ENS resolver; a codeless pin elsewhere
     address[12] h;          // the hub's immutables, in H_ order
 }
 
@@ -990,10 +998,10 @@ contract CatalogState is Templated {
         '"hub":"\x01","reachImpl":"\x01","gripImpl":"\x01","pool":"\x01","router":"\x01","parley":"\x01",'
         '"roster":"\x01","postage":"\x01","keys":"\x01","kiln":"\x01","launchpad":"\x01","locks":"\x01",'
         '"steward":"\x01","market":"\x01","roles":"\x01","timelock":"\x01","catalog":"\x01","premises":"\x01",'
-        '"engine":"\x01","renderer":"\x01","agentCard":"\x01",'
+        '"engine":"\x01","renderer":"\x01","agentCard":"\x01","nameplate":"\x01",'
         '"rights":{"HOLD":1,"ACCOUNT":2,"USE":4,"CUSTODY":8,"ROLE":16,"DELEGATE":32,"GUARDIAN":64,"SESSION":128},'
         '"bits":{"reach":1,"pool":2,"parley":4,"postage":8,"locks":16,"launchpad":32,"steward":64,"router":128,'
-        '"market":256,"roles":512,"keys":1024,"agentcard":4096},';
+        '"market":256,"roles":512,"keys":1024,"nameplate":2048,"agentcard":4096},';
 
     /*  Four of the token-level keys were once `market`, `locks`, `steward`
         and `roles` — the names TPL_WORLD above already uses for ADDRESSES.
@@ -1058,7 +1066,7 @@ contract CatalogState is Templated {
             w.id, block.chainid, w.band, w.bandLo, w.bandHi,
             w.hub, w.h[H.REACH_IMPL], w.h[H.GRIP_IMPL], w.h[H.POOL], w.router, w.h[H.PARLEY], w.roster, w.postage,
             w.keys, w.kiln, w.h[H.LAUNCHPAD], w.h[H.LOCKS], w.h[H.STEWARD], w.h[H.MARKET], w.h[H.ROLES],
-            w.h[H.TIMELOCK], w.catalog, w.h[H.PREMISES], w.engine, w.h[H.RENDERER], w.agentCard
+            w.h[H.TIMELOCK], w.catalog, w.h[H.PREMISES], w.engine, w.h[H.RENDERER], w.agentCard, w.nameplate
         ), new bytes[](0));
     }
 
@@ -1299,6 +1307,7 @@ struct CatalogConfig {
     uint256 bandHi;
     CatalogText text;
     CatalogState state;
+    address nameplate;      // post-MVB, appended: band 0's predicted resolver, the codeless placeholder elsewhere
 }
 
 contract Catalog {
@@ -1310,6 +1319,7 @@ contract Catalog {
     address public immutable KEYS;
     address public immutable KILN;
     address public immutable AGENTCARD;
+    address public immutable NAMEPLATE;
     address public immutable REACH_IMPL;
     address public immutable GRIP_IMPL;
     address public immutable POOL;
@@ -1333,14 +1343,13 @@ contract Catalog {
 
     error NoCompanion();
 
-    /// @dev One bit per satellite actually CALLED. There is no bit for the
-    ///      Nameplate: nothing here asks it anything, and a permanently
-    ///      clear bit would read as "asked and got nothing". 2048 is kept
-    ///      for it.
+    /// @dev One bit per satellite actually CALLED. The Nameplate's is 2048
+    ///      (the console round): it is asked `APEX()`, so the identity lane
+    ///      can tell band 0's resolver from a codeless pin, and its ENS row
+    ///      exists only where the bit says one answered or was there to ask.
     uint32 internal constant BIT_REACH     = 1;
     uint32 internal constant BIT_POOL      = 2;
     uint32 internal constant BIT_PARLEY    = 4;
-    uint32 internal constant BIT_AGENTCARD = 4096;
 
     constructor(CatalogConfig memory c) {
         if (address(c.text).code.length == 0 || address(c.state).code.length == 0 || address(c.state.TEXT()) != address(c.text)) revert NoCompanion();
@@ -1352,6 +1361,7 @@ contract Catalog {
         KEYS = c.keys;
         KILN = c.kiln;
         AGENTCARD = c.agentCard;
+        NAMEPLATE = c.nameplate;
         REACH_IMPL = c.reachImpl;
         GRIP_IMPL = c.gripImpl;
         POOL = c.pool;
@@ -1388,6 +1398,7 @@ contract Catalog {
         w.catalog = self;
         w.engine = c.engine;
         w.agentCard = c.agentCard;
+        w.nameplate = c.nameplate;
         w.h = [c.reachImpl, c.gripImpl, c.pool, c.parley, c.launchpad, c.locks, c.steward, c.market, c.roles,
                c.timelock, c.premises, c.renderer];
     }
@@ -1406,6 +1417,7 @@ contract Catalog {
         w.catalog = address(this);
         w.engine = ENGINE;
         w.agentCard = AGENTCARD;
+        w.nameplate = NAMEPLATE;
         w.h = [REACH_IMPL, GRIP_IMPL, POOL, PARLEY, LAUNCHPAD, LOCKS, STEWARD, MARKET, ROLES, TIMELOCK, PREMISES, RENDERER];
     }
 
@@ -1467,21 +1479,20 @@ contract Catalog {
         /*  The rest answer a shape or nothing; one loop, one call site. A
             selector that takes no argument (`HUB()`) is sent one anyway —
             the ABI ignores calldata past what a function reads.         */
-        address[10] memory T = [PARLEY, POSTAGE, LOCKS, LAUNCHPAD, STEWARD, ROUTER, MARKET, ROLES, KEYS, AGENTCARD];
-        bytes4[10] memory F = [IParley.stateOf.selector, IPostage.inboxOf.selector, ILocks.lockCountOf.selector,
+        address[11] memory T = [PARLEY, POSTAGE, LOCKS, LAUNCHPAD, STEWARD, ROUTER, MARKET, ROLES, KEYS, NAMEPLATE, AGENTCARD];
+        bytes4[11] memory F = [IParley.stateOf.selector, IPostage.inboxOf.selector, ILocks.lockCountOf.selector,
                                ILaunchpad.launchRoot.selector, ISteward.wouldPass.selector, IRouter.HUB.selector,
                                IMarket.listingOf.selector, IRoles.liveRoleCount.selector, IKeyRegistry.keyIdOf.selector,
-                               IAgentCard.manifestHash.selector];
-        uint256[10] memory G = [uint256(keccak256(abi.encodePacked(uint8(3), id))), id, uint256(uint160(s.reach)), id, id,
-                                0, id, id, uint256(uint160(s.owner)), id];
-        uint8[10] memory L = [17, 5, 1, 1, 1, 1, 7, 1, 1, 1];
+                               INameplateProbe.APEX.selector, IAgentCard.manifestHash.selector];
+        uint256[11] memory G = [uint256(keccak256(abi.encodePacked(uint8(3), id))), id, uint256(uint160(s.reach)), id, id,
+                                0, id, id, uint256(uint160(s.owner)), 0, id];
+        uint8[11] memory L = [17, 5, 1, 1, 1, 1, 7, 1, 1, 1, 1];
         uint32 bit = BIT_PARLEY;
-        for (uint256 i; i < 10; ++i) {
+        for (uint256 i; i < 11; ++i) {
             if (T[i].code.length == 0) s.absent |= bit;
             (ok, ) = _probe(T[i], abi.encodeWithSelector(F[i], G[i]), uint256(L[i]) * 32);
             if (ok) s.reported |= bit;
             bit <<= 1;
-            if (bit == 2048) bit = BIT_AGENTCARD;
         }
     }
 

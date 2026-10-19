@@ -214,6 +214,8 @@ ok("the AgentCard did NOT report (bit 4096) — codeless until U17", !rep("agent
 const abs = (name) => (S.absent & bits[name]) !== 0;
 ok("absent: the Router, the Market, the Roles and the AgentCard have no code on this band — 'not deployed', not 'could not be read'",
    abs("router") && abs("market") && abs("roles") && abs("agentcard"));
+ok("the Nameplate did NOT report (bit 2048) and is absent — band 0's resolver; this band's pin is codeless, so the identity lane draws no ENS row",
+   bits.nameplate === 2048 && !rep("nameplate") && abs("nameplate") && /^0x[0-9a-f]{40}$/.test(S.nameplate));
 ok("absent: nothing that reported is marked absent", (S.absent & S.reported) === 0);
 ok("the state block carries both words", typeof S.reported === "number" && typeof S.absent === "number");
 
