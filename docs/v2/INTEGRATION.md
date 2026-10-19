@@ -67,6 +67,42 @@ take any row the Catalog serves. Measured on that tree:
   tokenURI 4.82 M, /token/1/live 1.42 M, /token/1/hash 2.14 M, face 1
   0.46 M, state.json 0.81 M.
 
+## The lanes (wave 2)
+
+| Lane | Merge | Panel (gzip of 12,288) | The unit's runs on its own tree |
+|---|---|---|---|
+| W10 Vault | 4a87609 | vault 12,209 B | verify-site 639, verify-console 184; 20/20 panel mutations killed |
+| W9 Trade | f927bae | swap 12,044 B | verify-site 656, verify-console 181; 19/19 killed |
+| W11 Social | 2082cf0 | social 12,160 B | verify-site 645, verify-console 184; 13/13 killed |
+| W8 Gallery and the seventh lane | 46d26f5 | gallery 12,209 B | verify-site 646, verify-console 179, forge 643 on both builds, gas 84 probes |
+
+The totals on the merged lanes are the next battery's to measure.
+
+Requests from the lanes:
+
+| # | Request | From | Decision | State |
+|---|---|---|---|---|
+| L1 | The DOM shim's `page.until` returns false on a timeout instead of throwing: 279 waits drop the result, so an assertion only a wait checked cannot fail | W11 | yes: make it throw, and give every wait that is a real expectation its own sentence | open, first |
+| L2 | verify-console's `visible()` reports what is inside a closed `<details>` as visible | W11 | yes | open |
+| L3 | `#cslab [data-sentence]{overflow-wrap:anywhere}`: a full address runs off a 390 px screen | W10 | yes | open |
+| L4 | Panel styles into app.css (W9's switch and orb; W11's `.post`), freeing panel bytes | W9, W11 | yes | open |
+| L5 | Catalog rows: `keepsake.ownerOf`, `keepsake.tokenURI`; Agora's counts, `follows`, `isRegistered`, `collectionKey`, `homeKey`, `persona`; `seaport.*`, `erc721.*` | W10, W11, W8 | yes, one CatalogRowsV2 pass | open |
+| L6 | The identity lane on an Agora band binds and reads keys through Agora | W11 | yes | open |
+| L7 | The slab: a per-step label on the exact-approval line ("Lets the market pull…" when the spender is the Keepsake); argument rows for tuple arguments | W9 | yes | open |
+| L8 | `IEngine.panelCount` is `view`, not `pure` (INTERFACE-CHANGES) | W8 | yes | open |
+| L9 | CONSOLE.md §5 (`ui.data` builds tuples since 959acee), §6.2 (every lane's new ids), §9, §14, §16, §18, §19 | all | yes | open |
+| L10 | INVARIANTS and DESIGN §14: W10-1…15, W9's F16–F22, W11's N10–N17, W8's F16–F18 and Y1–Y10 (renumbered at integration) | all | yes, pending until the battery | open |
+| L11 | CLAUDE.md: the panel sizes; a panel's style goes in the head; a suite's own chain write while a shim read is in flight fails on its nonce; Playwright's service-worker error in sandboxed frames; never `pkill -f` | W8, W9, W11 | yes | open |
+| L12 | "six panels" wording in DESIGN and DEPLOYMENT; V2.md §3.3 as built (off-chain art is a link, selling needs no signature, OpenSea stays off, no WETH offers yet) | W8 | yes | open |
+| L13 | verify-console's viewer group no longer needs the Grip clipboard observation (fixed in W10) | W10 | yes | open |
+| L14 | `tools/mutations.mjs` adopts the panels' mutation tables | W11 | later | open |
+| W7-7 | the Grip's copy button in a `data:` frame | W7 | yes | done in W10 |
+| W7-5 | a seventh panel | W7 | yes | done in W8: the Engine holds up to eight |
+
+Incident: one `pkill -f "tools/verify-site.mjs"` from W8 killed W10's run
+(exit 143), and W10 re-ran. From then on the units stop processes by PID
+only. CLAUDE.md gains that line (L11).
+
 ## Requests, decisions, state
 
 Interfaces (additive only, one new section in `docs/INTERFACE-CHANGES.md`):
