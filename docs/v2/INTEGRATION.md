@@ -51,6 +51,22 @@ verify:bazaar 67, verify:studio 47, verify:agora 53, fuzz 9 properties,
 verify:findings 36, agents 6,923, static-audit 14, verify:recover 184,
 verify:console 174, invariants 107; 0 failed in every step.
 
+## The shell's tuple encoder (959acee)
+
+The V2 lanes send tuples: a keepsake's `Wrap`, a collection's spec, a
+Seaport order. The shell decoded them already. Since 959acee it also
+encodes them, by the same head/tail rule, and `ui.data` and `ui.propose`
+take any row the Catalog serves. Measured on that tree:
+- `node tools/selftest.mjs`: 60 passed, 0 failed. Eight vectors hold the
+  encoder against `tools/evm.mjs`'s.
+- `node tools/build-app.mjs`: the shell is 22,149 B of 24,000.
+- `node tools/verify.mjs`: 249 passed.
+- `node tools/verify-site.mjs`: 604 passed, 0 failed.
+- `node tools/verify-console.mjs`: 174 passed, 0 failed.
+- `node tools/gas.mjs`: every view under its cap, 83 probed cold.
+  tokenURI 4.82 M, /token/1/live 1.42 M, /token/1/hash 2.14 M, face 1
+  0.46 M, state.json 0.81 M.
+
 ## Requests, decisions, state
 
 Interfaces (additive only, one new section in `docs/INTERFACE-CHANGES.md`):
