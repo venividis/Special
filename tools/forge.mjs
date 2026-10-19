@@ -462,7 +462,7 @@ async function freshWorld() {
   const DUMMY = new Uint8Array(8192);
   const frames = [];
   vm.evm.events.on("beforeMessage", (msg) => {
-    frames.push({ depth: msg.depth,
+    frames.push({ depth: msg.depth, refund: msg.gasRefund,
                   cheat: !!(msg.to && msg.to.toString().toLowerCase() === VM_ADDR.toLowerCase()) });
   });
   vm.evm.events.on("afterMessage", (res) => {
@@ -488,6 +488,13 @@ async function freshWorld() {
     if (state.expect.data && !got.startsWith(state.expect.data)) return;
     res.execResult.exceptionError = undefined;
     res.execResult.returnValue = DUMMY;
+    /*  V2 W5 found this: ethereumjs zeroes a reverted call's gas refund
+        ("all refunds are forfeited"), and once the swallow makes the call
+        a success the caller adopts that zero, losing every refund the
+        test had earned before it. A later SSTORE that subtracts a refund
+        then throws "refund exhausted" with no data. Forge keeps the
+        caller's counter: the message carried it in, so it goes back.   */
+    if (typeof f.refund === "bigint") res.execResult.gasRefund = f.refund;
     state.expect = null;
     state.expectSatisfied = true;
   });

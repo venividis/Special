@@ -47,8 +47,8 @@ struct CollectionSpec {
     uint32  perWallet;     // 0 = no limit; counted per minting address
     uint16  referralBps;   // ≤ 2,000 of each mint, to the referring persona
     uint16  royaltyBps;    // ≤ 1,000, ERC-2981, to the creator's payee
-    bytes   page;          // the site template: HTML with holes, 1..24,000 bytes
-    bytes   art;           // the image template: SVG with holes, ≤ 12,000 bytes; empty = the default orb
+    bytes   page;          // the site template: HTML with holes, 1..24,000 bytes, ≤ 256 holes
+    bytes   art;           // the image template: SVG with holes, ≤ 12,000 bytes, ≤ 256 holes; empty = the default orb
 }
 
 interface ICollectionEvents {

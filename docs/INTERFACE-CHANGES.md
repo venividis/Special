@@ -219,3 +219,41 @@ Where wave 0 departed from the plan's first draft, and why:
   the zone an INTACT order names is the contract that pinned its floors.
 - **Identity is a persona**: `collection << 96 | id`. It reverses with no
   registry and no hash. Ids at or above 2^96 are refused by name.
+
+## V2 wave 1 integration (2026-10-19)
+
+The five wave-1 units are merged (docs/v2/INTEGRATION.md). Each change
+below is additive or names-only, and no selector moved. The Bazaar's two
+(I1, I2) and the hub's `residueOf` land with W6, which owns those files.
+
+| File | Change | Why | From |
+|---|---|---|---|
+| `IAgora.sol` | `evict(uint256,uint256,uint256)`, `heads(uint256[]) → uint64[]`, `roomsOf(uint256) → (uint256[], bool[])`, `roomCount(uint256)`, `topics() → seven bytes32` | Agora serves each, and each carries a guarantee Parley's suite asserts: eviction, the one-call poll, the room list, and topics a page cannot hash. The Catalog's drift gate and the console name functions through the interface | W5 report, request 1 |
+| `IStudio.sol` | `error SaltUsed(address collection)`, was `address at` | solc warns that `at` will become a keyword; a parameter's name is not in the selector | W4 report §6.3 |
+| `ICollection.sol` | the struct comment states "≤ 256 holes" for `page` and `art` | the Studio refuses more (`BadPage`, `BadArt`): without the cap the widest admitted templates rendered for 38.3 M gas, past the 2^24 transaction cap; with it, 4.78 M | W4 report §2, §6.1 |
+
+Surface the contracts serve beyond their interfaces, recorded so a reader
+of the interfaces knows it exists:
+
+- `Keepsake`: the constructor is `(hub, pool, art)`, all non-zero
+  (`error ZeroAddress()`), and `ART()` names the renderer. `KeepsakeArt`
+  serves `render(uint256, KeepsakeView, Asset[], uint256)`. `claim` pays
+  every freed amount its token will move, and an asset whose token
+  refuses stays owed while the others are paid. That refines
+  IKeepsake's "pays the keepsake's holder every freed amount".
+- `Collection`: `HUB()`, `JOURNAL()`, `AGORA()`, `pageOf(uint256)` and
+  `imageOf(uint256)` (the filled site and art, one `eth_call` each), and a
+  constructor that takes `CollectionInit` from the Studio alone.
+- `Studio`: `CODE()` and `CODE_HASH()` (the Collection's creation code,
+  one SSTORE2 shard its constructor writes), `PROXY_INITCODE_HASH()`, ten
+  `MAX_*` constants, and `error ZeroAddress()`.
+- `Bazaar`: `error Unpriced()` and SIP-5's
+  `event SeaportCompatibleContractDeployed()`, declared locally until I1
+  moves them into `IBazaarEvents`.
+
+Declined:
+- `IAgoraEvents.NoSuchPersona(uint256)`: `NotAPersona` is already in the
+  ABI and says the same.
+- `src/lib/Rights.sol` reading an over-wide `ownerOf` word as no holder:
+  every V1 satellite compiles this library, so the change would move their
+  codehashes against the live records, and the write is refused either way.

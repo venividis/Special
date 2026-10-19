@@ -111,6 +111,8 @@ interface IAgora is IAgoraEvents {
     function leave(uint256 room, uint256 persona_) external;
     function setCooldown(uint256 room, uint256 by, uint32 seconds_) external;   // steward, ≤ MAX_COOLDOWN
     function hide(uint256 room, uint256 by, uint64 seq) external;               // steward; presentation, never deletion
+    /*── added in the V2 wave-1 integration (docs/INTERFACE-CHANGES.md, additive) ──*/
+    function evict(uint256 room, uint256 by, uint256 persona_) external;        // steward
 
     /*── keys ──*/
     function bindKey(uint256 persona_) external;
@@ -127,6 +129,18 @@ interface IAgora is IAgoraEvents {
     function followerCount(uint256 persona_) external view returns (uint256);
     function followingCount(uint256 persona_) external view returns (uint256);
     function groups() external view returns (uint256);
+    /*── added in the V2 wave-1 integration (docs/INTERFACE-CHANGES.md, additive) ──*/
+    /// @notice Each room's newest block, in one call (Parley's `heads`).
+    function heads(uint256[] calldata rooms) external view returns (uint64[] memory last);
+    /// @notice Every room this persona has taken a seat in, and whether its
+    ///         current holder is seated in each.
+    function roomsOf(uint256 persona_) external view returns (uint256[] memory keys, bool[] memory member);
+    function roomCount(uint256 persona_) external view returns (uint256);
+    /// @notice The topic0 of the events a page filters on; Parley's five first.
+    function topics() external pure returns (
+        bytes32 said, bytes32 founded, bytes32 invited_, bytes32 entered, bytes32 departed,
+        bytes32 reacted, bytes32 followed
+    );
 
     function HUB() external view returns (address);
     function KEYS() external view returns (address);

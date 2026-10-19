@@ -46,19 +46,19 @@ Interfaces (additive only, one new section in `docs/INTERFACE-CHANGES.md`):
 |---|---|---|---|---|
 | I1 | `IBazaarEvents`: `error Unpriced()`, SIP-5's `event SeaportCompatibleContractDeployed()`, and drop Bazaar's local copies | W3 | yes | open |
 | I2 | `ISeaport`: Seaport 1.6's own `ZoneInterface` (which re-declares `supportsInterface`, id `0x39dd6933`) beside `ISeaportZone` (`0x3822a094`) | W3 | yes; the Bazaar already answers both | open |
-| I3 | `IAgora`: `evict`, `heads`, `topics`, `roomsOf`, `roomCount` | W5 | yes | open |
+| I3 | `IAgora`: `evict`, `heads`, `topics`, `roomsOf`, `roomCount` | W5 | yes | done |
 | I4 | `IAgoraEvents`: `error NoSuchPersona(uint256)` | W5 | no: `NotAPersona` is already in the ABI and says the same | closed |
-| I5 | `IStudio`: `SaltUsed(address at)` → `SaltUsed(address collection)` (solc: `at` becomes a keyword) | W4 | yes; ABI-neutral, same selector | open |
-| I6 | `ICollection`: the "≤ 256 holes" bound in the struct comment | W4 | yes | open |
-| I7 | Record the surface beyond the interfaces: Keepsake `(hub, pool, art)`, `ART()`, `ZeroAddress`, `KeepsakeArt.render`; Collection `HUB/JOURNAL/AGORA/pageOf/imageOf/CollectionInit`; Studio `CODE/CODE_HASH/PROXY_INITCODE_HASH/MAX_*/ZeroAddress`; `claim`'s per-asset wording | W1, W4 | yes | open |
+| I5 | `IStudio`: `SaltUsed(address at)` → `SaltUsed(address collection)` (solc: `at` becomes a keyword) | W4 | yes; ABI-neutral, same selector | done |
+| I6 | `ICollection`: the "≤ 256 holes" bound in the struct comment | W4 | yes | done |
+| I7 | Record the surface beyond the interfaces: Keepsake `(hub, pool, art)`, `ART()`, `ZeroAddress`, `KeepsakeArt.render`; Collection `HUB/JOURNAL/AGORA/pageOf/imageOf/CollectionInit`; Studio `CODE/CODE_HASH/PROXY_INITCODE_HASH/MAX_*/ZeroAddress`; `claim`'s per-asset wording | W1, W4 | yes | done: INTERFACE-CHANGES, "V2 wave 1 integration" |
 
 Shared code:
 
 | # | Request | From | Decision | State |
 |---|---|---|---|---|
 | S1 | `src/lib/Rights.sol`: `holds` reads an over-wide `ownerOf` word as no holder instead of reverting | W2 | no: every V1 satellite compiles this library, so the change would move their codehashes against the live records. The write is refused either way | closed |
-| S2 | `tools/forge.mjs`: keep the caller's gas refund when `expectRevert` swallows a revert | W5 | yes: a harness bug that fails tests falsely | open |
-| S3 | `test/Ratchet.t.sol`: `Keepsake.extend` in `test_everyRatchetOnlyLengthens` | W1 | yes | open |
+| S2 | `tools/forge.mjs`: keep the caller's gas refund when `expectRevert` swallows a revert | W5 | yes: a harness bug that fails tests falsely | done: `test/Harness.t.sol` · `test_aSwallowedRevertKeepsTheCallersGasRefund` failed on the old runner (0 passed, 1 failed) and passes on the fixed one |
+| S3 | `test/Ratchet.t.sol`: `Keepsake.extend` in `test_everyRatchetOnlyLengthens` | W1 | no: that file tests the library through a probe and holds no satellite (the custodian is not in it either); `test/Keepsake.t.sol` · `test_extendOnlyLengthens` holds the Keepsake's use of it, row K5 | closed |
 
 The hub, the Catalog and the deployment (W6):
 

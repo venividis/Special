@@ -38,7 +38,7 @@ interface IStudioEvents {
     error BadShare();
     error BadPage();
     error BadArt();
-    error SaltUsed(address at);
+    error SaltUsed(address collection);
     error DeployFailed();
     error Reentrancy();
 }
