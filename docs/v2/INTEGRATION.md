@@ -166,7 +166,7 @@ The battery:
 |---|---|---|---|---|
 | B1 | `check.mjs` steps and `package.json` scripts: `verify:keepsake`, `verify:journal`, `verify:bazaar`, `verify:studio`, `verify:agora` (the fork proof stays out: it needs the network) | all | yes | done: 33 steps; `verify:bazaar-fork` is a script only |
 | B2 | `invariants-check.mjs` learns V2's row letters; INVARIANTS and DESIGN §14 gain the units' rows | all | yes | done: ids `[A-Z]\d+`; the 55 unit rows and W6's A12, A13, Z12 and F15 are live since the battery ran green on 3d33e4d (the checker: 225 passed, 0 failed); W7's F9–F14 wait for Chromium sentences |
-| B3 | `fuzz.mjs`: no drip ever executes below its floor | W1, V2 §8 | yes | written: properties 10 and 11 against the real Keepsake and Pool, held on four seeds; the one-character mutants of `Keepsake.drip` are being run |
+| B3 | `fuzz.mjs`: no drip ever executes below its floor | W1, V2 §8 | yes | done (54b7de5): properties 10 and 11 against the real Keepsake and Pool, held on four seeds. Both one-character mutants of `Keepsake.drip` in a scratch copy, seed 1, broke property 10 by name: minOut over 1e19 (*sold 8083639144803351639 for 4155106764482435853, below the floor's ceil(sold x 525787234562508917 / 1e18) = 4250274271147398833*) and `a > most` (*sold 11, but 11 had freed and the most is 8*); the source restored byte for byte. Cited in K7 once the battery runs it |
 | B4 | `agents.mjs`: a keeper motive pressing `drip` and `claim` | W1 | later | open |
 | B5 | `mutations.mjs`: the units' rows | W5 | later; the units' tables are the evidence until then | open |
 | B6 | `CLAUDE.md`: Yul evaluates a call's arguments right to left | W1 | yes | done, with the battery's true step order |
