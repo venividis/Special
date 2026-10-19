@@ -705,7 +705,7 @@
       read(ST, "studio.collectionsOf", [P]).then(function (r) {
         var cs = r.arr(0, "address");
         if (g !== gen) return;
-        note(b, cs.length ? "what each owes " + tok + " goes to " + tok + "'s holder at the claim: claim before a sale" : "none yet");
+        note(b, cs.length ? "what each owes " + tok + " is paid to " + tok + "'s fee sink, which goes with the token" : "none yet");
         cs.forEach(function (c) { one(b, c, g); });
       }, function (e) { if (g === gen) note(b, unread(e), "warn"); });
     }
