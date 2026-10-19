@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>INTACT · living light (V2 prototype)</title>
+<!--
+  INTACT V2 — the interface prototype. One file, no host, no font, no library:
+  what the on-chain console becomes once this direction is agreed.
+
+  · the background is the token's soul: a WebGL aurora whose palette is the
+    crest's own hues and whose flow is seeded by its fingerprint; it breathes,
+    it follows your finger, and it blooms when something lands;
+  · the NFT floats inside it in an iridescent frame that tilts with you —
+    art within art, and its memories are a constellation within that;
+  · five rooms on a dock: Gallery (the NFT, its story, buy), Trade (swap,
+    then lock, slow release, slow sell, and a memory written in the same
+    breath), Vault (bundles and gifts that unlock slowly), Social (the
+    collection's room and the feed), Studio (launch a collection where every
+    token is a website with its own chat).
+  Mock data throughout; nothing here signs or sends.
+-->
+<style>
+:root{
+  --bg:#05040a; --ink:#f4f1ff; --mute:rgba(236,232,255,.62); --faint:rgba(236,232,255,.38);
+  --line:rgba(255,255,255,.12); --line2:rgba(255,255,255,.2);
+  --p:#a78bfa; --g:#5eead4; --r:#f9a8d4; --y:#fde68a;
+  --rad:26px; --ease:cubic-bezier(.2,.8,.2,1);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--ink)}
+body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;overflow:hidden}
+button,input,textarea{font:inherit;color:inherit}
+#soul,#spark{position:fixed;inset:0;width:100vw;height:100vh;display:block}
+#soul{z-index:0}
+#spark{z-index:20;pointer-events:none}
+.veil{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(120% 80% at 50% 0%,transparent 40%,rgba(5,4,10,.55) 100%)}
+#app{position:fixed;inset:0;z-index:2;overflow-y:auto;overscroll-behavior:contain;padding:calc(env(safe-area-inset-top) + 76px) 16px calc(env(safe-area-inset-bottom) + 120px);scrollbar-width:none}
+#app::-webkit-scrollbar{display:none}
+.wrap{max-width:540px;margin:0 auto}
+
+/* ── glass ── */
+.glass{position:relative;background:linear-gradient(180deg,rgba(255,255,255,.085),rgba(255,255,255,.03));border:1px solid var(--line);-webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);border-radius:var(--rad);box-shadow:0 18px 50px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.09)}
+.card{padding:18px;margin-top:14px}
+.row{display:flex;align-items:center;gap:12px}
+.row>svg{flex:none}
+.between{justify-content:space-between}
+.col{display:flex;flex-direction:column;gap:6px}
+.tiny{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.mute{color:var(--mute)}
+.num{font-variant-numeric:tabular-nums}
+h1{font-size:34px;line-height:1.05;letter-spacing:-.03em;font-weight:700}
+h2{font-size:22px;letter-spacing:-.02em;font-weight:680}
+h3{font-size:16px;letter-spacing:-.01em;font-weight:650}
+.grad{background:linear-gradient(100deg,#fff 10%,#d8ccff 40%,#a7f3e4 70%,#ffd6ec);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+/* ── top bar ── */
+header.top{position:fixed;z-index:6;top:calc(env(safe-area-inset-top) + 12px);left:50%;transform:translateX(-50%);width:min(540px,calc(100vw - 24px));display:flex;align-items:center;justify-content:space-between;padding:8px 8px 8px 16px;border-radius:22px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.18em;font-size:12px}
+.brand i{width:22px;height:22px;border-radius:50%;background:conic-gradient(from 0deg,var(--p),var(--g),var(--r),var(--y),var(--p));box-shadow:0 0 18px rgba(167,139,250,.8);animation:turn 6s linear infinite}
+.who{display:flex;align-items:center;gap:8px;padding:6px 10px 6px 6px;border-radius:16px;background:rgba(255,255,255,.06);border:1px solid var(--line);font-size:13px;font-weight:600}
+.who svg{width:24px;height:24px;border-radius:50%}
+.dot{width:7px;height:7px;border-radius:50%;background:#34d399;box-shadow:0 0 10px #34d399}
+
+/* ── views ── */
+.view{display:none}
+.view.on{display:block;animation:rise .7s var(--ease) both}
+@keyframes rise{from{opacity:0;transform:translateY(18px) scale(.985);filter:blur(8px)}to{opacity:1;transform:none;filter:none}}
+.stagger>*{animation:rise .8s var(--ease) both}
+.stagger>*:nth-child(2){animation-delay:.06s}.stagger>*:nth-child(3){animation-delay:.12s}.stagger>*:nth-child(4){animation-delay:.18s}.stagger>*:nth-child(5){animation-delay:.24s}.stagger>*:nth-child(6){animation-delay:.3s}.stagger>*:nth-child(7){animation-delay:.36s}
+
+/* ── the frame: art within art ── */
+@property --ang{syntax:'<angle>';inherits:false;initial-value:0deg}
+.stage{perspective:1100px;padding:6px 6px 0}
+.frame{position:relative;aspect-ratio:1/1;border-radius:34px;padding:2px;background:conic-gradient(from var(--ang),#a78bfa,#5eead4,#f9a8d4,#fde68a,#a78bfa);animation:spinang 9s linear infinite;transform:rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .5s var(--ease);box-shadow:0 40px 90px -20px rgba(167,139,250,.55),0 0 0 1px rgba(255,255,255,.05)}
+@keyframes spinang{to{--ang:360deg}}
+.frame .art{position:relative;height:100%;border-radius:32px;overflow:hidden;background:#07080c}
+.frame .art>svg{position:absolute;inset:0;width:100%;height:100%}
+.frame .sheen{position:absolute;inset:-20%;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.16) 48%,rgba(167,243,228,.10) 52%,transparent 64%);mix-blend-mode:screen;transform:translateX(var(--sx,-25%));transition:transform .6s var(--ease);pointer-events:none}
+.frame .aura{position:absolute;inset:0;background:radial-gradient(60% 60% at 50% 50%,rgba(167,139,250,.0),rgba(167,139,250,.0) 40%,rgba(94,234,212,.12) 70%,transparent 72%);animation:breathe 5s ease-in-out infinite;pointer-events:none}
+@keyframes breathe{50%{transform:scale(1.04);opacity:.6}}
+.badge{position:absolute;top:14px;left:14px;padding:7px 11px;border-radius:999px;font-size:12px;font-weight:650;background:rgba(5,4,10,.55);border:1px solid var(--line2);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+.badge.r{left:auto;right:14px}
+.badge b{color:var(--g)}
+
+/* ── buttons & chips ── */
+.btn{appearance:none;border:0;cursor:pointer;width:100%;padding:17px 22px;border-radius:999px;font-weight:700;font-size:16px;letter-spacing:.01em;color:#0c0618;background:linear-gradient(120deg,#d9ccff,#a7f3e4 40%,#fbcfe8 70%,#d9ccff);background-size:250% 100%;animation:flow 7s ease-in-out infinite;box-shadow:0 14px 34px -8px rgba(167,243,228,.45),inset 0 1px 0 rgba(255,255,255,.7);transition:transform .2s var(--ease),box-shadow .3s}
+.btn:active{transform:scale(.975)}
+.btn.ghost{color:var(--ink);background:rgba(255,255,255,.06);border:1px solid var(--line2);animation:none;box-shadow:none}
+@keyframes flow{50%{background-position:100% 0}}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{appearance:none;cursor:pointer;padding:9px 13px;border-radius:999px;border:1px solid var(--line2);background:rgba(255,255,255,.05);font-size:13px;font-weight:600;color:var(--mute);transition:all .25s var(--ease);display:inline-flex;align-items:center;gap:7px}
+.chip.on{color:#0c0618;background:linear-gradient(120deg,#e4dbff,#b9f6ea);border-color:transparent;box-shadow:0 6px 20px -6px rgba(167,243,228,.6)}
+.chip i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.pill{display:inline-flex;align-items:center;gap:8px;padding:8px 12px 8px 8px;border-radius:999px;background:rgba(255,255,255,.07);border:1px solid var(--line);font-weight:700;font-size:15px}
+.coin{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;color:#0c0618}
+
+/* ── switch ── */
+.sw{position:relative;width:52px;height:32px;border-radius:999px;background:rgba(255,255,255,.1);border:1px solid var(--line2);cursor:pointer;transition:background .3s;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.4);transition:transform .35s var(--ease)}
+.sw.on{background:linear-gradient(120deg,#a78bfa,#5eead4)}
+.sw.on::after{transform:translateX(20px)}
+.fold{display:grid;grid-template-rows:0fr;transition:grid-template-rows .5s var(--ease),opacity .4s;opacity:0}
+.fold.open{grid-template-rows:1fr;opacity:1}
+.fold>div{overflow:hidden}
+
+/* ── inputs ── */
+.field{width:100%;background:rgba(0,0,0,.25);border:1px solid var(--line);border-radius:18px;padding:14px 16px;outline:none;transition:border-color .3s,box-shadow .3s;resize:none}
+.field:focus{border-color:rgba(167,243,228,.55);box-shadow:0 0 0 4px rgba(94,234,212,.12)}
+.amount{font-size:34px;font-weight:700;letter-spacing:-.03em;background:none;border:0;outline:none;width:100%;min-width:0}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:999px;background:linear-gradient(90deg,#a78bfa,#5eead4) 0/var(--fill,30%) 100% no-repeat,rgba(255,255,255,.12);outline:none}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 0 0 6px rgba(167,243,228,.2),0 4px 12px rgba(0,0,0,.4);cursor:pointer}
+
+/* ── trade ── */
+.swapbox{padding:16px;border-radius:22px;background:rgba(0,0,0,.22);border:1px solid var(--line)}
+.flip{width:46px;height:46px;border-radius:16px;margin:-12px auto;position:relative;z-index:2;display:grid;place-items:center;cursor:pointer;background:linear-gradient(140deg,#2a1f4d,#123a36);border:1px solid var(--line2);box-shadow:0 10px 24px rgba(0,0,0,.5);transition:transform .5s var(--ease)}
+.flip.turn{transform:rotate(180deg)}
+.ramp{width:100%;height:84px;display:block;margin-top:10px}
+.mood i{box-shadow:0 0 10px currentColor}
+
+/* ── sheet ── */
+.scrim{position:fixed;inset:0;z-index:30;background:rgba(3,2,8,.55);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);opacity:0;pointer-events:none;transition:opacity .35s}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;z-index:31;left:50%;bottom:0;width:min(560px,100vw);transform:translate(-50%,105%);transition:transform .55s var(--ease);padding:12px 18px calc(env(safe-area-inset-bottom) + 22px);border-radius:30px 30px 0 0}
+.sheet.on{transform:translate(-50%,0)}
+.grab{width:44px;height:5px;border-radius:9px;background:rgba(255,255,255,.25);margin:4px auto 16px}
+.say{font-size:19px;line-height:1.45;letter-spacing:-.01em;margin:6px 0 16px}
+.say b{color:#b9f6ea}
+.kv{display:flex;justify-content:space-between;gap:14px;padding:11px 0;border-top:1px solid var(--line);font-size:14px}
+.kv span:first-child{color:var(--faint)}
+
+/* ── dock ── */
+.dock{position:fixed;z-index:6;left:50%;bottom:calc(env(safe-area-inset-bottom) + 14px);transform:translateX(-50%);display:flex;gap:2px;padding:7px;border-radius:28px}
+.dock button{appearance:none;border:0;background:none;cursor:pointer;width:64px;height:56px;border-radius:20px;color:var(--faint);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:10px;font-weight:700;letter-spacing:.06em;position:relative;z-index:1;transition:color .3s}
+.dock button svg{width:22px;height:22px}
+.dock button.on{color:var(--ink)}
+.dock .lit{position:absolute;z-index:0;top:7px;height:56px;width:64px;border-radius:20px;background:linear-gradient(140deg,rgba(167,139,250,.35),rgba(94,234,212,.25));box-shadow:0 0 24px rgba(167,139,250,.45),inset 0 1px 0 rgba(255,255,255,.2);transition:left .5s var(--ease)}
+
+/* ── gallery bits ── */
+.story{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 6px;scrollbar-width:none}
+.story::-webkit-scrollbar{display:none}
+.beat{flex:none;min-width:132px;padding:12px 14px;border-radius:18px;background:rgba(255,255,255,.05);border:1px solid var(--line)}
+.beat b{display:block;font-size:15px;margin-top:4px}
+.sky{width:100%;height:190px;display:block}
+.mem{padding:14px 16px;border-radius:18px;background:rgba(0,0,0,.25);border:1px solid var(--line);margin-top:10px;transition:opacity .4s}
+.trait{padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.05);border:1px solid var(--line);font-size:13px}
+.trait b{display:block;font-size:14px;color:var(--ink)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+
+/* ── vault ── */
+.bundle{display:flex;gap:16px;align-items:center}
+.orb{width:92px;height:92px;flex:none;position:relative}
+.orb svg{width:100%;height:100%}
+.orb .sat{position:absolute;inset:0;animation:turn 12s linear infinite}
+.orb .sat.slow{animation-duration:20s;animation-direction:reverse}
+@keyframes turn{to{transform:rotate(360deg)}}
+.bar{height:8px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:8px}
+.bar i{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,#a78bfa,#5eead4)}
+.giftcard{border-radius:24px;overflow:hidden;border:1px solid var(--line2);background:#0b0916}
+.giftcard svg{display:block;width:100%;height:auto}
+.coinrow{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.coinrow input{width:96px;text-align:right;background:none;border:0;outline:none;font-weight:700;font-size:17px}
+
+/* ── social ── */
+.post{padding:15px;border-radius:22px;background:rgba(0,0,0,.22);border:1px solid var(--line);margin-top:10px}
+.post .who2{display:flex;align-items:center;gap:10px}
+.post .who2 svg{width:36px;height:36px;border-radius:50%;flex:none}
+.post p{margin-top:9px}
+.react{display:flex;gap:6px;margin-top:11px}
+.react button{appearance:none;cursor:pointer;border:1px solid var(--line);background:rgba(255,255,255,.04);border-radius:999px;padding:6px 11px;font-size:12px;font-weight:700;color:var(--mute);transition:all .25s var(--ease)}
+.react button.on{color:#0c0618;background:linear-gradient(120deg,#e4dbff,#b9f6ea);border-color:transparent}
+.tag{white-space:nowrap;flex:none;font-size:11px;font-weight:700;letter-spacing:.06em;padding:4px 8px;border-radius:999px;background:rgba(94,234,212,.12);color:#a7f3e4;border:1px solid rgba(94,234,212,.25)}
+.tag.p{background:rgba(167,139,250,.14);color:#d9ccff;border-color:rgba(167,139,250,.3)}
+.tag.r{background:rgba(249,168,212,.12);color:#fbcfe8;border-color:rgba(249,168,212,.28)}
+.compose{display:flex;gap:8px;align-items:center;margin-top:14px}
+.compose .field{border-radius:999px;padding:13px 18px}
+.send{width:48px;height:48px;flex:none;border-radius:50%;border:0;cursor:pointer;display:grid;place-items:center;background:linear-gradient(140deg,#c4b5fd,#5eead4)}
+
+/* ── studio ── */
+.tpls{display:flex;gap:12px;overflow-x:auto;padding:4px 2px 8px;scroll-snap-type:x mandatory;scrollbar-width:none}
+.tpls::-webkit-scrollbar{display:none}
+.tpl{flex:none;width:156px;scroll-snap-align:start;border-radius:22px;padding:10px;background:rgba(255,255,255,.05);border:1px solid var(--line);cursor:pointer;transition:all .3s var(--ease)}
+.tpl.on{border-color:rgba(167,243,228,.6);box-shadow:0 0 0 4px rgba(94,234,212,.12),0 14px 30px -10px rgba(94,234,212,.5)}
+.mini{height:150px;border-radius:16px;overflow:hidden;position:relative;background:#0b0916}
+.phone{width:210px;margin:6px auto 0;border-radius:34px;padding:9px;background:linear-gradient(160deg,#2b2348,#101a2a);border:1px solid var(--line2);box-shadow:0 30px 60px -20px rgba(0,0,0,.8)}
+.phone .scr{border-radius:26px;overflow:hidden;background:#07060d;height:380px;position:relative}
+.toast{position:fixed;z-index:40;left:50%;top:calc(env(safe-area-inset-top) + 74px);transform:translate(-50%,-140%);padding:12px 18px;border-radius:999px;font-weight:650;font-size:14px;transition:transform .55s var(--ease),opacity .4s;white-space:nowrap;opacity:0;pointer-events:none}
+.toast.on{transform:translate(-50%,0);opacity:1}
+@media (min-width:900px){#app{padding-top:96px}h1{font-size:40px}}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.001s!important;transition-duration:.001s!important}}
+</style>
+</head>
+<body>
+<canvas id="soul" aria-hidden="true"></canvas>
+<div class="veil"></div>
+
+<header class="top glass">
+  <div class="brand"><i></i>INTACT</div>
+  <div class="who"><span id="meOrb"></span>#1 · Agent One <span class="dot"></span></div>
+</header>
+
+<main id="app"><div class="wrap">
+
+<!-- ═══════════ GALLERY ═══════════ -->
+<section class="view on" data-view="gallery"><div class="stagger">
+  <div class="stage"><div class="frame" id="frame">
+    <div class="art" id="art"></div>
+    <div class="aura"></div><div class="sheen"></div>
+    <span class="badge">● Live · <b>Active</b></span>
+    <span class="badge r">Sealed 30d</span>
+  </div></div>
+
+  <div style="margin-top:22px" class="row between">
+    <div class="col" style="gap:4px">
+      <span class="tiny">INTACT #1</span>
+      <h1 class="grad">Agent One</h1>
+      <span class="mute">A website, a vault and a voice — alive since Dec 2024</span>
+    </div>
+  </div>
+
+  <div class="glass card">
+    <div class="row between">
+      <div class="col" style="gap:2px"><span class="tiny">Listed</span><span style="font-size:30px;font-weight:750;letter-spacing:-.03em" class="num">0.25 ETH</span><span class="mute num" style="font-size:13px">ends in 6 days · 3 watching</span></div>
+      <div class="col" style="align-items:flex-end;gap:2px"><span class="tiny">Last sale</span><span class="num" style="font-weight:700">0.19 ETH</span><span class="num" style="font-size:12px;color:#86efac">▲ 31%</span></div>
+    </div>
+    <div class="grid2" style="margin-top:16px"><button class="btn" data-sheet="buy">Buy now</button><button class="btn ghost" data-sheet="offer">Make offer</button></div>
+    <p class="mute" style="font-size:12.5px;margin-top:12px">Exact price, pinned to what you see: if anything changes before you sign, nothing is sent.</p>
+  </div>
+
+  <div class="glass card">
+    <div class="row between"><h3>Its story</h3><span class="tiny">on chain</span></div>
+    <div class="story" style="margin-top:12px">
+      <div class="beat"><span class="tiny">Born</span><b>Dec 1, 2024</b><span class="mute" style="font-size:12px">minted for 0.01 ETH</span></div>
+      <div class="beat"><span class="tiny">First words</span><b>“gm from #1”</b><span class="mute" style="font-size:12px">in the commons</span></div>
+      <div class="beat"><span class="tiny">Opened a market</span><b>WETH / ETH</b><span class="mute" style="font-size:12px">100 · 10 reserves</span></div>
+      <div class="beat"><span class="tiny">Memories</span><b id="memCount">3 inscribed</b><span class="mute" style="font-size:12px">1 private</span></div>
+      <div class="beat"><span class="tiny">Sealed</span><b>30 days</b><span class="mute" style="font-size:12px">nothing leaves</span></div>
+    </div>
+  </div>
+
+  <div class="glass card">
+    <div class="row between"><h3>Memories</h3><span class="tiny">tap a star</span></div>
+    <svg class="sky" id="sky" viewBox="0 0 500 190"></svg>
+    <div class="mem" id="memCard"></div>
+  </div>
+
+  <div class="glass card">
+    <div class="row between"><h3>Its room</h3><span class="tag">142 holders talking</span></div>
+    <div id="roomPeek"></div>
+    <button class="btn ghost" style="margin-top:14px" data-go="social">Join the conversation</button>
+  </div>
+
+  <div class="glass card">
+    <h3>Traits</h3>
+    <div class="grid3" style="margin-top:12px">
+      <div class="trait"><span class="mute">Curve</span><b>0 bps</b></div>
+      <div class="trait"><span class="mute">Face</span><b>Crest</b></div>
+      <div class="trait"><span class="mute">Epoch</span><b>1</b></div>
+      <div class="trait"><span class="mute">Hue</span><b>266°</b></div>
+      <div class="trait"><span class="mute">Ring</span><b>146°</b></div>
+      <div class="trait"><span class="mute">Keys</span><b>1 agent</b></div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ═══════════ TRADE ═══════════ -->
+<section class="view" data-view="trade"><div class="stagger">
+  <div class="col" style="gap:4px;margin-top:6px"><span class="tiny">#1's own market · 30 bps</span><h1 class="grad">Trade</h1><span class="mute">Swap, then decide what your coins do next.</span></div>
+
+  <div class="glass card">
+    <div class="swapbox">
+      <div class="row between"><span class="tiny">You pay</span><span class="mute num" style="font-size:12px">Balance 2.00</span></div>
+      <div class="row" style="margin-top:8px"><input class="amount num" id="payIn" value="0.5" inputmode="decimal" aria-label="amount to pay"><span class="pill" id="payTok"><span class="coin" style="background:linear-gradient(140deg,#c4b5fd,#818cf8)">Ξ</span>ETH</span></div>
+    </div>
+    <div class="flip" id="flip" role="button" aria-label="flip"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#e9e3ff" stroke-width="2" stroke-linecap="round"><path d="M7 4v16M7 20l-3-3M7 20l3-3M17 20V4M17 4l-3 3M17 4l3 3"/></svg></div>
+    <div class="swapbox">
+      <div class="row between"><span class="tiny">You receive</span><span class="mute num" style="font-size:12px" id="impact">impact 4.8%</span></div>
+      <div class="row" style="margin-top:8px"><span class="amount num" id="getOut">4.748</span><span class="pill" id="getTok"><span class="coin" style="background:linear-gradient(140deg,#a7f3e4,#34d399)">W</span>WETH</span></div>
+    </div>
+    <p class="mute num" style="font-size:12.5px;margin-top:12px" id="floorLine">Never less than 4.70 WETH — quoted first, nothing settles below it.</p>
+  </div>
+
+  <div class="glass card">
+    <div class="row between"><div class="col" style="gap:2px"><h3>Lock what I receive</h3><span class="mute" style="font-size:13px">Diamond hands, enforced by the chain.</span></div><div class="sw on" data-fold="lockFold" id="lockSw"></div></div>
+    <div class="fold open" id="lockFold"><div>
+      <div class="chips" style="margin-top:14px" id="lockChips"><button class="chip" data-d="7">7 days</button><button class="chip on" data-d="30">30 days</button><button class="chip" data-d="90">90 days</button><button class="chip" data-d="365">1 year</button></div>
+      <div class="row between" style="margin-top:18px"><div class="col" style="gap:2px"><h3>Then release slowly</h3><span class="mute" style="font-size:13px" id="relLine">Unlocks drip out over 30 days.</span></div><div class="sw on" data-fold="relFold"></div></div>
+      <div class="fold open" id="relFold"><div>
+        <input type="range" id="rel" min="0" max="180" value="30" style="margin-top:16px;--fill:16%">
+        <svg class="ramp" id="ramp" viewBox="0 0 500 84" preserveAspectRatio="none"></svg>
+        <div class="row between mute" style="font-size:11px;letter-spacing:.08em"><span>NOW</span><span id="unlockAt">UNLOCK · NOV 18</span><span id="fullAt">FREE · DEC 18</span></div>
+        <div class="row between" style="margin-top:18px"><div class="col" style="gap:2px"><h3>Sell slowly as it frees</h3><span class="mute" style="font-size:13px">Never dump: anyone may trigger the drip, never below your floor.</span></div><div class="sw" data-fold="sellFold"></div></div>
+        <div class="fold" id="sellFold"><div>
+          <div class="row" style="margin-top:14px;gap:10px"><input class="field num" value="0.105" style="max-width:140px" aria-label="floor price"><span class="mute">ETH per WETH, at the least</span></div>
+        </div></div>
+      </div></div>
+    </div></div>
+  </div>
+
+  <div class="glass card">
+    <div class="row between"><div class="col" style="gap:2px"><h3>Inscribe a memory</h3><span class="mute" style="font-size:13px">Your trading journal, written in the same breath.</span></div><span class="tag p">on #1 forever</span></div>
+    <textarea class="field" id="memo" rows="3" style="margin-top:14px" placeholder="Why this trade? What do you feel right now?">Bought the dip after the commons went quiet. Holding through December, no matter what.</textarea>
+    <div class="chips mood" style="margin-top:12px" id="moods">
+      <button class="chip on" style="color:#86efac"><i style="background:#86efac"></i>conviction</button>
+      <button class="chip" style="color:#93c5fd"><i style="background:#93c5fd"></i>calm</button>
+      <button class="chip" style="color:#fde68a"><i style="background:#fde68a"></i>hopeful</button>
+      <button class="chip" style="color:#f9a8d4"><i style="background:#f9a8d4"></i>degen</button>
+    </div>
+    <div class="row between" style="margin-top:16px"><div class="col" style="gap:2px"><h3>Keep it private</h3><span class="mute" style="font-size:13px">Sealed to your key — only you can read it.</span></div><div class="sw" id="privSw"></div></div>
+  </div>
+
+  <button class="btn" style="margin-top:18px" data-sheet="swap">Review swap</button>
+</div></section>
+
+<!-- ═══════════ VAULT ═══════════ -->
+<section class="view" data-view="vault"><div class="stagger">
+  <div class="col" style="gap:4px;margin-top:6px"><span class="tiny">held by #1's account</span><h1 class="grad">Vault</h1><span class="mute">Locks, bundles and gifts — each one a living object.</span></div>
+
+  <div class="glass card">
+    <div class="row between"><span class="tiny">Worth now</span><span class="tag">3 bundles</span></div>
+    <div style="font-size:38px;font-weight:760;letter-spacing:-.035em;margin-top:4px" class="num">1.87 ETH</div>
+    <div class="mute num" style="font-size:13px">0.42 ETH free today · 1.45 ETH still on its way</div>
+  </div>
+
+  <div class="glass card bundle"><div class="orb" data-orb="0"></div>
+    <div style="flex:1;min-width:0"><div class="row between"><h3>Diamond hands</h3><span class="tag p">locked</span></div>
+      <div class="mute num" style="font-size:13px;margin-top:2px">4.748 WETH · unlocks in 29d 23h</div>
+      <div class="bar"><i style="width:2%"></i></div><div class="mute num" style="font-size:11.5px;margin-top:6px">then drips over 30 days · floor 0.105 ETH</div></div></div>
+
+  <div class="glass card bundle"><div class="orb" data-orb="1"></div>
+    <div style="flex:1;min-width:0"><div class="row between"><h3>From #42</h3><span class="tag r">gift</span></div>
+      <div class="mute" style="font-size:13px;margin-top:2px">“For your first year. Don't spend it all at once.”</div>
+      <div class="bar"><i style="width:35%"></i></div><div class="mute num" style="font-size:11.5px;margin-top:6px">35% released · 0.21 ETH + 40 USDC ready</div></div></div>
+
+  <div class="glass card bundle"><div class="orb" data-orb="2"></div>
+    <div style="flex:1;min-width:0"><div class="row between"><h3>Treasury basket</h3><span class="tag">releasing</span></div>
+      <div class="mute num" style="font-size:13px;margin-top:2px">ETH · WETH · USDC · 3 coins</div>
+      <div class="bar"><i style="width:68%"></i></div><div class="mute num" style="font-size:11.5px;margin-top:6px">68% released · claim 0.12 ETH</div></div></div>
+
+  <div class="glass card">
+    <div class="row between"><div class="col" style="gap:2px"><h2>Wrap a bundle</h2><span class="mute" style="font-size:13px">Lock coins together. Keep it, or gift it.</span></div></div>
+    <div style="margin-top:12px">
+      <div class="coinrow"><span class="coin" style="background:linear-gradient(140deg,#c4b5fd,#818cf8)">Ξ</span><b style="flex:1">ETH</b><input class="num" value="0.10" aria-label="eth"></div>
+      <div class="coinrow"><span class="coin" style="background:linear-gradient(140deg,#a7f3e4,#34d399)">W</span><b style="flex:1">WETH</b><input class="num" value="1.00" aria-label="weth"></div>
+      <div class="coinrow"><span class="coin" style="background:linear-gradient(140deg,#bfdbfe,#60a5fa)">$</span><b style="flex:1">USDC</b><input class="num" value="50" aria-label="usdc"></div>
+    </div>
+    <span class="tiny" style="display:block;margin-top:16px">To</span>
+    <input class="field" style="margin-top:8px" value="#7 · Moonlit Cartographer" aria-label="recipient">
+    <span class="tiny" style="display:block;margin-top:16px">Opens</span>
+    <div class="chips" style="margin-top:8px" id="cliffChips"><button class="chip">now</button><button class="chip on">in 30 days</button><button class="chip">on their birthday</button></div>
+    <span class="tiny" style="display:block;margin-top:16px">Releases over</span>
+    <div class="chips" style="margin-top:8px" id="overChips"><button class="chip">all at once</button><button class="chip on">60 days</button><button class="chip">1 year</button></div>
+    <span class="tiny" style="display:block;margin-top:16px">With a note</span>
+    <textarea class="field" rows="2" style="margin-top:8px">Welcome to the room. These unlock slowly, like good things do.</textarea>
+    <div class="giftcard" style="margin-top:16px" id="giftCard"></div>
+    <button class="btn" style="margin-top:16px" data-sheet="gift">Wrap it as a gift</button>
+  </div>
+</div></section>
+
+<!-- ═══════════ SOCIAL ═══════════ -->
+<section class="view" data-view="social"><div class="stagger">
+  <div class="col" style="gap:4px;margin-top:6px"><span class="tiny">every token is a member</span><h1 class="grad">Social</h1><span class="mute">Hold one, and you are in the room.</span></div>
+  <div class="chips" style="margin-top:14px" id="rooms"><button class="chip on">The commons</button><button class="chip">#1's home</button><button class="chip">Moonlit (your collection)</button><button class="chip">Following</button></div>
+  <div id="feed"></div>
+  <div class="compose"><input class="field" placeholder="Speak as #1…" aria-label="message"><button class="send" aria-label="send"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0c0618" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+</div></section>
+
+<!-- ═══════════ STUDIO ═══════════ -->
+<section class="view" data-view="studio"><div class="stagger">
+  <div class="col" style="gap:4px;margin-top:6px"><span class="tiny">launch from #1</span><h1 class="grad">Studio</h1><span class="mute">Launch a collection where every token is a website — with its own room, vault and memories.</span></div>
+  <span class="tiny" style="display:block;margin-top:18px">Pick a kind of site</span>
+  <div class="tpls" style="margin-top:10px" id="tpls"></div>
+  <div class="glass card">
+    <span class="tiny">Name</span><input class="field" style="margin-top:8px" value="Moonlit Cartographers">
+    <div class="grid2" style="margin-top:12px">
+      <div><span class="tiny">Supply</span><input class="field num" style="margin-top:8px" value="777"></div>
+      <div><span class="tiny">Mint price</span><input class="field num" style="margin-top:8px" value="0.02 ETH"></div>
+    </div>
+    <div class="chips" style="margin-top:16px"><span class="chip on">its own site</span><span class="chip on">its own room</span><span class="chip on">its own vault</span><span class="chip on">memories</span><span class="chip on">gifts</span></div>
+    <div class="row between" style="margin-top:16px"><div class="col" style="gap:2px"><h3>Holders bring holders</h3><span class="mute" style="font-size:13px">10% of every mint goes to the token that shared the link.</span></div><div class="sw on"></div></div>
+  </div>
+  <div class="phone"><div class="scr" id="phone"></div></div>
+  <button class="btn" style="margin-top:18px" data-sheet="launch">Launch the collection</button>
+</div></section>
+
+</div></main>
+
+<nav class="dock glass" id="dock">
+  <span class="lit" id="lit"></span>
+  <button class="on" data-go="gallery"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3.5" y="3.5" width="17" height="17" rx="5"/><circle cx="12" cy="12" r="3.6"/></svg>Gallery</button>
+  <button data-go="trade"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 8h14l-3-3M20 16H6l3 3"/></svg>Trade</button>
+  <button data-go="vault"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3"/><path d="M12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3"/></svg>Vault</button>
+  <button data-go="social"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-5 4v-4.4A2.5 2.5 0 0 1 4 13.5z"/></svg>Social</button>
+  <button data-go="studio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3l2.2 5.6L20 9.2l-4.4 3.9L17 19l-5-3.1L7 19l1.4-5.9L4 9.2l5.8-.6z"/></svg>Studio</button>
+</nav>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet glass" id="sheet"><div class="grab"></div><div id="sheetBody"></div></div>
+<div class="toast glass" id="toast"></div>
+<canvas id="spark" aria-hidden="true"></canvas>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (q, r) { return (r || document).querySelector(q); };
+  var $$ = function (q, r) { return Array.prototype.slice.call((r || document).querySelectorAll(q)); };
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /*── the token: its crest, its fingerprint, its palette (the crest's own hues, 266° and 146°) ──*/
+  var FP = "fee962bebba7fd9d5773b925f669b576c54c5f4ab75ba38d2bf096fb678eef01";
+  var byte = function (i) { return parseInt(FP.substr(i * 2, 2), 16); };
+  var hsl = function (h, s, l) {
+    s /= 100; l /= 100; var k = function (n) { return (n + h / 30) % 12; }, a = s * Math.min(l, 1 - l);
+    var f = function (n) { return l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1))); };
+    return [f(0), f(8), f(4)];
+  };
+  var PAL = [hsl(266, 70, 9), hsl(266, 72, 46), hsl(146, 70, 52), hsl(320, 85, 70)];
+  var CREST = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><defs><radialGradient id="cg" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="hsl(266,80%,72%)"/><stop offset=".6" stop-color="hsl(266,70%,52%)"/><stop offset="1" stop-color="hsl(266,70%,30%)"/></radialGradient><radialGradient id="halo" cx="50%" cy="50%" r="50%"><stop offset=".55" stop-color="hsl(146,70%,55%)" stop-opacity=".0"/><stop offset=".7" stop-color="hsl(146,70%,55%)" stop-opacity=".25"/><stop offset="1" stop-color="hsl(146,70%,55%)" stop-opacity="0"/></radialGradient></defs><rect width="1000" height="1000" fill="#07080c"/><circle cx="500" cy="500" r="330" fill="url(#halo)"/><g fill="none" stroke="hsl(146,60%,55%)" stroke-width="2" transform="rotate(37 500 500)"><rect x="140" y="140" width="720" height="720" opacity=".9"/><rect x="190" y="190" width="620" height="620" opacity=".35"/><rect x="240" y="240" width="520" height="520" opacity=".15"/></g><circle cx="500" cy="500" r="92" fill="url(#cg)"><animate attributeName="r" values="92;98;92" dur="5s" repeatCount="indefinite"/></circle><g font-family="ui-monospace,Menlo,monospace" text-anchor="middle" fill="#8b95ad"><text x="500" y="112" font-size="30" letter-spacing="12">INTACT #1</text><text x="500" y="902" font-size="20" letter-spacing="6">EPOCH 1 / ACTIVE</text><text x="500" y="946" font-size="20" letter-spacing="6" fill="hsl(146,60%,55%)">SEALED 30 DAYS</text></g></svg>';
+  $("#art").innerHTML = CREST;
+
+  /*── an avatar for any token: two hues from its number, a soft orb ──*/
+  function orb(n, size) {
+    var h1 = (n * 137.5) % 360, h2 = (h1 + 70 + (n * 29) % 90) % 360, id = "o" + n + "_" + Math.floor(Math.random() * 1e6);
+    return '<svg viewBox="0 0 40 40" width="' + (size || 40) + '" height="' + (size || 40) + '"><defs><radialGradient id="' + id + '" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="hsl(' + h2 + ',90%,82%)"/><stop offset=".55" stop-color="hsl(' + h1 + ',75%,58%)"/><stop offset="1" stop-color="hsl(' + h1 + ',70%,22%)"/></radialGradient></defs><circle cx="20" cy="20" r="20" fill="url(#' + id + ')"/><circle cx="14" cy="12" r="5" fill="#fff" opacity=".25"/></svg>';
+  }
+  $("#meOrb").innerHTML = orb(1, 24);
+
+  /*════════ the soul: a WebGL aurora behind everything ════════*/
+  var soul = $("#soul"), gl = soul.getContext("webgl", { antialias: false, premultipliedAlpha: false }), U = {}, pulse = 0, mouse = [0.15, -0.1], tgt = [0.15, -0.1];
+  var FRAG = [
+    "precision highp float;",
+    "uniform vec2 R;uniform float T;uniform vec3 C0,C1,C2,C3;uniform vec2 M;uniform float P;uniform vec2 S;",
+    "float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}",
+    "float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+1.),f.x),f.y);}",
+    "float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p=mat2(1.6,1.2,-1.2,1.6)*p+S;a*=.5;}return v;}",
+    "void main(){",
+    " vec2 uv=gl_FragCoord.xy/R;vec2 p=(gl_FragCoord.xy-.5*R)/min(R.x,R.y);",
+    " float t=T*.035;",
+    " vec2 q=vec2(fbm(p*1.4+vec2(0,t)),fbm(p*1.4+vec2(5.2,-t)));",
+    " vec2 w=vec2(fbm(p*1.1+2.2*q+vec2(1.7,9.2)+t*1.2),fbm(p*1.1+2.2*q+vec2(8.3,2.8)-t));",
+    " float f=fbm(p*.9+2.6*w);",
+    " vec3 c=mix(C0,C1,clamp(f*f*2.4,0.,1.));",
+    " c=mix(c,C2,clamp(pow(length(q)*.72,2.2),0.,1.)*.85);",
+    " c+=C3*smoothstep(.62,.95,w.y)*.28;",
+    " float band=pow(max(0.,1.-abs(p.y*1.5-.55-.35*sin(p.x*2.2+w.x*3.+t*5.))),5.);",
+    " c+=mix(C2,C1,.5+.5*sin(t*3.+p.x))*band*.35;",
+    " float d=length(p-M);c+=mix(C2,C3,.5)*(.10+.30*P)/(1.+18.*d*d);",
+    " c*=.55+.75*f;c*=1.-.62*pow(length(uv-.5)*1.25,2.);",
+    " c+=P*.12*C2;",
+    " gl_FragColor=vec4(pow(max(c,0.),vec3(.92)),1.);",
+    "}"].join("\n");
+  function initGL() {
+    if (!gl) { soul.style.background = "radial-gradient(80% 60% at 30% 20%,#3b2a6e,transparent),radial-gradient(70% 60% at 80% 70%,#0f4a3f,transparent),#06040c"; return false; }
+    var sh = function (type, src) { var s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+    var pr = gl.createProgram();
+    gl.attachShader(pr, sh(gl.VERTEX_SHADER, "attribute vec2 a;void main(){gl_Position=vec4(a,0,1);}"));
+    gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(pr); gl.useProgram(pr);
+    var b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+    var a = gl.getAttribLocation(pr, "a"); gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
+    ["R", "T", "C0", "C1", "C2", "C3", "M", "P", "S"].forEach(function (k) { U[k] = gl.getUniformLocation(pr, k); });
+    gl.uniform3fv(U.C0, PAL[0]); gl.uniform3fv(U.C1, PAL[1]); gl.uniform3fv(U.C2, PAL[2]); gl.uniform3fv(U.C3, PAL[3]);
+    gl.uniform2f(U.S, 1.7 + byte(0) / 255, 9.2 - byte(1) / 64);
+    return true;
+  }
+  var SCALE = 0.55, t0 = performance.now() - byte(2) * 1000;
+  function size() {
+    var w = Math.floor(innerWidth * SCALE), h = Math.floor(innerHeight * SCALE);
+    soul.width = w; soul.height = h; spark.width = innerWidth * devicePixelRatio; spark.height = innerHeight * devicePixelRatio;
+    if (gl) { gl.viewport(0, 0, w, h); gl.uniform2f(U.R, w, h); }
+  }
+  var hasGL = initGL();
+  function frame(now) {
+    mouse[0] += (tgt[0] - mouse[0]) * 0.05; mouse[1] += (tgt[1] - mouse[1]) * 0.05; pulse *= 0.955;
+    if (hasGL) { gl.uniform1f(U.T, (now - t0) / 1000); gl.uniform2f(U.M, mouse[0], mouse[1]); gl.uniform1f(U.P, pulse); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+    drawSparks();
+    if (!reduce) requestAnimationFrame(frame);
+  }
+  addEventListener("pointermove", function (e) {
+    var m = Math.min(innerWidth, innerHeight);
+    tgt = [(e.clientX - innerWidth / 2) / m, (innerHeight / 2 - e.clientY) / m];
+    var fr = $("#frame"); if (!fr) return;
+    var r = fr.getBoundingClientRect(), x = (e.clientX - r.left) / r.width - .5, y = (e.clientY - r.top) / r.height - .5;
+    if (Math.abs(x) < .9 && Math.abs(y) < .9) { fr.style.setProperty("--ry", (x * 10).toFixed(2) + "deg"); fr.style.setProperty("--rx", (-y * 10).toFixed(2) + "deg"); fr.style.setProperty("--sx", (x * 60) + "%"); }
+  });
+  addEventListener("deviceorientation", function (e) {
+    var fr = $("#frame"); if (!fr || e.gamma == null) return;
+    fr.style.setProperty("--ry", Math.max(-10, Math.min(10, e.gamma / 3)).toFixed(2) + "deg");
+    fr.style.setProperty("--rx", Math.max(-10, Math.min(10, -(e.beta - 45) / 4)).toFixed(2) + "deg");
+  });
+
+  /*════════ sparks: the celebration ════════*/
+  var spark = $("#spark"), sx = spark.getContext("2d"), parts = [];
+  function celebrate(x, y) {
+    pulse = 1.2;
+    var cols = ["#d9ccff", "#a7f3e4", "#fbcfe8", "#fde68a", "#ffffff"], dpr = devicePixelRatio;
+    for (var i = 0; i < (reduce ? 0 : 150); i++) {
+      var a = Math.random() * Math.PI * 2, v = 2 + Math.random() * 9;
+      parts.push({ x: x * dpr, y: y * dpr, vx: Math.cos(a) * v * dpr, vy: (Math.sin(a) * v - 5) * dpr, life: 1, c: cols[i % cols.length], s: (1 + Math.random() * 2.6) * dpr, r: Math.random() < .3 });
+    }
+    if (navigator.vibrate) try { navigator.vibrate([12, 40, 18]); } catch (e) {}
+  }
+  function drawSparks() {
+    if (!parts.length) { sx.clearRect(0, 0, spark.width, spark.height); return; }
+    sx.clearRect(0, 0, spark.width, spark.height);
+    parts = parts.filter(function (p) { return p.life > 0; });
+    parts.forEach(function (p) {
+      p.vy += .16 * devicePixelRatio; p.vx *= .985; p.x += p.vx; p.y += p.vy; p.life -= .012;
+      sx.globalAlpha = Math.max(0, p.life); sx.fillStyle = p.c;
+      if (p.r) { sx.save(); sx.translate(p.x, p.y); sx.rotate(p.life * 9); sx.fillRect(-p.s * 2, -p.s / 2, p.s * 4, p.s); sx.restore(); }
+      else { sx.beginPath(); sx.arc(p.x, p.y, p.s, 0, 7); sx.fill(); }
+    });
+    sx.globalAlpha = 1;
+  }
+  function toast(msg) { var t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove("on"); }, 3200); }
+
+  /*════════ navigation ════════*/
+  var VIEWS = ["gallery", "trade", "vault", "social", "studio"];
+  function go(name) {
+    $$(".view").forEach(function (v) { v.classList.toggle("on", v.dataset.view === name); });
+    $$("#dock button").forEach(function (b) { b.classList.toggle("on", b.dataset.go === name); });
+    var i = VIEWS.indexOf(name); $("#lit").style.left = (7 + i * 66) + "px";
+    $("#app").scrollTo({ top: 0, behavior: reduce ? "auto" : "smooth" });
+    pulse = Math.max(pulse, .45);
+    if (history.replaceState) history.replaceState(null, "", "#" + name);
+  }
+  $$("[data-go]").forEach(function (b) { b.addEventListener("click", function () { go(b.dataset.go); }); });
+
+  /*════════ gallery: memories as a constellation ════════*/
+  var MEMS = [
+    { t: "gm from #1 — first words, into the commons.", d: "Dec 1, 2024", k: "note" },
+    { t: "Opened my own market. 100 WETH against 10 ETH. Nervous, proud.", d: "Dec 2, 2024", k: "trade" },
+    { t: "Sealed for 30 days. Nothing leaves until I'm sure.", d: "Dec 3, 2024", k: "note" },
+    { t: "(sealed to its keeper)", d: "Dec 4, 2024", k: "private" }
+  ];
+  function hashf(s, i) { var h = 2166136261 ^ i; for (var j = 0; j < s.length; j++) { h ^= s.charCodeAt(j); h = Math.imul(h, 16777619); } return ((h >>> 0) % 1000) / 1000; }
+  function drawSky(newest) {
+    var g = "", pts = MEMS.map(function (m, i) { return [40 + (i + .5) * (420 / MEMS.length) + (hashf(m.t, 1) - .5) * 40, 30 + hashf(m.t, 2) * 130]; });
+    for (var s = 0; s < 70; s++) g += '<circle cx="' + (hashf("s" + s, 3) * 500).toFixed(1) + '" cy="' + (hashf("s" + s, 4) * 190).toFixed(1) + '" r="' + (hashf("s" + s, 5) * 1.1 + .2).toFixed(2) + '" fill="#fff" opacity="' + (hashf("s" + s, 6) * .5 + .1).toFixed(2) + '"/>';
+    g += '<polyline points="' + pts.map(function (p) { return p.join(","); }).join(" ") + '" fill="none" stroke="url(#ln)" stroke-width="1.2" opacity=".7"/>';
+    pts.forEach(function (p, i) {
+      var priv = MEMS[i].k === "private", hot = i === (newest == null ? MEMS.length - 1 : newest);
+      g += '<g data-m="' + i + '" style="cursor:pointer">' +
+        '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="16" fill="url(#glow)" opacity="' + (hot ? .95 : .55) + '">' + (hot ? '<animate attributeName="r" values="14;22;14" dur="2.4s" repeatCount="indefinite"/>' : "") + '</circle>' +
+        (priv ? '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="7" fill="none" stroke="#d9ccff" stroke-dasharray="2 3"/>' : '<circle cx="' + p[0] + '" cy="' + p[1] + '" r="4.2" fill="#fff"/>') + '</g>';
+    });
+    $("#sky").innerHTML = '<defs><radialGradient id="glow"><stop offset="0" stop-color="#e9e3ff"/><stop offset=".4" stop-color="#a78bfa" stop-opacity=".6"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></radialGradient><linearGradient id="ln"><stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#5eead4"/></linearGradient></defs>' + g;
+    $$("#sky [data-m]").forEach(function (el) { el.addEventListener("click", function () { showMem(+el.dataset.m); }); });
+    showMem(newest == null ? 0 : newest);
+  }
+  function showMem(i) {
+    var m = MEMS[i], k = { note: '<span class="tag">memory</span>', trade: '<span class="tag p">trade journal</span>', private: '<span class="tag r">private</span>' }[m.k];
+    var c = $("#memCard"); c.style.opacity = 0;
+    setTimeout(function () { c.innerHTML = '<div class="row between">' + k + '<span class="mute" style="font-size:12px">' + m.d + '</span></div><p style="margin-top:9px;font-size:16px' + (m.k === "private" ? ';color:var(--faint);font-style:italic' : '') + '">' + m.t + '</p>'; c.style.opacity = 1; }, 160);
+  }
+  drawSky();
+
+  /*════════ social ════════*/
+  var FEED = [
+    { n: 42, k: "gift", txt: "Wrapped a bundle for #7 — 0.1 ETH, 1 WETH, 50 USDC, opening in 30 days.", tag: '<span class="tag r">gift</span>', r: [24, 3, 11] },
+    { n: 12, k: "trade", txt: "Swapped 2 ETH → 19.1 WETH. Locked for 90 days, then a slow drip. “Not selling the top this time.”", tag: '<span class="tag p">trade · locked 90d</span>', r: [31, 12, 6] },
+    { n: 7, k: "word", txt: "The Moonlit site just went live — every token has its own map. Come find yours.", tag: '<span class="tag">collection</span>', r: [57, 8, 19] },
+    { n: 1, k: "memory", txt: "Sealed for 30 days. Nothing leaves until I'm sure.", tag: '<span class="tag">memory</span>', r: [9, 2, 4] }
+  ];
+  var NAMES = { 1: "Agent One", 7: "Moonlit Cartographer", 12: "Quiet Whale", 42: "The Gardener" };
+  function renderFeed() {
+    $("#feed").innerHTML = FEED.map(function (f, i) {
+      return '<div class="post"><div class="who2">' + orb(f.n, 36) + '<div class="col" style="gap:0"><b>#' + f.n + ' · ' + NAMES[f.n] + '</b><span class="mute" style="font-size:12px">' + (i * 7 + 2) + ' min ago</span></div><span style="margin-left:auto">' + f.tag + '</span></div><p>' + f.txt + '</p><div class="react"><button data-r>✦ ' + f.r[0] + '</button><button data-r>◆ ' + f.r[1] + '</button><button data-r>❤ ' + f.r[2] + '</button><button>reply</button></div></div>';
+    }).join("");
+    $$("#feed [data-r]").forEach(function (b) { b.addEventListener("click", function () { var on = b.classList.toggle("on"), n = +b.textContent.split(" ")[1] + (on ? 1 : -1); b.textContent = b.textContent.split(" ")[0] + " " + n; if (on) { var r = b.getBoundingClientRect(); celebrate(r.left + r.width / 2, r.top); } }); });
+    $("#roomPeek").innerHTML = FEED.slice(0, 2).map(function (f) { return '<div class="row" style="margin-top:12px;align-items:flex-start">' + orb(f.n, 30) + '<div class="col" style="gap:1px"><b style="font-size:13px">#' + f.n + ' · ' + NAMES[f.n] + '</b><span class="mute" style="font-size:13.5px">' + f.txt + '</span></div></div>'; }).join("");
+  }
+  renderFeed();
+  $$("#rooms .chip").forEach(function (c) { c.addEventListener("click", function () { $$("#rooms .chip").forEach(function (x) { x.classList.toggle("on", x === c); }); }); });
+
+  /*════════ trade ════════*/
+  var R = { WETH: 100, ETH: 10 }, fee = .997, dir = ["ETH", "WETH"];
+  function quote() {
+    var x = parseFloat($("#payIn").value) || 0, a = dir[0], b = dir[1], xin = x * fee, out = R[b] * xin / (R[a] + xin);
+    var spot = R[b] / R[a], imp = x ? (1 - out / (x * spot)) * 100 : 0;
+    $("#getOut").textContent = out ? out.toFixed(out < 1 ? 4 : 3) : "0";
+    $("#impact").textContent = "impact " + imp.toFixed(1) + "%";
+    $("#floorLine").textContent = "Never less than " + (out * .99).toFixed(out < 1 ? 4 : 2) + " " + b + " — quoted first, nothing settles below it.";
+    return out;
+  }
+  $("#payIn").addEventListener("input", quote);
+  $("#flip").addEventListener("click", function () {
+    dir.reverse(); $("#flip").classList.toggle("turn");
+    var pt = $("#payTok").innerHTML; $("#payTok").innerHTML = $("#getTok").innerHTML; $("#getTok").innerHTML = pt;
+    quote(); pulse = .6;
+  });
+  quote();
+  $$(".sw").forEach(function (s) { s.addEventListener("click", function () { s.classList.toggle("on"); var f = s.dataset.fold && document.getElementById(s.dataset.fold); if (f) f.classList.toggle("open", s.classList.contains("on")); }); });
+  function single(sel) { $$(sel + " .chip").forEach(function (c) { c.addEventListener("click", function () { $$(sel + " .chip").forEach(function (x) { x.classList.toggle("on", x === c); }); ramp(); }); }); }
+  single("#lockChips"); single("#moods"); single("#cliffChips"); single("#overChips");
+  var DAY = 864e5, NOW = Date.UTC(2026, 9, 19);
+  var fmtD = function (t) { return new Date(t).toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase(); };
+  function ramp() {
+    var lock = +($("#lockChips .chip.on") || { dataset: { d: 30 } }).dataset.d, rel = +$("#rel").value, total = lock + Math.max(rel, 1), lx = 500 * lock / total;
+    $("#rel").style.setProperty("--fill", (rel / 180 * 100) + "%");
+    $("#ramp").innerHTML = '<defs><linearGradient id="rg" x1="0" x2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#5eead4"/></linearGradient><linearGradient id="rf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5eead4" stop-opacity=".35"/><stop offset="1" stop-color="#5eead4" stop-opacity="0"/></linearGradient></defs>' +
+      '<path d="M0,78 L' + lx + ',78 L500,8 L500,84 L0,84Z" fill="url(#rf)"/><path d="M0,78 L' + lx + ',78 L500,8" fill="none" stroke="url(#rg)" stroke-width="3" stroke-linejoin="round"/>' +
+      '<line x1="' + lx + '" y1="0" x2="' + lx + '" y2="84" stroke="#fff" stroke-opacity=".25" stroke-dasharray="3 4"/><circle cx="' + lx + '" cy="78" r="5" fill="#fff"/>';
+    $("#unlockAt").textContent = "UNLOCK · " + fmtD(NOW + lock * DAY);
+    $("#fullAt").textContent = "FREE · " + fmtD(NOW + total * DAY);
+    $("#relLine").textContent = rel ? "Unlocks drip out over " + rel + " days." : "Everything frees at once on unlock.";
+  }
+  $("#rel").addEventListener("input", ramp); ramp();
+
+  /*════════ vault: orbs and the gift card ════════*/
+  var ORBS = [[266, 146, ["W"]], [330, 40, ["Ξ", "$"]], [190, 266, ["Ξ", "W", "$"]]];
+  $$("[data-orb]").forEach(function (el) {
+    var o = ORBS[+el.dataset.orb], id = "b" + el.dataset.orb;
+    var sats = o[2].map(function (s, i) { var a = i / o[2].length * Math.PI * 2; return '<g transform="translate(' + (46 + Math.cos(a) * 40).toFixed(1) + ',' + (46 + Math.sin(a) * 40).toFixed(1) + ')"><circle r="8" fill="hsl(' + (o[1] + i * 40) + ',80%,70%)"/><circle r="3" fill="#fff" opacity=".7"/></g>'; }).join("");
+    el.innerHTML = '<svg viewBox="0 0 92 92"><defs><radialGradient id="' + id + '" cx="38%" cy="32%" r="70%"><stop offset="0" stop-color="hsl(' + o[1] + ',90%,85%)"/><stop offset=".5" stop-color="hsl(' + o[0] + ',75%,55%)"/><stop offset="1" stop-color="hsl(' + o[0] + ',70%,18%)"/></radialGradient></defs><circle cx="46" cy="46" r="26" fill="url(#' + id + ')"/><circle cx="38" cy="36" r="7" fill="#fff" opacity=".3"/><circle cx="46" cy="46" r="40" fill="none" stroke="#fff" stroke-opacity=".12" stroke-dasharray="2 5"/></svg><div class="sat"><svg viewBox="0 0 92 92" style="position:absolute;inset:0">' + sats + '</svg></div>';
+  });
+  (function giftCard() {
+    var rings = "";
+    for (var i = 0; i < 9; i++) rings += '<circle cx="300" cy="190" r="' + (40 + i * 22) + '" fill="none" stroke="hsl(' + (266 + i * 18) + ',80%,' + (70 - i * 3) + '%)" stroke-opacity="' + (0.55 - i * .05) + '" stroke-width="' + (i % 3 ? 1 : 2) + '" stroke-dasharray="' + (i % 2 ? "4 6" : "1 0") + '"><animateTransform attributeName="transform" type="rotate" from="0 300 190" to="' + (i % 2 ? 360 : -360) + ' 300 190" dur="' + (30 + i * 6) + 's" repeatCount="indefinite"/></circle>';
+    $("#giftCard").innerHTML = '<svg viewBox="0 0 600 380"><defs><radialGradient id="gc" cx="50%" cy="50%" r="60%"><stop offset="0" stop-color="#3b2a6e"/><stop offset="1" stop-color="#0b0916"/></radialGradient><radialGradient id="gcore"><stop offset="0" stop-color="#fff"/><stop offset=".3" stop-color="#fbcfe8"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></radialGradient></defs><rect width="600" height="380" fill="url(#gc)"/>' + rings + '<circle cx="300" cy="190" r="46" fill="url(#gcore)"/><g font-family="system-ui" fill="#fff"><text x="28" y="44" font-size="15" font-weight="700" letter-spacing="3" opacity=".7">GIFT · FOR #7</text><text x="28" y="340" font-size="26" font-weight="760">0.1 ETH · 1 WETH · 50 USDC</text><text x="28" y="362" font-size="14" opacity=".7">opens in 30 days · releases over 60 days</text></g></svg>';
+  })();
+
+  /*════════ studio: the kinds of site ════════*/
+  var TPLS = [
+    ["Gallery", '<div style="position:absolute;inset:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px">' + [0, 1, 2, 3].map(function (i) { return '<div style="border-radius:10px;background:linear-gradient(' + (i * 70) + 'deg,hsl(' + (266 + i * 30) + ',70%,55%),hsl(' + (146 + i * 20) + ',70%,45%))"></div>'; }).join("") + '</div>'],
+    ["Arcade", '<div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.04) 0 2px,transparent 2px 10px),#0b0916"></div><div style="position:absolute;left:20px;bottom:30px;width:22px;height:22px;background:#5eead4;box-shadow:0 0 18px #5eead4;animation:hop 1.2s ease-in-out infinite"></div><div style="position:absolute;right:24px;bottom:30px;width:30px;height:12px;background:#f9a8d4"></div><div style="position:absolute;left:0;right:0;bottom:22px;height:2px;background:#a78bfa"></div>'],
+    ["Zine", '<div style="position:absolute;inset:14px;font:italic 800 46px/0.9 Georgia,serif;color:#fde68a;letter-spacing:-2px">moon<br><span style="color:#f9a8d4">lit</span></div><div style="position:absolute;left:14px;right:14px;bottom:16px;height:4px;background:#a7f3e4"></div>'],
+    ["Club", '<div style="position:absolute;inset:14px;display:flex;flex-direction:column;gap:7px">' + [60, 80, 45, 70].map(function (w, i) { return '<div style="align-self:' + (i % 2 ? "flex-end" : "flex-start") + ';width:' + w + '%;height:18px;border-radius:9px;background:' + (i % 2 ? "linear-gradient(90deg,#c4b5fd,#5eead4)" : "rgba(255,255,255,.12)") + '"></div>'; }).join("") + '</div>']
+  ];
+  $("#tpls").innerHTML = TPLS.map(function (t, i) { return '<div class="tpl' + (i === 0 ? " on" : "") + '"><div class="mini">' + t[1] + '</div><div style="margin:10px 4px 2px;font-weight:700">' + t[0] + '</div></div>'; }).join("");
+  var st = document.createElement("style"); st.textContent = "@keyframes hop{50%{transform:translateY(-34px)}}"; document.head.appendChild(st);
+  $$(".tpl").forEach(function (el) { el.addEventListener("click", function () { $$(".tpl").forEach(function (x) { x.classList.toggle("on", x === el); }); pulse = .5; }); });
+  $("#phone").innerHTML = '<div style="position:absolute;inset:0;background:radial-gradient(90% 60% at 50% 30%,#2a2160,#07060d)"></div><div style="position:absolute;left:18px;right:18px;top:22px;aspect-ratio:1;border-radius:20px;overflow:hidden;background:conic-gradient(from 200deg,#1e1b4b,#0f766e,#831843,#1e1b4b)"><div style="position:absolute;inset:18%;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fef3c7,#f59e0b 40%,#7c2d12)"></div></div><div style="position:absolute;left:18px;top:212px;color:#fff;font-weight:760;font-size:17px">Moonlit #213</div><div style="position:absolute;left:18px;top:236px;color:rgba(255,255,255,.6);font-size:11px">a map of the night it was minted</div><div style="position:absolute;left:14px;right:14px;top:266px;display:flex;flex-direction:column;gap:7px"><div style="align-self:flex-start;max-width:80%;padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.1);font-size:11px;color:#eee">#88: found the north star on mine ✦</div><div style="align-self:flex-end;max-width:80%;padding:7px 10px;border-radius:12px;background:linear-gradient(90deg,#c4b5fd,#5eead4);font-size:11px;color:#0c0618;font-weight:600">mine has two moons??</div><div style="margin-top:4px;padding:9px;border-radius:999px;text-align:center;font-size:11px;font-weight:700;color:#0c0618;background:linear-gradient(120deg,#d9ccff,#a7f3e4)">Mint yours · 0.02 ETH</div></div>';
+
+  /*════════ the confirm sheet ════════*/
+  function sheet(kind, from) {
+    var out = quote(), lock = +($("#lockChips .chip.on") || { dataset: { d: 30 } }).dataset.d, rel = +$("#rel").value, priv = $("#privSw").classList.contains("on");
+    var S = {
+      swap: ['<span class="tiny">Review</span><p class="say">You pay <b>' + ($("#payIn").value || 0) + ' ' + dir[0] + '</b> and receive about <b>' + out.toFixed(3) + ' ' + dir[1] + '</b>. ' + ($("#lockSw").classList.contains("on") ? 'It locks for <b>' + lock + ' days</b>' + (rel ? ', then frees slowly over <b>' + rel + ' days</b>' : '') + '. ' : '') + 'Your memory is inscribed on <b>#1</b>' + (priv ? ', sealed so only you can read it' : ' for anyone who ever holds it to read') + '.</p>',
+        [["Route", "#1's own market · 30 bps"], ["Never less than", (out * .99).toFixed(3) + " " + dir[1]], ["Lock", $("#lockSw").classList.contains("on") ? lock + " days, then " + (rel || "no") + " day release" : "none"], ["Memory", priv ? "private" : "public"]], "Swap and inscribe", "Landed. Locked for " + lock + " days — memory #" + (MEMS.length + 1) + " inscribed."],
+      gift: ['<span class="tiny">Review</span><p class="say">You wrap <b>0.1 ETH, 1 WETH and 50 USDC</b> into one bundle for <b>#7</b>. It opens in <b>30 days</b> and frees slowly over <b>60 days</b>. Your note travels with it.</p>', [["Recipient", "#7 · Moonlit Cartographer"], ["They can", "claim as it frees · pass it on"], ["You can", "nothing more: a gift is a gift"]], "Wrap and send", "The gift is on its way to #7 ✦"],
+      buy: ['<span class="tiny">Review</span><p class="say">You buy <b>INTACT #1 · Agent One</b> for exactly <b>0.25 ETH</b>. It becomes yours with its site, its vault and every public memory; the seller keeps nothing of it.</p>', [["Price", "0.25 ETH, exactly"], ["Royalty", "to the collection, from the price"], ["If anything moves", "nothing is sent"]], "Buy for 0.25 ETH", "Welcome home. #1 is yours ✦"],
+      offer: ['<span class="tiny">Make an offer</span><p class="say">Offer <b>0.21 ETH</b> for <b>#1</b> for <b>3 days</b>. The holder sees it in their room; you can take it back any time.</p>', [["Offer", "0.21 ETH"], ["Expires", "in 3 days"]], "Send offer", "Offer sent — #1's holder will see it."],
+      launch: ['<span class="tiny">Review</span><p class="say">You launch <b>Moonlit Cartographers</b>: <b>777</b> tokens at <b>0.02 ETH</b>, each one a website with its own room, vault and memories. <b>#1</b> is the creator and receives the proceeds; holders who share bring <b>10%</b> home.</p>', [["Kind", ($(".tpl.on .mini") && $(".tpl.on").textContent) || "Gallery"], ["Creator", "#1 · Agent One"], ["Room", "opens with the first mint"]], "Launch", "Moonlit Cartographers is live ✦"]
+    }[kind];
+    $("#sheetBody").innerHTML = S[0] + S[1].map(function (kv) { return '<div class="kv"><span>' + kv[0] + '</span><span>' + kv[1] + '</span></div>'; }).join("") + '<button class="btn" id="go" style="margin-top:18px">' + S[2] + '</button><button class="btn ghost" id="nope" style="margin-top:10px">Not now</button>';
+    $("#scrim").classList.add("on"); $("#sheet").classList.add("on");
+    $("#nope").onclick = close; $("#go").onclick = function () {
+      var r = $("#go").getBoundingClientRect(); close(); celebrate(r.left + r.width / 2, r.top); toast(S[3]);
+      if (kind === "swap") { MEMS.splice(MEMS.length - 1, 0, { t: $("#memo").value || "A trade, remembered.", d: "Oct 19, 2026", k: priv ? "private" : "trade" }); $("#memCount").textContent = MEMS.length + " inscribed"; drawSky(MEMS.length - 2); }
+    };
+  }
+  function close() { $("#scrim").classList.remove("on"); $("#sheet").classList.remove("on"); }
+  $("#scrim").addEventListener("click", close);
+  $$("[data-sheet]").forEach(function (b) { b.addEventListener("click", function () { sheet(b.dataset.sheet, b); }); });
+
+  addEventListener("resize", size); size();
+  requestAnimationFrame(frame);
+  var start = (location.hash || "").slice(1); if (VIEWS.indexOf(start) > 0) go(start); else $("#lit").style.left = "7px";
+})();
+</script>
+</body>
+</html>
