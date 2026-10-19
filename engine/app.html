@@ -9,16 +9,20 @@
 </head>
 <body>
 <header id="crest">
+  <span class="brand" aria-hidden="true"><i></i><b>INTACT</b></span>
   <div class="cell" id="c-chain"><span class="k">chain</span><span class="v" id="c-chain-v"></span></div>
   <div class="cell" id="c-wallet"><span class="led"></span><span class="v" id="c-wallet-v">read only</span>
     <button class="b g" id="connect" hidden>connect</button>
     <button class="b" id="switch" hidden>switch chain</button></div>
 </header>
-<div id="body">
+<div id="body" data-room="home">
+  <div id="stage"><div id="frame"><div id="art"></div><span class="badge" id="badge" aria-hidden="true"></span></div></div>
   <aside id="col">
     <section id="lane-home" class="on">
-      <h1 id="ident"></h1>
-      <p id="rights-sentence" class="blurb"></p>
+      <div class="card" id="intro">
+        <h1 id="ident"></h1>
+        <p id="rights-sentence" class="blurb"></p>
+      </div>
       <div id="facts"></div>
       <div id="chips"></div>
       <div id="viewer" hidden>
@@ -37,13 +41,15 @@
     </section>
   </aside>
   <main id="lane">
-    <nav id="lanes"></nav>
+    <header class="card" id="room"><h2 id="room-t"></h2><p class="blurb" id="room-s"></p><button class="x" id="room-x" type="button" aria-label="close">✕</button></header>
   </main>
+  <p id="verified" class="s"></p>
 </div>
-<p id="tick"></p>
-<p id="verified" class="s"></p>
-<div id="cbox"><div id="cslab"></div></div>
-<div id="picker" hidden></div>
+<nav id="dock" aria-label="rooms"><i id="lit"></i><a id="home" href="#" class="on">Home</a><div id="lanes"></div></nav>
+<div id="scrim"></div>
+<p id="tick" role="status" aria-live="polite"></p>
+<div id="cbox"><div id="cslab" role="dialog" aria-modal="true" aria-label="review before you sign" tabindex="-1"></div></div>
+<div id="picker" role="dialog" aria-label="choose a wallet" hidden></div>
 <script>
 /*═══════════════════════════════════════════════════════════════════════════
   INTACT · the console — engine/app.html
@@ -76,15 +82,33 @@
                     closure and deletes it. Mode, the chooser, the chain
                     gate, rights, the slab, Home, the QR, the loader, the
                     footer, and INTACT.ui — the whole surface a panel may
-                    call (docs/CONSOLE.md §5).
+                    call (docs/CONSOLE.md §5) — and, since V2 (W7), the
+                    living light (docs/V2.md §2): the crest in its
+                    iridescent frame, the soul shader behind everything,
+                    the dock, the slab as a sheet, the celebration.
+
+  The living light is decoration laid over the console, never a change to
+  what the console promises. Every id, data attribute, sentence and order
+  of calls the suites hold is the V1 one; the dock IS #lanes, the sheet IS
+  #cbox/#cslab with every row still in it, Home's facts are still each a
+  [data-fact] under #facts. What moved is where things are drawn — the
+  stylesheet places them — and three things were added: the room a person
+  is in is written on #body[data-room], the crest is drawn on Home exactly
+  as src/Crest.sol draws face 1, and a landing names the sentence that was
+  signed. The shader starts after the first chain check and a painted
+  frame, keeps a single still on a slow device or under reduced motion,
+  and stops while the tab is hidden; the shim has no canvas and never
+  starts it. Nothing else loops unless the shader does: html.alive is set
+  only while its loop runs, and the frame's spin waits for it.
 
   Rules this file keeps (each enforced by tools/build-app.mjs, tools/
   verify.mjs or tools/verify-site.mjs): every string from chain or user
   reaches the DOM through textContent; no innerHTML; no eval, no
   Function, no external src; no URL of any kind — no RPC, no explorer, no
   gateway host — the one host-shaped literal is the SVG namespace the QR
-  needs; amounts are BigInt; nothing is stored but the picker's rdns;
-  nothing at the top level of block 2 but the IIFE.
+  needs (and the crest and the dock's marks reuse, through one helper);
+  amounts are BigInt; nothing is stored but the picker's rdns; nothing at
+  the top level of block 2 but the IIFE.
 
   1 · THE CHAIN
 
@@ -420,7 +444,11 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   const mode = opaque ? "viewer" : L.isAddr(AS) ? "session" : "console", viewer = mode === "viewer", sess = mode === "session";
   const KEY = sess ? L.checksum(AS) : null;
   B.dataset.mode = mode; B.dataset.rights = ""; B.dataset.chain = "";
-  D.documentElement.style.setProperty("--h", ID * 137 % 360);
+  /* the crest's two hues, as src/Crest.sol picks them — keccak("intact.crest", id) mod 360 for the
+     rings, a third of the way round for the mark — written before first paint, so the sky, the
+     frame and every accent on the page are this token's own colours (#1: 146° and 266°) */
+  const CH = BigInt(L.kbytes(L.toHex(L.utf8("intact.crest")) + pad(ID.toString(16)))), HUE = Number(CH % 360n), HUE2 = (HUE + 120) % 360;
+  const css = D.documentElement.style; css.setProperty("--h", HUE); css.setProperty("--h2", HUE2);
   /* removed from the tree, never merely hidden: the viewer has no gesture */
   if (viewer) { $("#connect").remove(); $("#switch").remove(); }
   const VIEWER = "nothing here can sign; open the console at " + WEB3;
@@ -436,6 +464,10 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   const field = (p, label, ph) => { p.append(el("div", "k", label)); const i = el("input"); i.type = "text"; i.placeholder = ph || ""; i.autocomplete = "off"; p.append(i); return i; };
   const note = (p, text, cls) => { const q = el("p", "blurb" + (cls ? " " + cls : ""), text); p.append(q); return q; };
   const chip = (p, label, state) => { const c = el("span", "chip", label); if (state) c.dataset.state = state; p.append(c); return c; };
+  /* every SVG the page draws — the QR, the crest, the dock's marks — through one helper and one
+     namespace: that literal is the one host-shaped string the build and the suite permit, and it
+     stays one occurrence however many drawings use it (CONSOLE §13) */
+  const NS = "http://www.w3.org/2000/svg", sv = (tag, o, p) => { const e = D.createElementNS(NS, tag); for (const k in o) e.setAttribute(k, o[k]); if (p) p.append(e); return e; };
   let tickT = 0;
   /* one line; it fades to .55 after seven seconds and never disappears */
   const say = (msg, kind) => { const t = $("#tick"); t.className = kind || ""; t.textContent = msg; clearTimeout(tickT); tickT = setTimeout(() => t.classList.add("fade"), 7e3); };
@@ -526,7 +558,7 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
       b.append(el("span", "", d.info.name || d.info.rdns));
       b.addEventListener("click", () => done(d)); c.append(b);
     }
-    o.append(c); o.addEventListener("click", dis);
+    o.append(c); o.addEventListener("click", dis); c.querySelector("button")?.focus();
   });
   /*  The instant the rule is decided: extensions inject at different times, so the choice
       waits for `load` or 150 ms after the request, whichever is later (CONSOLE §2). */
@@ -681,10 +713,10 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   };
   /* argument rows are decoded from the bytes only when every type is one data() can build */
   const simple = ts => !/[()]|\]\[|\[\d|(bytes|string)\[/.test(ts.join());
-  let open = null;
+  let open = null, FOC = null;
   /* always clears the body, even with nothing open: a slab that threw half-built must not
-     leave its rows under the next one's */
-  function closeSlab() { $("#cbox").classList.remove("on"); $("#cslab").replaceChildren(); const o = open; open = null; if (o) o.resolve(); }
+     leave its rows under the next one's. Focus goes back to whatever opened the sheet. */
+  function closeSlab() { $("#cbox").classList.remove("on"); $("#cslab").replaceChildren(); const o = open; open = null; if (o) { o.resolve(); FOC?.focus?.(); } }
   function propose(tx) {
     return new Promise(resolve => {
       const no = m => { say(m, "err"); resolve(); };
@@ -702,28 +734,34 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
       if (tx.spend && delegate && !delegate.known && !delegate.acked) return no("an unknown delegate holds this account; acknowledge it on Identity first");
       closeSlab();
       const slab = $("#cslab"), ts = sigTypes(sig);
-      const row = (k, v, seam) => { const r = kv(slab, k, v).lastChild; r.dataset[seam] = ""; return r; };
+      const row = (k, v, seam, p) => { const r = kv(p || slab, k, v).lastChild; r.dataset[seam] = ""; return r; };
       let value;
       /* the rows are built from what the panel passed; a destination that is not an address, a
          value that is not a number or lines that are not a list are panel bugs, said as such,
-         and the promise still resolves (CONSOLE §4: it never rejects) */
+         and the promise still resolves (CONSOLE §4: it never rejects).
+         The sheet reads in the order a person decides (V2 §2): the clear-signing sentence first
+         and large, the panel's lines in words, the ether it sends; then the facts the wallet will
+         sign — To, the function and its selector, the arguments decoded from the bytes, the
+         calldata, its digest, the engine — one tap away in a disclosure and never removed; then
+         the estimate, the note and the two buttons, always in view. */
       try {
         value = BigInt(tx.value || 0);
         slab.append(el("h3", "", "confirm"));
+        const sen = el("p", "", tx.sentence); sen.dataset.sentence = ""; slab.append(sen);
         for (const [k, v] of tx.lines || []) kv(slab, k, v);
-        row("To", L.checksum(tx.to), "to");
         if (value) row("Value", L.fmtUnits(value) + " ETH", "value").dataset.wei = value;
-        row("Function", sig, "function"); row("Selector", cd.slice(0, 10), "selector");
-        if (simple(ts)) try { decode(ts, cd.slice(10)).forEach((v, i) => { row("arg " + i + " · " + ts[i], words(v, ts[i]), "arg").dataset.arg = i; }); } catch {}
-        const code = el("pre", "code", cd); code.dataset.calldata = ""; slab.append(code);
-        row("Digest", L.kbytes(cd), "digest"); row("Engine", String(S.engineHash), "engine");
+        const fx = el("details"); fx.append(el("summary", "", "the facts it signs")); slab.append(fx);
+        row("To", L.checksum(tx.to), "to", fx);
+        row("Function", sig, "function", fx); row("Selector", cd.slice(0, 10), "selector", fx);
+        if (simple(ts)) try { decode(ts, cd.slice(10)).forEach((v, i) => { row("arg " + i + " · " + ts[i], words(v, ts[i]), "arg", fx).dataset.arg = i; }); } catch {}
+        const code = el("pre", "code", cd); code.dataset.calldata = ""; fx.append(code);
+        row("Digest", L.kbytes(cd), "digest", fx); row("Engine", String(S.engineHash), "engine", fx);
         gasRow = row("Gas", "estimating…", "gas");
         if (tx.note) note(slab, tx.note, "warn");
-        const sen = el("p", "", tx.sentence); sen.dataset.sentence = ""; slab.append(sen);
         go = button(slab, "Sign and send", false, send); go.dataset.go = ""; go.disabled = true;
         button(slab, "Not now", true, closeSlab).dataset.no = "";
       } catch (e) { closeSlab(); return no("a panel bug: " + e.message); }
-      $("#cbox").classList.add("on");
+      $("#cbox").classList.add("on"); FOC = D.activeElement; slab.focus({ preventScroll: true });
       open = { resolve, tx, epoch: epoch === null ? BigInt(S.epoch || 0) : epoch };
       /* the estimate runs before the wallet is ever asked; a revert keeps Sign disabled */
       (async () => {
@@ -754,7 +792,10 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     for (let i = 0; i < 90 && !r; i++) { await nap(2e3); try { r = await rpc("eth_getTransactionReceipt", [hash]); } catch {} }
     if (!r) return say("still not mined after three minutes; it may yet land");
     const ok = BigInt(r.status || 0) === 1n, n = BigInt(r.blockNumber || 0);
-    say(ok ? "landed in block " + n : "reverted in block " + n + "; nothing changed", ok ? "ok" : "err");
+    /* a landing names what changed — the sentence that was signed — and is celebrated; a revert
+       is said as V1 says it, and nothing blooms */
+    say(ok ? "landed in block " + n + " — " + tx.sentence : "reverted in block " + n + "; nothing changed", ok ? "ok" : "err");
+    if (ok) celebrate();
     const b0 = bits, e0 = epoch;
     await facts(); await rights();
     if (bits !== b0 || epoch !== e0) { say("ownership or epoch changed — review again", "err"); closeSlab(); }
@@ -777,19 +818,25 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   function home() {
     $("#ident").textContent = ID ? "INTACT #" + ID : "INTACT";
     $("#c-chain-v").textContent = nameOf(CHAIN);
-    const f = $("#facts"); f.replaceChildren();
-    const fact = (k, v, label) => { kv(f, label || k, v).lastChild.dataset.fact = k; };
-    if (ID) fact("id", ID, "intact");
-    fact("chain", CHAIN);
+    /* the facts a person reads first; then the proof — the id and chain, the two accounts, the
+       fingerprint, the hashes, the block — one tap away in a disclosure that remembers being
+       opened across repaints. Every [data-fact] stays under #facts, as text (CONSOLE §6.1). */
+    const f = $("#facts"), was = f.querySelector("details"), pf = el("details");
+    if (was && was.hasAttribute("open")) pf.setAttribute("open", "");
+    f.replaceChildren(); pf.append(el("summary", "", "the proof"));
+    const fact = (k, v, label, p) => { kv(p || f, label || k, v).lastChild.dataset.fact = k; };
+    if (ID) fact("id", ID, "intact", pf);
+    fact("chain", CHAIN, 0, pf);
     const M = S.ownedMarket, C = S.clocks || {}, status = F.status ? "Paused" : "Active";
     if (ID) {
-      fact("holder", L.checksum(F.holder)); fact("epoch", epoch, "custody epoch"); fact("status", status); fact("locked", F.locked ? "yes" : "no");
-      fact("reach", L.checksum(S.reach)); fact("grip", L.checksum(S.grip));
+      fact("holder", L.checksum(F.holder), "held by"); fact("epoch", epoch, "custody epoch"); fact("status", status); fact("locked", F.locked ? "yes" : "no");
+      fact("reach", L.checksum(S.reach), 0, pf); fact("grip", L.checksum(S.grip), 0, pf);
       fact("seal", C.sealedUntil ? "sealed until " + date(C.sealedUntil) : "none", "reach seal");
       fact("market", M == null ? "not reported" : !M.open ? "closed" : M.sealUntil > S.time ? "open · sealed until " + date(M.sealUntil) : "open");
-      fact("fingerprint", S.fingerprint); fact("name", S.name || "—");
+      fact("fingerprint", S.fingerprint, 0, pf); fact("name", S.name || "—");
     } else { fact("minted", S.minted); fact("price", L.fmtUnits(BigInt(S.price || 0)) + " ETH"); }
-    fact("engine", S.engineHash); fact("catalog", S.catalogHash); fact("block", S.block, "read at block");
+    fact("engine", S.engineHash, 0, pf); fact("catalog", S.catalogHash, 0, pf); fact("block", S.block, "read at block", pf);
+    f.append(pf); art();
     const ch = $("#chips"); ch.replaceChildren();
     if (ID) for (const name in S.bits) {
       const bit = S.bits[name], state = S.reported & bit ? "reported" : S.absent & bit ? "absent" : "unread";
@@ -893,10 +940,9 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     const fm = (8 << 10 | rem) ^ 0x5412, bit = i => (fm >> i) & 1;
     for (let i = 0; i < 6; i++) setF(8, i, bit(i)); setF(8, 7, bit(6)); setF(8, 8, bit(7)); setF(7, 8, bit(8)); for (let i = 9; i < 15; i++) setF(14 - i, 8, bit(i));
     for (let i = 0; i < 8; i++) setF(N - 1 - i, 8, bit(i)); for (let i = 8; i < 15; i++) setF(8, N - 15 + i, bit(i));
-    const NS = "http://www.w3.org/2000/svg", svg = D.createElementNS(NS, "svg"), attrs = (e, o) => { for (const k in o) e.setAttribute(k, o[k]); return e; };
     /* sized by #qr svg in app.css; every rect carries its own shape-rendering (CONSOLE §13) */
-    attrs(svg, { viewBox: "0 0 45 45", role: "img", "aria-label": text });
-    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (M[y * N + x]) svg.append(attrs(D.createElementNS(NS, "rect"), { x: x + 4, y: y + 4, width: 1, height: 1, "shape-rendering": "crispEdges" }));
+    const svg = sv("svg", { viewBox: "0 0 45 45", role: "img", "aria-label": text });
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (M[y * N + x]) sv("rect", { x: x + 4, y: y + 4, width: 1, height: 1, "shape-rendering": "crispEdges" }, svg);
     return svg;
   }
 
@@ -908,17 +954,28 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   for (const n of PANELS) $("#lane").appendChild(el("section")).id = "lane-" + n;
   const canLoad = () => !opaque || !!PV;
   function paintNav() {
-    const nav = $("#lanes"); nav.replaceChildren();
-    for (const n of PANELS) {
+    const nav = $("#lanes"), at = n => ORDER.indexOf(n) + 1 || 9; nav.replaceChildren();
+    for (const n of [...PANELS].sort((a, b) => at(a) - at(b))) {
       if (n === "agent" && S.absent & S.bits.agentcard) continue;
-      const a = el("a", "", n); a.href = "#" + n; a.dataset.lane = n; if (!canLoad()) a.setAttribute("aria-disabled", "true"); nav.append(a);
+      const a = el("a", "", (ROOMS[n] || [n])[0]); a.href = "#" + n; a.dataset.lane = n; if (ICON[n]) a.prepend(icon(ICON[n])); if (SHEET.includes(n)) a.title = a.textContent;
+      if (!canLoad()) { a.setAttribute("aria-disabled", "true"); a.tabIndex = -1; }
+      nav.append(a);
     }
+    lit();
   }
+  /* the room in use is written on #body for the stylesheet: home, a room of the dock, or a sheet
+     (identity, the agent's door) laid over the token's frame; leaving a sheet returns to the room */
   function show(name) {
     if (!LANES.includes(name)) name = "home";
+    const sheet = SHEET.includes(name), r = ROOMS[name] || [name, ""];
+    if (!sheet) LAST = name;
     for (const n of LANES) { const s = $("#lane-" + n); if (s) s.classList.toggle("on", n === name); }
-    for (const a of $$("#lanes a")) a.classList.toggle("on", a.dataset.lane === name);
+    for (const a of [$("#home"), ...$$("#lanes a")]) a.setAttribute("aria-current", a.classList.toggle("on", (a.dataset.lane || "home") === name));
     $("#lane").classList.toggle("on", name !== "home");
+    $("#body").dataset.room = name === "home" ? "home" : sheet ? "sheet" : "room";
+    $("#room-t").textContent = r[0]; $("#room-s").textContent = r[1];
+    lit(); bloom(.45);
+    if (sheet) $("#lane").scrollTop = 0; else scrollTo(0, 0);
     if (name === "home") return;
     fire("intact:lane", { name });
     const lane = $("#lane-" + name);
@@ -964,6 +1021,146 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
       v.textContent = "engine " + short(L.checksum(S.engine)) + " pins these bytes at block " + n;
     } catch { self("chain not reachable to verify"); }
   }
+
+  /*══ THE LIVING LIGHT (docs/V2.md §2) ═════════════════════════════════════
+     Art within art: the token's crest in an iridescent frame inside its own sky. Everything here
+     is decoration over the promises above, and it is built so it can never weaken one: it reads
+     no chain and holds no provider; it draws through createElementNS and textContent alone; it
+     starts after the first chain check has answered and a frame has painted; and the shim, which
+     has no canvas, simply never starts it. */
+
+  /*── the crest, exactly as src/Crest.sol draws face 1: from the id, the custody epoch, the status
+       and the seal, nothing else, so the frame can be held against the token's own image. It is
+       redrawn when one of the four moves — a sale adds a ring and hollows the mark. ──*/
+  let drawn = "";
+  function art() {
+    const e = ID ? Number(epoch || 0) : 1, p = ID ? +!!F.status : 0, sl = ID ? (S.clocks || {}).sealedUntil || 0 : 0, k = e + " " + p + " " + sl;
+    if (k === drawn) return; drawn = k;
+    const c1 = "hsl(" + HUE + ",60%,55%)", c2 = "hsl(" + HUE2 + ",70%,60%)", s = sv("svg", { viewBox: "0 0 1000 1000", role: "img", "aria-label": "the crest of INTACT #" + ID });
+    sv("rect", { width: 1000, height: 1000, fill: "#07080c" }, s);
+    const g = sv("g", { fill: "none", stroke: c1, "stroke-width": 2, transform: "rotate(" + (CH >> 16n) % 45n + " 500 500)" }, s);
+    for (let i = 0; i < (e ? Math.min(e, 9) : 1); i++) { const h = 360 - i * 32; sv("rect", { x: 500 - h, y: 500 - h, width: 2 * h, height: 2 * h, transform: "rotate(" + i * 7 + " 500 500)", opacity: 9 - i + "0%" }, g); }
+    sv("circle", p ? { cx: 500, cy: 500, r: 92, fill: "none", stroke: c2, "stroke-width": 6 } : { cx: 500, cy: 500, r: 92, fill: c2 }, s);
+    const t = sv("g", { "font-family": "ui-monospace,Menlo,monospace", "text-anchor": "middle", fill: "#8b95ad" }, s);
+    const line = (y, z, ls, text, o) => { sv("text", { x: 500, y, "font-size": z, "letter-spacing": ls, ...o }, t).textContent = text; };
+    line(112, 30, 12, "INTACT #" + ID); line(902, 20, 6, "EPOCH " + e + " / " + (p ? "PAUSED" : "ACTIVE")); line(946, 20, 6, sl ? "SEALED UNTIL " + sl : "UNSEALED", { fill: c1 });
+    $("#art").replaceChildren(s);
+    const b = $("#badge"); b.textContent = ID ? (p ? "Paused" : "Active") : ""; b.classList.toggle("off", !!p);
+  }
+
+  /*── the soul: a full-screen WebGL fragment shader — domain-warped fBm, its palette the crest's two
+       hues, its flow seeded by keccak(fingerprint ‖ the crest's hash of the id). The fingerprint
+       alone repeats — it hashes the holder and the state, not the id, so two fresh tokens in one
+       wallet share it (measured: #1, #2 and #3 of one holder all read 0xed15…) — and the id is
+       what makes two tokens never share a sky, while a moved fingerprint still moves it. It breathes,
+       leans toward the pointer, renders at 0.55× and blooms (P) when something lands. It animates
+       only where it is cheap: a software rasteriser keeps one still frame at 0.25×, a GPU whose
+       timed frame (after a warm-up) is slower than 22 ms keeps one at 0.55×, and so does
+       prefers-reduced-motion; otherwise it runs at ~30 fps, because the sky moves slowly and half the
+       frames is half the heat; it stops while the tab is hidden. Without WebGL the CSS sky in app.css,
+       drawn from the same hues, stays. html.alive is set exactly while the loop runs, and app.css
+       lets nothing else move forever without it (the frame's spin, the Sign button's flow): an
+       endless animation keeps a software compositor at ≈ 80 % of a core (measured, app.css). ──*/
+  const RM = matchMedia("(prefers-reduced-motion: reduce)").matches, HC = D.documentElement.classList, FP = L.kbytes(pad(S.fingerprint || "0") + pad(CH.toString(16))).slice(2), fb = i => parseInt(FP.substr(i * 2, 2), 16);
+  let gl = null, U = {}, raf = 0, still = RM, pulse = 0, M0 = [0, 0], M1 = [.15, -.1], last = 0, T0 = 0, SC = .55;
+  const bloom = v => { pulse = Math.max(pulse, v); };
+  /* the palette is the prototype's, anchored on the crest: k() is CSS's hsl() in GLSL, H the two hues */
+  const FRAG = "precision highp float;uniform vec2 R,M,S,O,H;uniform float T,P;" +
+    "vec3 k(float e,float s,float l){vec3 m=mod(vec3(0,8,4)+e/30.,12.);return l-s*min(l,1.-l)*clamp(min(m-3.,9.-m),-1.,1.);}" +
+    "float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}" +
+    "float n(vec2 p){vec2 i=floor(p),f=fract(p);f*=f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+1.),f.x),f.y);}" +
+    "float b(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p=mat2(1.6,1.2,-1.2,1.6)*p+S;a*=.5;}return v;}" +
+    "void main(){vec3 C0=k(H.y,.7,.09),C1=k(H.y,.72,.46),C2=k(H.x,.7,.52),C3=k(H.y+54.,.85,.7);vec2 u=gl_FragCoord.xy/R,p=(gl_FragCoord.xy-.5*R)/min(R.x,R.y);float t=T*.035;" +
+    "vec2 q=vec2(b(p*1.4+O+vec2(0,t)),b(p*1.4+O+vec2(5.2,-t))),w=vec2(b(p*1.1+2.2*q+vec2(1.7,9.2)+t*1.2),b(p*1.1+2.2*q+vec2(8.3,2.8)-t));" +
+    "float f=b(p*.9+2.6*w),l=pow(max(0.,1.-abs(p.y*1.5-.55-.35*sin(p.x*2.2+w.x*3.+t*5.))),5.),d=length(p-M);" +
+    "vec3 c=mix(mix(C0,C1,clamp(f*f*2.4,0.,1.)),C2,clamp(pow(length(q)*.72,2.2),0.,1.)*.85)+C3*smoothstep(.62,.95,w.y)*.28+mix(C2,C1,.5+.5*sin(t*3.+p.x))*l*.35+mix(C2,C3,.5)*(.1+.3*P)/(1.+18.*d*d);" +
+    "c*=(.55+.75*f)*(.95+.05*sin(T*.8))*(1.-.62*pow(length(u-.5)*1.25,2.));gl_FragColor=vec4(pow(max(c+P*.12*C2,0.),vec3(.92)),1);}";
+  const draw = t => { gl.uniform1f(U.T, t); gl.uniform2f(U.M, M0[0], M0[1]); gl.uniform1f(U.P, pulse); gl.drawArrays(gl.TRIANGLES, 0, 3); };
+  /* the backing store follows the window and is redrawn at once, so a resize (a phone's address bar) never shows a blank */
+  const fit = () => { if (!gl) return; const c = gl.canvas, w = Math.ceil(innerWidth * SC), h = Math.ceil(innerHeight * SC); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; gl.viewport(0, 0, w, h); gl.uniform2f(U.R, w, h); draw((performance.now() - T0) / 1e3); } };
+  const loop = now => { raf = requestAnimationFrame(loop); if (now - last < 32) return; last = now; M0[0] += (M1[0] - M0[0]) * .06; M0[1] += (M1[1] - M0[1]) * .06; pulse *= .94; draw((now - T0) / 1e3); };
+  const run = () => { cancelAnimationFrame(raf); raf = gl && !still && !D.hidden ? requestAnimationFrame(loop) : 0; HC.toggle("alive", !!raf); };
+  function soul() {
+    const c = el("canvas"); let g = null;
+    try { g = c.getContext && c.getContext("webgl", { alpha: false, antialias: false, depth: false, powerPreference: "low-power" }); } catch {}
+    if (!g) return;
+    const pr = g.createProgram(), sh = (type, src) => { const x = g.createShader(type); g.shaderSource(x, src); g.compileShader(x); g.attachShader(pr, x); };
+    sh(g.VERTEX_SHADER, "attribute vec2 a;void main(){gl_Position=vec4(a,0,1);}"); sh(g.FRAGMENT_SHADER, FRAG);
+    g.linkProgram(pr); if (!g.getProgramParameter(pr, g.LINK_STATUS)) return;
+    g.useProgram(pr); g.bindBuffer(g.ARRAY_BUFFER, g.createBuffer()); g.bufferData(g.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), g.STATIC_DRAW);
+    const a = g.getAttribLocation(pr, "a"); g.enableVertexAttribArray(a); g.vertexAttribPointer(a, 2, g.FLOAT, false, 0, 0);
+    for (const k of "RTMPSOH") U[k] = g.getUniformLocation(pr, k);
+    g.uniform2f(U.H, HUE, HUE2); g.uniform2f(U.S, 1.7 + fb(0) / 255, 9.2 - fb(1) / 64); g.uniform2f(U.O, fb(3) / 32, fb(4) / 32);
+    /* a software rasteriser says so by name: it gets one still at 0.25× and no timed frame (measured in
+       the battery's SwiftShader: ~140 ms of compile, then ~395 ms a frame at 0.55× against ~80 ms at
+       0.25×); a GPU is timed once after the warm-up frame, and a frame over 22 ms keeps the still */
+    const di = g.getExtension("WEBGL_debug_renderer_info");
+    if (/swiftshader|llvmpipe|software/i.test(di ? g.getParameter(di.UNMASKED_RENDERER_WEBGL) : "")) still = true, SC = .25;
+    gl = g; T0 = performance.now() - fb(2) * 1e3; c.id = "soul"; c.setAttribute("aria-hidden", "true"); B.prepend(c); fit();
+    if (!still) { const px = new Uint8Array(4), sync = () => g.readPixels(0, 0, 1, 1, g.RGBA, g.UNSIGNED_BYTE, px); sync(); const t = performance.now(); draw((t - T0) / 1e3); sync(); still = performance.now() - t > 22; }
+    c.classList.add("on"); run();
+  }
+  D.addEventListener("visibilitychange", run);
+
+  /*── the frame and the sky follow the reader — the pointer, or the gyroscope where there is one —
+       through custom properties the stylesheet turns into a transform, batched to one per frame;
+       not at all under reduced motion ──*/
+  let tf = 0, pe = null;
+  const lean = (x, y) => { const f = $("#frame").style; f.setProperty("--rx", (-y * 10).toFixed(2) + "deg"); f.setProperty("--ry", (x * 10).toFixed(2) + "deg"); f.setProperty("--sx", (x * 60).toFixed(1) + "%"); };
+  if (!RM) {
+    addEventListener("pointermove", e => { pe = e; tf = tf || requestAnimationFrame(() => {
+      tf = 0; const m = Math.min(innerWidth, innerHeight), r = $("#frame").getBoundingClientRect(), x = (pe.clientX - r.left) / r.width - .5, y = (pe.clientY - r.top) / r.height - .5;
+      M1 = [(pe.clientX - innerWidth / 2) / m, (innerHeight / 2 - pe.clientY) / m];
+      Math.abs(x) < 1 && Math.abs(y) < 1 ? lean(x, y) : lean(0, 0);
+    }); }, { passive: true });
+    addEventListener("deviceorientation", e => { if (e.gamma != null) lean(Math.max(-.5, Math.min(.5, e.gamma / 60)), Math.max(-.5, Math.min(.5, (e.beta - 45) / 80))); });
+  }
+
+  /*── the celebration, after a receipt that landed and never after a revert: the soul blooms, a
+       glow fades over the sky, sparks burst from the ticker that names the landing, and a phone
+       ticks once (only after a gesture, so no browser has to refuse it). Under reduced motion the
+       glow's fade is all of it. ──*/
+  let sk = null, parts = [];
+  const fly = () => {
+    const c = sk, r = devicePixelRatio || 1; c.clearRect(0, 0, c.canvas.width, c.canvas.height);
+    parts = parts.filter(p => (p.l -= .012) > 0);
+    for (const p of parts) { p.vy += .16 * r; p.vx *= .985; p.x += p.vx; p.y += p.vy; c.globalAlpha = p.l; c.fillStyle = p.c; c.beginPath(); p.q ? c.rect(p.x, p.y, 4 * p.s, p.s) : c.arc(p.x, p.y, p.s, 0, 7); c.fill(); }
+    if (parts.length) requestAnimationFrame(fly);
+  };
+  function celebrate() {
+    bloom(1.2); HC.add("landed"); setTimeout(() => HC.remove("landed"), 1600);
+    try { navigator.userActivation.hasBeenActive && navigator.vibrate([12, 40, 18]); } catch {}
+    if (RM) return;
+    if (!sk) { const c = el("canvas"); sk = c.getContext && c.getContext("2d"); if (!sk) return; c.id = "spark"; c.setAttribute("aria-hidden", "true"); B.append(c); }
+    const r = devicePixelRatio || 1, o = $("#tick").getBoundingClientRect(), x = (o.left + o.width / 2) * r, y = o.top * r;
+    const cs = ["hsl(" + HUE2 + ",90%,86%)", "hsl(" + HUE + ",80%,78%)", "#fbcfe8", "#fde68a", "#fff"];
+    if (!parts.length) { sk.canvas.width = innerWidth * r; sk.canvas.height = innerHeight * r; requestAnimationFrame(fly); }
+    for (let i = 0; i < 140; i++) { const a = Math.random() * 7, v = 2 + Math.random() * 9; parts.push({ x, y, vx: Math.cos(a) * v * r, vy: (Math.sin(a) * v - 5) * r, l: 1, c: cs[i % 5], s: (1 + Math.random() * 2.6) * r, q: i % 3 < 1 }); }
+  }
+
+  /*── the rooms: the nav is the dock. Every #lanes a[data-lane] the console promises is kept —
+       the agent link still withheld while the card has no code, aria-disabled (and out of the tab
+       order) where nothing can load (CONSOLE §6.1) — in the order a person walks them: Home (an
+       anchor outside #lanes, so the lanes count and the viewer's rule are untouched), Trade,
+       Vault, Social, Studio. Identity opens as a settings sheet from the avatar in the crest and
+       the agent lane as a door beside it: the same links, placed by app.css. A lit indicator
+       slides under the room in use; a sheet closes back to it. ──*/
+  const ROOMS = { swap: ["Trade", "Quoted before you sign; nothing settles below the floor."],
+    vault: ["Vault", "What the Reach holds, who may act for it, and its seal."],
+    social: ["Social", "Hold one and you are in the room."],
+    launch: ["Studio", "Launch a coin: a fair raise, released slowly."],
+    identity: ["Identity", "Rights, keys, traits and the listing."],
+    agent: ["Agent", "The agent card, and the keys that act through it."] };
+  const SHEET = ["identity", "agent"], ORDER = ["swap", "vault", "social", "launch"];
+  const ICON = { home: "M8.5 3.5h7a5 5 0 0 1 5 5v7a5 5 0 0 1-5 5h-7a5 5 0 0 1-5-5v-7a5 5 0 0 1 5-5zM15.6 12a3.6 3.6 0 1 1-7.2 0a3.6 3.6 0 1 1 7.2 0z",
+    swap: "M4 8h14l-3-3M20 16H6l3 3", vault: "M20.5 12a8.5 8.5 0 1 1-17 0a8.5 8.5 0 1 1 17 0zM15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0zM12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3",
+    social: "M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-5 4v-4.4A2.5 2.5 0 0 1 4 13.5z",
+    launch: "M12 3l2.2 5.6L20 9.2l-4.4 3.9L17 19l-5-3.1L7 19l1.4-5.9L4 9.2l5.8-.6z", agent: "M6.5 20.5v-16a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M4 20.5h16M14.5 12h.01" };
+  const icon = d => { const s = sv("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }); sv("path", { d }, s); return s; };
+  let LAST = "home";
+  const lit = () => { const a = LAST === "home" ? $("#home") : $("#lanes a[data-lane=" + LAST + "]"), s = $("#lit").style; if (a) { s.width = a.offsetWidth + "px"; s.transform = "translateX(" + (a.offsetLeft || 0) + "px)"; } };
+  const unsheet = () => { if (SHEET.includes(location.hash.slice(1))) location.hash = LAST === "home" ? "" : LAST; };
+  addEventListener("resize", () => { fit(); lit(); });
 
   /*── INTACT.ui — the whole surface a panel may call (CONSOLE §5) ──*/
   const ALLOW = /^eth_(call|getLogs|getBalance|getBlockByNumber|blockNumber|getCode|getTransactionReceipt|chainId|accounts)$/;
@@ -1030,7 +1227,12 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
      length of the wallet prompt — account null under a crest that named it and a rights of 1.) */
   $("#c-wallet-v").addEventListener("click", () => { if (viewer || !PV) return; store(s => s.removeItem("intact.wallet")); account = null; if (P.size > 1) { CHO = PV = null; refresh(); } else rights(); connect(); });
   addEventListener("hashchange", () => show(location.hash.slice(1)));
-  addEventListener("keydown", e => { if (e.key === "Escape") closeSlab(); });
+  /* Escape closes the slab when one is open, else a sheet; so do the sheet's ✕ and its scrim */
+  addEventListener("keydown", e => { if (e.key === "Escape") open ? closeSlab() : unsheet(); });
+  $("#room-x").addEventListener("click", unsheet); $("#scrim").addEventListener("click", unsheet);
+  /* the wallet cell is a control everywhere it acts, so the keyboard reaches it too */
+  if (!viewer) { const w = $("#c-wallet-v"); w.tabIndex = 0; w.setAttribute("role", "button"); w.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); w.click(); } }); }
+  $("#home").prepend(icon(ICON.home));
   (async () => {
     /* the shell's own rows, verified like a panel's: a baked selector this keccak disagrees with is a refusal */
     rows({ "hub.rightsOf": "rightsOf(uint256,address)", "hub.custodyEpoch": "custodyEpoch(uint256)", "hub.coreOf": "coreOf(uint256)", "hub.price": "price()", "hub.mint": "mint(address)",
@@ -1046,6 +1248,8 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     readyRes();
     show(location.hash.slice(1));
     setTimeout(footer);
+    /* the soul wakes last: after the first chain check has answered and a frame has painted */
+    requestAnimationFrame(() => setTimeout(soul, 60));
   })().catch(e => { say("the shell could not boot: " + em(e), "err"); readyRes(); });
 })();
 </script>
