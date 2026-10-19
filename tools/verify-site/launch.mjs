@@ -149,12 +149,16 @@
   [data-act=collectionLaunch|collectionMint|collectionClaim].
 ───────────────────────────────────────────────────────────────────────────*/
 import vm from "node:vm";
+import { argWords } from "../verify-console.mjs";
 const WAD = 10n ** 18n;
 const PARAMS = "(uint256,address,uint128,uint128,uint128,uint64,uint64,uint128,uint16,uint16,uint16,uint16,uint64,uint8)";
 /*  V2 (W12): the collection spec as the Studio takes it, and a decoder for spec()'s answer — a dynamic
     tuple at word 0, its three strings and two bytes placed by offsets from the tuple's own start */
 const SPEC_T = "(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes)";
 const STUDIO_LAUNCH = `launch(uint256,${SPEC_T},bytes32)`;
+/// the slab's [data-arg] rows, as words, are the calldata decoded apart from the shell — one row per argument, a
+/// tuple's and an array of tuples' too since W14 (CONSOLE §4.2, INTEGRATION L7)
+const argsAgree = (page, sig) => { const rows = page.$$("#cslab [data-arg]"), want = argWords(sig, page.text("#cslab [data-calldata]")); return rows.length === want.length && rows.every((r, i) => r.dataset.arg === String(i) && r.textContent === want[i]); };
 const decSpec = (hex) => {
   const h = hex.replace(/^0x/, ""), W = (at) => BigInt("0x" + h.substr(at * 2, 64)), base = Number(W(0));
   const dyn = (i) => { const o = base + Number(W(base + 32 * i)), n = Number(W(o)); return Buffer.from(h.substr((o + 32) * 2, n * 2), "hex"); };
@@ -551,9 +555,9 @@ export async function run(t, ctx) {
     const params = [...Array(14)].map((_, i) => i === 1 ? addrWord(ccd, 1) : word(ccd, i));
     const hash = await c.read(pad, `termsHash(${PARAMS})`, [params]);
     const hashed = W.callsTo(pad, sel(`termsHash(${PARAMS})`)).filter((x) => W.calls.indexOf(x) >= mark).length;
-    t.ok(page.text("#cslab [data-function]") === `createChecked(${PARAMS},bytes32)` && page.$$("#cslab [data-arg]").length === 0 && word(ccd, 14) === BigInt(hash.slice(0, 66)) && hashed === 1 &&
+    t.ok(page.text("#cslab [data-function]") === `createChecked(${PARAMS},bytes32)` && argsAgree(page, `createChecked(${PARAMS},bytes32)`) && word(ccd, 14) === BigInt(hash.slice(0, 66)) && hashed === 1 &&
       line(page, "Terms hash") === hash.slice(0, 66) && lower(params[1]) === lower(coin4) && params[2] === 700_000n * WAD && params[7] === (1n << 128n) - 1n && params[8] === 9900n && line(page, "Cap per buyer") === "none",
-      "createChecked carries the termsHash read in the same press; a tuple gets no [data-arg] rows, so every argument is a line", `hash ${hash.slice(0, 18)} w14 ${word(ccd, 14).toString(16).slice(0, 16)} asked ${hashed} args ${page.$$("#cslab [data-arg]").length}`);
+      "createChecked carries the termsHash read in the same press; every argument is a line, and the tuple's [data-arg] row is decoded from the calldata", `hash ${hash.slice(0, 18)} w14 ${word(ccd, 14).toString(16).slice(0, 16)} asked ${hashed} args ${page.$$("#cslab [data-arg]").length}`);
     await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
     await sign(page, W, 2);
     const created = lastLog(pad, "LaunchCreated(uint256,uint256,address,uint8,bytes32)");
@@ -872,6 +876,9 @@ export async function run(t, ctx) {
     const segs = LL(page, "#launch-mode button").map((b) => b.textContent + ":" + b.getAttribute("aria-pressed"));
     t.ok(!(S.reported & S.bits.studio) && (S.absent & S.bits.studio) && segs.join(",") === "A collection:false,A coin:true" && !!L(page, "#launch-coin-form") && !L(page, "#launch-collection") && page.errors.length === 0,
       "where the Studio does not report, the room opens on A coin, V1's lane as it was", segs.join(","));
+    /* W14 (INTEGRATION W12-2): the room's one line says what it launches now, a collection or a coin */
+    t.ok(page.text("#room-t") === "Studio" && page.text("#room-s") === "Launch a collection of websites, or a coin.",
+      "the Studio room's line says what it launches: Launch a collection of websites, or a coin.", `"${page.text("#room-t")}" · "${page.text("#room-s")}"`);
     const mark = W.calls.length;
     page.click(segOf(page, "A collection")); await page.settle(); await page.settle();
     const chip = L(page, "#launch-collection .chip"), after = W.calls.slice(mark);
@@ -943,8 +950,8 @@ export async function run(t, ctx) {
     const lines = { Creator: "#1", Name: "Moonlit", Symbol: "MOON", About: "A map of the night it was minted.", Supply: "100", Price: "0.01 ETH", Opens: "at the launch", Closes: "never",
       "Per wallet": "no limit", Share: "5 %", Royalty: "2.5 %", Site: `the default, ${Buffer.byteLength(page0)} bytes, ${holes(page0)} holes`, Art: "the default orb", Salt: saltOf("Moonlit", T), "Lands at": shown };
     const badLines = Object.entries(lines).filter(([k, v]) => line(page, k) !== v);
-    t.ok(page.$$("#cslab [data-arg]").length === 0 && badLines.length === 0 && word(lcd, 0) === P1 && "0x" + lcd.slice(10 + 128, 10 + 192) === saltOf("Moonlit", T) && W.prompts().length === 0,
-      "a tuple draws no [data-arg] rows, so every field of the spec is a line, and the calldata carries the persona and the salt the lines name", badLines.map(([k, v]) => `${k}: "${line(page, k)}" want "${v}"`).join("; "));
+    t.ok(argsAgree(page, STUDIO_LAUNCH) && badLines.length === 0 && word(lcd, 0) === P1 && "0x" + lcd.slice(10 + 128, 10 + 192) === saltOf("Moonlit", T) && W.prompts().length === 0,
+      "every field of the spec is a line beside the tuple's [data-arg] row decoded from the calldata, and the calldata carries the persona and the salt the lines name", badLines.map(([k, v]) => `${k}: "${line(page, k)}" want "${v}"`).join("; "));
     await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
     await sign(page, W, 1);
     const lg = vc.getLogs({ address: ST, topics: [vtopic("Launched(address,uint256,address,string,string,uint32,uint128)")] }).pop();
@@ -977,7 +984,11 @@ export async function run(t, ctx) {
       }
       const r = jsQR(img, side, side); qrText = r && r.data;
     } catch (e) { qrText = "decode failed: " + e.message; }
-    t.ok(qrText === LINK && Buffer.byteLength(LINK) <= 106 && svg.getAttribute("style") === "width:184px;background:#fff;border-radius:16px", "the QR encodes the mint link, decoded apart from the shell, on a light ground", `decoded "${qrText}"`);
+    /* the light ground is the shell's since W14: the code carries the shell's .qr class and no style of its own, and the
+       shipped shell's stylesheet makes .qr a white 184 px card (Chromium reads the paint: verify-console's launch group) */
+    const SHIPPED = ctx.fs.readFileSync(ctx.path.join(ctx.ROOT, "dist/app.html"), "utf8");
+    t.ok(qrText === LINK && Buffer.byteLength(LINK) <= 106 && svg.getAttribute("class") === "qr" && !svg.getAttribute("style") && /\.qr\{[^}]*width:184px[^}]*background:#fff/.test(SHIPPED),
+      "the QR encodes the mint link, decoded apart from the shell, on a light ground", `decoded "${qrText}" class "${svg.getAttribute("class")}" style "${svg.getAttribute("style")}"`);
 
     /* a mint through the shared link: the buyer opens it as written, and the mint names #1 as its referrer */
     const WB = walletFor(vc, va.buyer);

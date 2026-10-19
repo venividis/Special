@@ -256,10 +256,11 @@
          INTACT's Said: prev(0) prevFrom(1) seq(2) kind(3) reBlock(4) reSeq(5) offset(6) length body. */
     var said = function (l) { return { prev: dw(l, 0), seq: dw(l, 2), kind: Number(dw(l, 3)), from: BigInt(l.topics[2]), room: BigInt(l.topics[1]), hex: dyn(l, 6), at: ord(l) }; };
     /* a line: V1's is a key and a value; Agora's is a post — who and (in the feed) its kind over the words, and
-       a ✦ under any word that can be reacted to */
+       a ✦ under any word that can be reacted to. A post's rule is the shell's .post (engine/app.css, W14): this
+       panel sets no style of its own */
     function row(feed, m, opener) {
-      var r = ui.el("div", "row"), b = ui.el(V2 ? "div" : "span", "v body"), h = V2 ? ui.el("div", "k") : r;
-      if (V2) { r.style.cssText = "padding:10px 0;border-bottom:1px solid var(--line)"; r.append(h); } else r.classList.add("kv");
+      var r = ui.el("div", V2 ? "row post" : "row kv"), b = ui.el(V2 ? "div" : "span", "v body"), h = V2 ? ui.el("div", "k") : r;
+      if (V2) r.append(h);
       h.append(ui.el("span", "k who", tok(m.from)));
       if (m.k) h.append(" · ", ui.el("span", "kind", m.k));
       r.append(b);

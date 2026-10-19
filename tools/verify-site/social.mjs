@@ -703,6 +703,10 @@ export async function run(t, ctx) {
     await page.until(() => rows(page, "#social-commons").length === 1, 60);
     a1((await roomOf(0n)).count === 1n && rows(page, "#social-commons")[0].querySelector(".who").textContent === "#1" && bodyOf(rows(page, "#social-commons")[0]).textContent === "hello, agora" && L(page, "#social-composer textarea").value === "",
       "signed, Agora's commons counts one word, the walk shows it under #1, and the composer is cleared", JSON.stringify(kinds(page, "#social-commons")));
+    /* W14 (INTEGRATION L4): a post's rule is the shell's .post, so the lane sets no style on a row */
+    const SHIPPED = X.fs.readFileSync(X.path.join(X.ROOT, "dist/app.html"), "utf8"), posts = rows(page, "#social-commons");
+    t.ok(posts.length === 1 && posts.every((r) => r.classList.contains("post") && r.classList.contains("row") && !r.getAttribute("style")) && /\.post\{padding:10px 0;border-bottom:1px solid var\(--line\)\}/.test(SHIPPED),
+      "an Agora post is drawn by the shell's .post rule: the row carries the class and no style of its own", posts.map((r) => r.className + " | " + r.getAttribute("style")).join(" · "));
     await tab(page, "collection");
     await page.until(() => !!L(page, "#social-composer textarea"), 60);
     page.type(L(page, "#social-composer textarea"), "hello, holders");

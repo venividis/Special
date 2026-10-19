@@ -730,8 +730,6 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     try { if (INNER[s]) return INNER[s](body).some(unlimited); } catch {}
     return false;
   };
-  /* argument rows are decoded from the bytes only when every type is one data() can build */
-  const simple = ts => !/[()]|\]\[|\[\d|(bytes|string)\[/.test(ts.join());
   let open = null, FOC = null;
   /* always clears the body, even with nothing open: a slab that threw half-built must not
      leave its rows under the next one's. Focus goes back to whatever opened the sheet. */
@@ -772,7 +770,10 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
         const fx = el("details"); fx.append(el("summary", "", "the facts it signs")); slab.append(fx);
         row("To", L.checksum(tx.to), "to", fx);
         row("Function", sig, "function", fx); row("Selector", cd.slice(0, 10), "selector", fx);
-        if (simple(ts)) try { decode(ts, cd.slice(10)).forEach((v, i) => { row("arg " + i + " · " + ts[i], words(v, ts[i]), "arg", fx).dataset.arg = i; }); } catch {}
+        /* one row per argument, decoded from the bytes that will be signed — a tuple and an array of them too,
+           in brackets, field by field (INTEGRATION L7): what is shown is what is signed. Bytes the signature
+           cannot decode draw no row, and the lines still carry every argument in words */
+        try { decode(ts, cd.slice(10)).forEach((v, i) => { row("arg " + i + " · " + ts[i], words(v, ts[i]), "arg", fx).dataset.arg = i; }); } catch {}
         const code = el("pre", "code", cd); code.dataset.calldata = ""; fx.append(code);
         row("Digest", L.kbytes(cd), "digest", fx); row("Engine", String(S.engineHash), "engine", fx);
         gasRow = row("Gas", "estimating…", "gas");
@@ -820,14 +821,16 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     if (bits !== b0 || epoch !== e0) { say("ownership or epoch changed — review again", "err"); closeSlab(); }
     if (tx.then) try { await tx.then(r); } catch (e) { say("after the receipt: " + em(e), "err"); }
   }
-  /* the exact-approval step: never unlimited, the word appears only as that refusal */
+  /* the exact-approval step: never unlimited, the word appears only as that refusal. A step names its spender
+     in words with `who` ("the Keepsake", "Seaport"); without one the line is V1's, "the market", which is what
+     the Pool's callers approve (INTEGRATION L7) */
   async function approveExactThen(steps, fin) {
     for (const st of steps || []) {
       const reach = st.via === "reach", owner = reach ? S.reach : st.owner || account;
       if (L.decUint(await call(st.token, buildData("erc20.allowance", [owner, st.spender]))) >= st.amount) continue;
       const amt = L.fmtUnits(st.amount, st.decimals == null ? 18 : st.decimals) + " " + (st.symbol || ""), data = buildData("erc20.approve", [st.spender, st.amount]);
       return propose({ to: reach ? S.reach : st.token, data: reach ? buildData("reach.execute", [st.token, 0, data, 0]) : data, sig: reach ? EXEC : APPROVE, spend: true, need: reach ? R.HOLD : 0,
-        lines: [["Lets", "the market pull exactly " + amt], ["Never", "unlimited"], ["Then", "press the same button again"]],
+        lines: [["Lets", (st.who || "the market") + " pull exactly " + amt], ["Never", "unlimited"], ["Then", "press the same button again"]],
         sentence: "lets " + short(st.spender) + " pull exactly " + amt + " from " + (reach ? "the Reach" : short(account)) + ", and nothing more" });
     }
     return fin();
@@ -959,8 +962,9 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
     const fm = (8 << 10 | rem) ^ 0x5412, bit = i => (fm >> i) & 1;
     for (let i = 0; i < 6; i++) setF(8, i, bit(i)); setF(8, 7, bit(6)); setF(8, 8, bit(7)); setF(7, 8, bit(8)); for (let i = 9; i < 15; i++) setF(14 - i, 8, bit(i));
     for (let i = 0; i < 8; i++) setF(N - 1 - i, 8, bit(i)); for (let i = 8; i < 15; i++) setF(8, N - 15 + i, bit(i));
-    /* sized by #qr svg in app.css; every rect carries its own shape-rendering (CONSOLE §13) */
-    const svg = sv("svg", { viewBox: "0 0 45 45", role: "img", "aria-label": text });
+    /* sized by #qr svg in app.css on Home and by .qr anywhere else, which is also its white ground in a lane;
+       every rect carries its own shape-rendering (CONSOLE §13) */
+    const svg = sv("svg", { viewBox: "0 0 45 45", role: "img", "aria-label": text, class: "qr" });
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (M[y * N + x]) sv("rect", { x: x + 4, y: y + 4, width: 1, height: 1, "shape-rendering": "crispEdges" }, svg);
     return svg;
   }
@@ -1160,15 +1164,15 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   /*── the rooms: the nav is the dock. Every #lanes a[data-lane] the console promises is kept —
        the agent link still withheld while the card has no code, aria-disabled (and out of the tab
        order) where nothing can load (CONSOLE §6.1) — in the order a person walks them: Home (an
-       anchor outside #lanes, so the lanes count and the viewer's rule are untouched), Trade,
-       Vault, Social, Studio. Identity opens as a settings sheet from the avatar in the crest and
+       anchor outside #lanes, so the lanes count and the viewer's rule are untouched), Gallery,
+       Trade, Vault, Social, Studio. Identity opens as a settings sheet from the avatar in the crest and
        the agent lane as a door beside it: the same links, placed by app.css. A lit indicator
        slides under the room in use; a sheet closes back to it. ──*/
   const ROOMS = { gallery: ["Gallery", "Any NFT, from the chain alone: its art, its story, its price."],
     swap: ["Trade", "Quoted before you sign; nothing settles below the floor."],
     vault: ["Vault", "What the Reach holds, who may act for it, and its seal."],
     social: ["Social", "Hold one and you are in the room."],
-    launch: ["Studio", "Launch a coin: a fair raise, released slowly."],
+    launch: ["Studio", "Launch a collection of websites, or a coin."],
     identity: ["Identity", "Rights, keys, traits and the listing."],
     agent: ["Agent", "The agent card, and the keys that act through it."] };
   const SHEET = ["identity", "agent"], ORDER = ["gallery", "swap", "vault", "social", "launch"];

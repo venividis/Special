@@ -181,18 +181,9 @@
     /* what is typed under the card lives here, so a repaint keeps it; a landed trade starts afresh */
     var lk0 = function () { return { on: false, days: "30", free: "30", drip: false, floor: "", most: "", gift: false, to: "", note: "", mem: "" }; };
     var LK = lk0(), last = null, memLive = false, sayEl = null, whyEl = null, datesEl = null, nowEl = null, drawLock = null;
-    /*  the lane's own light, written once into the head and scoped to #lane-swap (never markup: one
-        textContent): a switch is a row with a knob in the token's two hues, the one breath is set large,
-        and a keepsake wears an orb of the same light — art within art. No animation, so nothing loops. */
-    if (!document.getElementById("swap-style")) {
-      var st = ui.el("style"); st.id = "swap-style";
-      st.textContent = "#lane-swap [role=switch]{display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px 14px;border-radius:16px;font-size:14px}" +
-        "#lane-swap [role=switch]::after{content:'';width:40px;height:22px;border-radius:99px;background:radial-gradient(circle at 11px,#fff 7px,#0000 8px),#fff3}" +
-        "#lane-swap [aria-checked=true]::after{background:radial-gradient(circle at 29px,#fff 7px,#0000 8px),linear-gradient(90deg,hsl(var(--h2) 90% 70%),hsl(var(--h) 80% 60%))}" +
-        "#swap-say{font-size:17px}" +
-        "#swap-kept .keepsake::before{content:'';float:left;width:46px;height:46px;margin-right:12px;border-radius:50%;background:radial-gradient(circle at 38% 34%,#fff,hsl(var(--h2) 90% 70%) 40%,hsl(var(--h) 80% 30%));box-shadow:0 0 24px hsl(var(--h2) 90% 70%)}";
-      document.head.append(st);
-    }
+    /*  the lane's own light — a switch is a row with a knob in the token's two hues, the one breath is set
+        large, and a keepsake wears an orb of the same light — is the shell's stylesheet since W14 (engine/app.css,
+        INTEGRATION L4): this panel writes no <style>. No animation, so nothing loops. */
     /* a switch: a button with role=switch, its state in aria-checked (the knob reads it), its label its own text */
     var sw = function (p, id, label, k, fn) {
       var b = ui.el("button", "chip", label), set = function () { b.setAttribute("aria-checked", String(LK[k])); };
@@ -465,7 +456,8 @@
         if (mem === false) return;
         if (typeof t === "string") return ui.say(t, "err");
         var pay = exactOut ? P.lim : P.a, payCoin = IN;
-        var steps = isEth(payCoin.addr) ? [] : [{ token: payCoin.addr, spender: lock ? S.keepsake : S.pool, amount: pay, symbol: payCoin.sym, decimals: payCoin.dec }];
+        /* a locked swap is pulled by the Keepsake, and its approval's line says so (the shell's default is the market) */
+        var steps = isEth(payCoin.addr) ? [] : [{ token: payCoin.addr, spender: lock ? S.keepsake : S.pool, amount: pay, symbol: payCoin.sym, decimals: payCoin.dec, who: lock && "the Keepsake" }];
         ui.approveExactThen(steps, function () {
           return ui.read(S.pool, exactOut ? "pool.quoteExactOut" : "pool.quote", [ID, baseIn, P.a]).then(function (r) {
             var q = r.w(0), slip = q * 50n / 10000n, lim = exactOut ? q + slip : q - slip, to = ui.account();
@@ -475,8 +467,8 @@
             return ui.clock().then(function (now) {
               var dl = now + 900n, value = isEth(payCoin.addr) ? (exactOut ? lim : P.a) : 0n;
               /*  V2: lock what arrives — Keepsake.swapAndWrap, the schedule from the chain's clock, the drip's
-                  floor raw in the calldata and in words in the lines (a tuple: the shell draws no argument
-                  rows, so every field is a line); the keepsake's id comes from the receipt's Wrapped log */
+                  floor raw in the calldata and in words in the lines (a tuple: every field is a line, and the
+                  shell draws its row from the calldata beside them); the keepsake's id comes from the receipt's Wrapped log */
               if (lock) {
                 t = terms(q); if (typeof t === "string") return ui.say(t, "err");
                 var start = t.L ? now + t.L * 86400n : 0n, end = now + (t.L + t.F) * 86400n, info = { gift: t.to, start: start || now, end: end };

@@ -187,6 +187,10 @@ section.on,#lane.on{display:block}
 #collection{display:flex;flex-direction:column;gap:14px}
 #collection h3{margin-top:0}
 .market,.coin{display:block;padding:8px 0;border-bottom:1px solid var(--line)}
+/* a QR anywhere but Home (the Vault's Grip, a collection's mint link) is its own white card: the shell draws its
+   modules with no fill on a transparent ground, so only a light ground behind them makes a code (W12, INTEGRATION
+   W12-3; Home's #qr is the card itself). The shell's qr() names every code it draws with this class. */
+.qr{display:block;width:184px;max-width:100%;border-radius:16px;background:#fff}
 /*──── the dock: Home and the lanes, a lit indicator under the room in use ────*/
 #dock{position:fixed;z-index:29;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 14px);width:max-content;max-width:calc(100% - 24px);margin:0 auto;display:flex;gap:2px;padding:7px;border-radius:28px}
 #dock::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit}
@@ -213,11 +217,27 @@ section.on,#lane.on{display:block}
 #cslab{width:min(560px,100%);max-height:90vh;overflow-y:auto;overscroll-behavior:contain;padding:22px 20px calc(env(safe-area-inset-bottom) + 22px);border-radius:30px 30px 0 0;transform:translateY(100%);transition:transform .55s var(--ease)}
 #cbox.on #cslab{transform:none}
 #cslab:focus{outline:0}
-#cslab [data-sentence]{margin:0 0 14px;font-size:19px;line-height:1.45}
+/* a full address in a signing sentence is one word wider than a 390 px sheet: it breaks anywhere rather than run
+   off the edge (W10, INTEGRATION L3); so does a tuple's type in a row's key, which has no space to break at */
+#cslab [data-sentence]{margin:0 0 14px;font-size:19px;line-height:1.45;overflow-wrap:anywhere}
+#cslab .k{overflow-wrap:anywhere}
 #cslab [data-go]{margin-top:16px;padding:16px 22px;animation:flow 7s ease-in-out infinite paused}
 #cslab [data-go][disabled]{animation:none}
 .alive #frame,.alive #cslab [data-go]{animation-play-state:running}
 @keyframes flow{50%{background-position:100%}}
+/*──── the lanes' own light, kept here so no panel writes a stylesheet (INTEGRATION L4) ────
+  A switch is a button with role=switch: a row whose knob is white on glass when off and white on the
+  token's two hues when on, its state in aria-checked. The selector names the button, so the Gallery's
+  disabled include-OpenSea checkbox (an input with the same role) keeps the plain input's look. The
+  Trade lane's one breath is set large, and its keepsake wears an orb of the same light — scoped to
+  #swap-kept, because the Vault's keepsake card carries the real orb, an image. A post in the Social
+  lane's Agora feed is a row with a rule under it. None of it animates, so html.alive is not needed. */
+button[role=switch]{display:flex;align-items:center;justify-content:space-between;width:100%;padding:12px 14px;border-radius:16px;font-size:14px}
+button[role=switch]::after{content:"";width:40px;height:22px;border-radius:99px;background:radial-gradient(circle at 11px,#fff 7px,#0000 8px),#fff3}
+[role=switch][aria-checked=true]::after{background:radial-gradient(circle at 29px,#fff 7px,#0000 8px),linear-gradient(90deg,hsl(var(--h2) 90% 70%),hsl(var(--h) 80% 60%))}
+#swap-say{font-size:17px}
+#swap-kept .keepsake::before{content:"";float:left;width:46px;height:46px;margin-right:12px;border-radius:50%;background:radial-gradient(circle at 38% 34%,#fff,hsl(var(--h2) 90% 70%) 40%,hsl(var(--h) 80% 30%));box-shadow:0 0 24px hsl(var(--h2) 90% 70%)}
+.post{padding:10px 0;border-bottom:1px solid var(--line)}
 /*──── the picker: page UI, one card, one button per announcer ────*/
 #picker{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:#030208b3}
 #picker .card{width:min(340px,100%)}

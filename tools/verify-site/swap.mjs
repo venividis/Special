@@ -91,6 +91,7 @@
   #swap-sniper, #swap-facts.
 ───────────────────────────────────────────────────────────────────────────*/
 import { createAddressFromString, Account } from "@ethereumjs/util";
+import { argWords } from "../verify-console.mjs";
 
 const WAD = 10n ** 18n;
 const OPEN = "openMarket(uint256,address,address,uint16,uint24,uint16,uint32)";
@@ -100,6 +101,9 @@ const SWAP_OUT = "swapExactOut(uint256,bool,uint256,uint256,address,uint64)";
 const APPROVE = "approve(address,uint256)";
 const REQ = "(uint8,address,address,uint256,uint256,uint64,uint256,bytes,(address,address,uint24,int24,address),uint160)";
 const TYPED = "executeTyped((address,uint256,bytes,(address,uint256)[],(address,uint256)[],uint64))";
+/// the slab's [data-arg] rows, as words, are the calldata decoded apart from the shell — one row per argument, a
+/// tuple's and an array of tuples' too since W14 (CONSOLE §4.2, INTEGRATION L7)
+const argsAgree = (page, sig) => { const rows = page.$$("#cslab [data-arg]"), want = argWords(sig, page.text("#cslab [data-calldata]")); return rows.length === want.length && rows.every((r, i) => r.dataset.arg === String(i) && r.textContent === want[i]); };
 /// The address the Catalog pins as the Router on the two side chains; the
 /// code is etched there after the Pool exists (E §2.2).
 const ROUTER_PIN = "0x0000000000000000000000000000000000c0ffee";
@@ -128,6 +132,8 @@ export async function run(t, ctx) {
   const slabCd = (page) => page.text("#cslab [data-calldata]");
   const gasRow = (page) => page.text("#cslab [data-gas]");
   const tick = (page) => page.text("#tick");
+  /// a slab line by its key: the panel's own words (or the shell's, for an exact approval), before the shell's rows
+  const lineOf = (page, k) => { const r = page.$$("#cslab .kv").find((x) => x.firstChild && x.firstChild.textContent === k); return r ? r.lastChild.textContent : null; };
   const L = (page, s) => page.$("#lane-swap " + s);
   const LL = (page, s) => page.$$("#lane-swap " + s);
   const laneText = (page) => page.text("#lane-swap");
@@ -270,6 +276,8 @@ export async function run(t, ctx) {
     f(page.text("#cslab [data-function]") === APPROVE && page.text("#cslab [data-selector]") === lower(S.sel["erc20.approve"]) && lower(page.text("#cslab [data-to]")) === lower(weth),
       "the slab names the call and the target", `${page.text("#cslab [data-function]")} ${page.text("#cslab [data-selector]")} ${page.text("#cslab [data-to]")}`);
     f(cd.slice(0, 10) === lower(S.sel["erc20.approve"]) && word(cd, 1) === WAD && lower(addrWord(cd, 0)) === lower(pool), "the amount word is exactly what was typed, in base units, and the spender is the market", cd);
+    /* W14 (INTEGRATION L7): a step that names no spender keeps V1's line, word for word */
+    t.ok(lineOf(page, "Lets") === "the market pull exactly 1 WETH", "the market's exact approve keeps V1's line: Lets · the market pull exactly 1 WETH", lineOf(page, "Lets"));
     const slab = page.text("#cslab");
     f(/Never\s*unlimited/.test(slab) && (slab.match(/unlimited/g) || []).length === 1, "unlimited appears only as a refusal", slab.slice(0, 200));
     const MASK = new RegExp("\\(\\s*1n\\s*<<\\s*25" + "6n\\s*\\)\\s*-\\s*1n");
@@ -614,8 +622,8 @@ export async function run(t, ctx) {
     t.ok(inner.slice(0, 10) === lower(S.sel["router.swap"]) && venue === 0n && lower(tin) === lower(w3) && lower(tout) === ZERO && amountIn === WAD && poolKey === 2n && word(inner, 8) === 448n,
       "the inner call is the Router's swap of the pair through its own pool, the market keyed by the id", `sel ${inner.slice(0, 10)} venue ${venue} in ${tin} out ${tout} amount ${amountIn} key ${poolKey}`);
     t.ok(spendN === 1 && lower(spendAsset) === lower(w3) && spendAmt === WAD && recvN === 1 && lower(recvAsset) === ZERO && recvAmt === expectMin && minOut === expectMin &&
-      page.$$("#cslab [data-arg]").length === 0 && /Spend/.test(slab) && /Receive at least/.test(slab) && /Dies/.test(slab) && new RegExp(full(expectMin).replace(/\./g, "\\.") + " ETH — or nothing moves").test(slab),
-      "spend and receive floors are the typed amount and the Router's own quote less half a percent — in the bytes and in the words, with no argument rows for the tuple", `spend ${spendAsset} ${spendAmt}; recv ${recvAsset} ${recvAmt} vs ${expectMin}; args ${page.$$("#cslab [data-arg]").length}`);
+      argsAgree(page, TYPED) && /Spend/.test(slab) && /Receive at least/.test(slab) && /Dies/.test(slab) && new RegExp(full(expectMin).replace(/\./g, "\\.") + " ETH — or nothing moves").test(slab),
+      "spend and receive floors are the typed amount and the Router's own quote less half a percent — in the bytes, in the words, and in the tuple's argument row decoded from the bytes", `spend ${spendAsset} ${spendAmt}; recv ${recvAsset} ${recvAmt} vs ${expectMin}; args ${page.$$("#cslab [data-arg]").map((r) => r.textContent).join(" | ").slice(0, 200)}`);
     t.ok(deadline === ts + 7777n + 900n && iDeadline === deadline && /Dies\s*in fifteen minutes/.test(slab), "the deadline word is the chain's, in the TypedCall and in the request alike", `${deadline} vs ${ts + 7777n + 900n}`);
     W.override("eth_getBlockByNumber", null);
     await page.until(() => !page.$("#cslab [data-go]").disabled, 60);
@@ -805,6 +813,9 @@ export async function lockAndMemory(t, ctx) {
   const put = (pg, name, v) => pg.type(L(pg, `[name=${name}]`), v);
   const flipOn = async (pg, id) => { pg.click(L(pg, "#" + id)); await pg.settle(); };
   const cks = (a) => checksum(a, kec);
+  /* W14: the shipped shell, for the rules that moved into it from this panel; a slab line by its key */
+  const DIST = ctx.fs.readFileSync(ctx.path.join(ctx.ROOT, "dist/app.html"), "utf8");
+  const lineOf = (pg, k) => { const r = pg.$$("#cslab .kv").find((x) => x.firstChild && x.firstChild.textContent === k); return r ? r.lastChild.textContent : null; };
   const date = (s) => new Date(Number(s) * 1e3).toISOString().replace("T", " ").slice(0, 16) + " UTC";
   const topic = (s) => kec(Buffer.from(s, "utf8"));
   const WRAPPED = topic("Wrapped(uint256,address,address,uint64,uint64,uint64,uint256,string)");
@@ -895,6 +906,10 @@ export async function lockAndMemory(t, ctx) {
     v1((S.reported & S.bits.keepsake) !== 0 && (S.reported & S.bits.journal) !== 0 && !!lockOn && lockOn.getAttribute("role") === "switch" && lockOn.getAttribute("aria-checked") === "false" &&
       !!L(page, "#swap-memory textarea[name=memory]") && L(page, "#swap-memory textarea[name=memory]").getAttribute("aria-label") && LL(page, ".chip[data-state]").filter((x) => /keepsake|journal/.test(x.textContent)).length === 0,
       "where the Keepsake and the Journal report, the lock is a switch and the holder is offered a memory, each labelled, with no chip", `lock ${!!lockOn} memory ${!!L(page, "#swap-memory textarea")}`);
+    /* W14 (INTEGRATION L4): the lane's light is the shell's stylesheet, so the panel writes no <style> of its own */
+    t.ok(!page.$("#swap-style") && page.$$("style").length === 1 && /button\[role=switch\]\{display:flex/.test(DIST) && /\[role=switch\]\[aria-checked=true\]::after\{/.test(DIST) &&
+      /#swap-say\{font-size:17px\}/.test(DIST) && /#swap-kept \.keepsake::before\{/.test(DIST),
+      "the lane writes no stylesheet of its own: the switch's knob, the one breath and the keepsake's orb are rules of the shell's", `#swap-style ${!!page.$("#swap-style")} · ${page.$$("style").length} style element(s)`);
     /* friendlier: the fee in percent beside its bps, the sniper countdown in minutes and seconds, the rate both ways */
     page.click(L(page, "#swap-flip")); await page.settle();
     await quote(page, "0.5");
@@ -924,7 +939,7 @@ export async function lockAndMemory(t, ctx) {
     W.override("eth_getBlockByNumber", null);
     const cd = cdOf(page), x = sawOf(cd), slab = page.text("#cslab");
     v1(page.text("#cslab [data-function]") === SAW && lower(page.text("#cslab [data-to]")) === lower(ks) && page.$("#cslab [data-value]").dataset.wei === String(WAD / 2n) &&
-      page.$$("#cslab [data-arg]").length === 0 && page.text("#cslab [data-sentence]") === say && W.count("eth_estimateGas") === est0 + 1 && /^\d+ units$/.test(gasOf(page)),
+      argsAgree(page, SAW) && page.text("#cslab [data-sentence]") === say && W.count("eth_estimateGas") === est0 + 1 && /^\d+ units$/.test(gasOf(page)),
       "the lock is one slab: Keepsake.swapAndWrap, the ether as its value, the card's one breath as its sentence, and the estimate passes", `${page.text("#cslab [data-function]")} | ${page.text("#cslab [data-sentence]")} | ${gasOf(page)}`);
     v1(x.w0 === 32n && x.market === 1n && x.baseIn === 0n && x.amountIn === WAD / 2n && x.minOut === lim && x.deadline === ts + 7777n + 900n &&
       x.start === ts + 7777n + 30n * DAY && x.cliff === 0n && x.end === ts + 7777n + 60n * DAY && lower(x.to) === lower(ME) && x.message === "",
@@ -985,6 +1000,8 @@ export async function lockAndMemory(t, ctx) {
     const acd = cdOf(page);
     v2(page.text("#cslab [data-function]") === APPROVE && lower(page.text("#cslab [data-to]")) === lower(weth) && lower(addrWord(acd, 0)) === lower(ks) && word(acd, 1) === WAD && /Never\s*unlimited/.test(page.text("#cslab")) && W.sent() === 0,
       "the approve slab names the Keepsake as the spender of exactly the amount typed", acd);
+    /* W14 (INTEGRATION L7): the line names who pulls, not "the market" */
+    t.ok(lineOf(page, "Lets") === "the Keepsake pull exactly 1 WETH", "locked, the exact approval's line names who pulls it: Lets · the Keepsake pull exactly 1 WETH", lineOf(page, "Lets"));
     await sign(page, W, 1);
     await page.until(() => L(page, "#swap-go") && L(page, "#swap-go").textContent === "Swap and lock" && !L(page, "#swap-go").disabled, 40);
     v2(L(page, "#swap-in").value === "1" && L(page, "#swap-lock-on").getAttribute("aria-checked") === "true" && L(page, "#swap-go").textContent === "Swap and lock",
