@@ -102,7 +102,7 @@ Requests from the lanes:
 | L7 | The slab: a per-step label on the exact-approval line ("Lets the market pull…" when the spender is the Keepsake); argument rows for tuple arguments | W9 | yes | open |
 | L8 | `IEngine.panelCount` is `view`, not `pure` (INTERFACE-CHANGES) | W8 | yes | open |
 | L9 | CONSOLE.md §5 (`ui.data` builds tuples since 959acee), §6.2 (every lane's new ids), §9, §14, §16, §18, §19 | all | yes | open |
-| L10 | INVARIANTS and DESIGN §14: W10-1…15, W9's F16–F22, W11's N10–N17, W8's F16–F18 and Y1–Y10 (renumbered at integration) | all | yes, pending until the battery | open |
+| L10 | INVARIANTS and DESIGN §14: W10-1…15, W9's F16–F22, W11's N10–N17, W8's F16–F18 and Y1–Y10 (renumbered at integration) | all | yes, pending until the battery | written, pending: F16–F19, K13–K32, J8, S17–S26, N10–N17, Y1–Y10 (53 rows; the id map below). Every cited sentence was found verbatim with all 53 read as live in a scratch copy: the checker read 331 passed, 0 failed. They flip after the battery, each by its own mutation evidence |
 | L11 | CLAUDE.md: the panel sizes; a panel's style goes in the head; a suite's own chain write while a shim read is in flight fails on its nonce; Playwright's service-worker error in sandboxed frames; never `pkill -f` | W8, W9, W11 | yes | open |
 | L12 | "six panels" wording in DESIGN and DEPLOYMENT; V2.md §3.3 as built (off-chain art is a link, selling needs no signature, OpenSea stays off, no WETH offers yet) | W8 | yes | open |
 | L13 | verify-console's viewer group no longer needs the Grip clipboard observation (fixed in W10) | W10 | yes | open |
@@ -174,6 +174,17 @@ The battery:
 The ledger's ids for the units' rows: W1's K1–K12 and W2's J1–J7 keep
 their ids; W3's W3-1…W3-11 are Z1–Z11; W4's ST1–ST6 are S1–S6 and its
 CL1–CL10 are S7–S16; W5's AG1–AG9 are N1–N9.
+
+The lanes' rows continue the letter of the promise they keep in the
+console, as V1's G1 cites a forge test and a lane sentence in one row:
+- W8's F16–F18 and Y1–Y10 keep their ids; Y is the Gallery's letter.
+- W9's F16 is F19, its F17–F21 are K13–K17, and its F22 is J8.
+- W10-1…W10-15 are K18–K32.
+- W11's N10–N17 keep their ids.
+- W12-1…W12-10 are S17–S26.
+- W13's two harness rows, with S2's (`test/Harness.t.sol`), become the
+  foundation's 0.9–0.11 once the battery runs them; a foundation
+  paragraph has no pending state, so it is written only then.
 
 W6's own requests, beyond those rows:
 - `src/interfaces/Site.sol`'s `TokenState` comment lists the bits up to
