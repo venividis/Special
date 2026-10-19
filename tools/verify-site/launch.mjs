@@ -573,7 +573,8 @@ export async function run(t, ctx) {
     const { page } = await bootToken(4, { wallet: W });
     await lane(page, "launch");
     await page.until(() => !!L(page, "[data-act=approveFirstLaunch]"), 80);
-    t.ok(page.$("body").dataset.rights === "64" && !L(page, "#launch-coin-form") && LL(page, "#launch-coin input").length === 0 && !L(page, "#launch-create"),
+    /* W13: "offered the co-sign" was the wait's alone; the sentence now checks the control */
+    t.ok(page.$("body").dataset.rights === "64" && !!L(page, "[data-act=approveFirstLaunch]") && !L(page, "#launch-coin-form") && LL(page, "#launch-coin input").length === 0 && !L(page, "#launch-create"),
       "the guardian is offered the co-sign and no coin form", `rights ${page.$("body").dataset.rights}`);
     await press(page, L(page, "[data-act=approveFirstLaunch]"));
     t.ok(page.text("#cslab [data-function]") === "approveFirstLaunch(uint256)" && word(slabCd(page), 0) === 4n && /custody epoch/.test(page.text("#cslab [data-sentence]")),
@@ -612,7 +613,8 @@ export async function run(t, ctx) {
     const { page } = await bootToken(4, { wallet: WS });
     await lane(page, "launch");
     await page.until(() => !!L(page, "[data-act=fail]"), 80);
-    t.ok(!L(page, "[data-act=graduate]") && page.$("body").dataset.rights === "0", "past its deadline short of its target, anyone is offered to fail it, and nobody to graduate it", laneText(page).slice(0, 160));
+    /* W13: "anyone is offered to fail it" was the wait's alone; the sentence now checks the control */
+    t.ok(!!L(page, "[data-act=fail]") && !L(page, "[data-act=graduate]") && page.$("body").dataset.rights === "0", "past its deadline short of its target, anyone is offered to fail it, and nobody to graduate it", laneText(page).slice(0, 160));
     await press(page, L(page, "[data-act=fail]"));
     t.ok(page.text("#cslab [data-function]") === "fail(uint256)" && word(slabCd(page), 0) === L5 && /for good/.test(page.text("#cslab [data-sentence]")) && /^\d+ units$/.test(gasRow(page)),
       "the fail slab says it is for good, and the estimate passes", page.text("#cslab [data-sentence]"));
@@ -799,7 +801,9 @@ export async function run(t, ctx) {
     const { page } = await bootToken(1, { wallet: W });
     await lane(page, "launch");
     await page.until(() => LL(page, "#launch-raises .raise").length > 0 && /raised/.test(page.text("#lane-launch #launch-raises")), 80);
-    t.ok(LL(page, "[data-act]").length === 0 && LL(page, "input").length === 0 && (laneText(page).match(/your rights could not be read at block \d+/g) || []).length === 1 && page.$("body").dataset.rights === "",
+    /* W13: "still reads every raise" was the wait's alone; the sentence now checks the raises */
+    t.ok(LL(page, "#launch-raises .raise").length > 0 && /raised/.test(page.text("#lane-launch #launch-raises")) &&
+      LL(page, "[data-act]").length === 0 && LL(page, "input").length === 0 && (laneText(page).match(/your rights could not be read at block \d+/g) || []).length === 1 && page.$("body").dataset.rights === "",
       "with rights that could not be read the lane still reads every raise, offers nothing to press, and says why once", `acts ${LL(page, "[data-act]").length} inputs ${LL(page, "input").length}`);
     page.close();
   }
@@ -875,7 +879,10 @@ export async function run(t, ctx) {
       after.every((x) => x.method !== "eth_call" && x.method !== "eth_getLogs") && segOf(page, "A collection").getAttribute("aria-pressed") === "true",
       "A collection is the chip where the Studio does not report, and nothing is read from its codeless address", `chip "${chip && chip.textContent}" calls ${after.map((x) => x.method).join(",")}`);
     page.click(segOf(page, "A coin")); await page.settle();
-    await page.until(() => !!L(page, "#launch-coin-form") && /next launch in|none yet/.test(page.text("#lane-launch #launch-spacing")), 60);
+    /* W13: the coin lane is painted once its spacing row holds one of the panel's three sentences. This wait named two;
+       #1's spacing ran out in S's warp, so the row reads the third, a launch may be made now, and the wait timed out
+       in silence until the shim's waits threw */
+    await page.until(() => !!L(page, "#launch-coin-form") && /^(next launch in \d+ s, at |none yet: the first is the holder's$|a launch may be made now$)/.test(page.text("#lane-launch #launch-spacing")), 60);
     t.ok(!!L(page, "#launch-coin-form") && !L(page, "#launch-collection") && segOf(page, "A coin").getAttribute("aria-pressed") === "true" && page.innerHTMLWrites === 0 && page.errors.length === 0,
       "and A coin opens the coin lane again", page.text("#lane-launch").slice(0, 120));
     page.close();
@@ -952,7 +959,9 @@ export async function run(t, ctx) {
     /* the list: the terms, minted of supply, what it owes, the link and its QR, the room, the family */
     await page.until(() => LL(page, "#launch-collections .collection").length === 1 && cell(L(page, "#launch-collections .collection"), "minted").textContent === "0 of 100", 60);
     const row = L(page, "#launch-collections .collection"), svg = row.querySelector("svg[role=img]");
-    t.ok(row.dataset.address === checksum(moon, kec) && row.firstChild.textContent === "Moonlit · MOON · 0.01 ETH · " + vctx.INTACT.ui.short(checksum(moon, kec)) && cell(row, "owes #1").textContent === "0 ETH" &&
+    /* W13: "0 of 100 minted" and the one row were the wait's alone; the sentence now checks them */
+    t.ok(LL(page, "#launch-collections .collection").length === 1 && cell(row, "minted").textContent === "0 of 100" &&
+      row.dataset.address === checksum(moon, kec) && row.firstChild.textContent === "Moonlit · MOON · 0.01 ETH · " + vctx.INTACT.ui.short(checksum(moon, kec)) && cell(row, "owes #1").textContent === "0 ETH" &&
       cell(row, "mint link").textContent === LINK && !!svg && svg.getAttribute("aria-label") === LINK && cell(row, "room").dataset.room === String(keyOf(moon)) &&
       cell(row, "room").querySelector("a").getAttribute("href") === "#social" && cell(row, "family").textContent === "a child of INTACT through #1; every Moonlit token may launch its own" && !row.querySelector("[data-act=collectionClaim]"),
       "#1's collections list it: its terms, 0 of 100 minted, nothing owed, the mint link and its QR, its room (Agora's collectionKey) pointing to Social, its family", row.textContent.slice(0, 300));
@@ -1017,6 +1026,9 @@ export async function run(t, ctx) {
     t.ok((await vc.balanceOf(sink1)) - s0 === owed1 && lower(sink1) === lower(reach1) && await owedTo(moon, P1) === 0n && owed1 === PRICE * 2n - PRICE * 500n / 10_000n,
       "the creator's claim pays #1's fee sink, its Reach, exactly what was owed", `delta ${(await vc.balanceOf(sink1)) - s0} owed ${owed1}`);
     await page.until(() => cell(L(page, "#launch-collections .collection"), "owes #1").textContent === "0 ETH" && !L(page, "#launch-collections [data-act=collectionClaim]"), 60);
+    /* W13: the repaint after the claim was a wait with no sentence; it is a claim of the lane, so it is one */
+    t.ok(cell(L(page, "#launch-collections .collection"), "owes #1").textContent === "0 ETH" && !L(page, "#launch-collections [data-act=collectionClaim]"),
+      "after the claim lands, #1's row owes 0 ETH and offers no claim", cell(L(page, "#launch-collections .collection"), "owes #1").textContent);
 
     /* the bounds, in words, before any read and any slab: a 25,000-byte page, a template of 300 holes */
     page.type(F(page, "name"), "Overflow"); page.type(F(page, "symbol"), "OVER");
@@ -1055,6 +1067,9 @@ export async function run(t, ctx) {
       tsp.page.equals(Buffer.from(W4("Tide & <Co>"), "utf8")) && tsp.page.includes("Tide &amp; &lt;Co&gt;") && !tsp.page.includes("<Co>"),
       "Tide lands where it was shown, its window and terms read back as typed, its name escaped into the default site", `${JSON.stringify({ opensAt: String(tsp.opensAt), closesAt: String(tsp.closesAt) })} tick "${page.text("#tick")}" sent ${W.sent()} shown ${page.text("#lane-launch #launch-collection-at")} tide ${tide}`);
     await page.until(() => LL(page, "#launch-collections .collection").length === 2, 60);
+    /* W13: the second row was a wait with no sentence; it is a claim of the lane, so it is one */
+    t.ok(LL(page, "#launch-collections .collection").length === 2 && LL(page, "#launch-collections .collection").some((r) => lower(r.dataset.address) === lower(tide)),
+      "after Tide lands, #1's collections list both, Tide among them", LL(page, "#launch-collections .collection").map((r) => r.firstChild.textContent).join(" | "));
     t.ok(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML and no script threw on the holder's room", page.errors.map((e) => e.message).join("; "));
     page.close();
 
@@ -1062,7 +1077,9 @@ export async function run(t, ctx) {
     const { page: ps } = await V.bootToken(1, { wallet: walletFor(vc, va.stranger) });
     await V.lane(ps, "launch");
     await ps.until(() => LL(ps, "#launch-collections .collection").length === 2 && LL(ps, "#launch-collections [data-act=collectionMint]").length === 2, 80);
-    t.ok(!L(ps, "#launch-collection-form") && (ps.text("#lane-launch").match(/this wallet holds no right on #1/g) || []).length === 1 && LL(ps, "#launch-collection input, #launch-collection textarea").length === 0 &&
+    /* W13: "every collection, and a mint" was the wait's alone; the sentence now checks both rows and their mints */
+    t.ok(LL(ps, "#launch-collections .collection").length === 2 && LL(ps, "#launch-collections [data-act=collectionMint]").length === 2 &&
+      !L(ps, "#launch-collection-form") && (ps.text("#lane-launch").match(/this wallet holds no right on #1/g) || []).length === 1 && LL(ps, "#launch-collection input, #launch-collection textarea").length === 0 &&
       ps.$("body").dataset.rights === "0" && ps.errors.length === 0,
       "only the holder or its Reach is offered the form: a stranger reads the gate once, every collection, and a mint", ps.text("#lane-launch").slice(0, 160));
     ps.close();
@@ -1070,7 +1087,9 @@ export async function run(t, ctx) {
     const { page: pv } = await V.bootToken(1, { opaque: true, wallet: WV });
     await V.lane(pv, "launch");
     await pv.until(() => LL(pv, "#launch-collections .collection").length === 2 && LL(pv, "#launch-collections svg[role=img]").length === 2, 80);
-    t.ok(pv.$("body").dataset.mode === "viewer" && LL(pv, "[data-act]").length === 0 && LL(pv, "input, textarea").length === 0 && (pv.text("#lane-launch").match(/nothing here can sign/g) || []).length === 1 &&
+    /* W13: "every collection … and its QR" was the wait's alone; the sentence now checks the two rows and their QRs */
+    t.ok(pv.$("body").dataset.mode === "viewer" && LL(pv, "#launch-collections .collection").length === 2 && LL(pv, "#launch-collections svg[role=img]").length === 2 &&
+      LL(pv, "[data-act]").length === 0 && LL(pv, "input, textarea").length === 0 && (pv.text("#lane-launch").match(/nothing here can sign/g) || []).length === 1 &&
       WV.prompts().length === 0 && cell(LL(pv, "#launch-collections .collection")[0], "mint link").textContent === LINK,
       "the viewer reads every collection, its link and its QR, and offers nothing to press", `acts ${LL(pv, "[data-act]").length} inputs ${LL(pv, "input, textarea").length}`);
     pv.close();

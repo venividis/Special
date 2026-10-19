@@ -215,7 +215,8 @@ export async function run(t, ctx) {
     const self = page.text("#lane-social #social-dm-status");
     page.type(L(page, "#social-dm-to"), "3");
     await page.until(() => dmFeedStatus(page) === "nothing whispered yet", 40); await quiet(page, W);
-    d(self === "a token cannot whisper to itself" && page.text("#lane-social #social-dm-status") === "" && /^you are the user/.test(page.text("#lane-social #social-dm .gate")) && rows(page, "#social-dm-feed").length === 0,
+    /* W13: "the pair's walk … stands" was the wait's alone; the sentence now checks the walk's status */
+    d(self === "a token cannot whisper to itself" && page.text("#lane-social #social-dm-status") === "" && /^you are the user/.test(page.text("#lane-social #social-dm .gate")) && rows(page, "#social-dm-feed").length === 0 && dmFeedStatus(page) === "nothing whispered yet",
       "a number typed after the renter's own leaves nothing behind: the DM status drops a token cannot whisper to itself, and the pair's walk and the user's sentence stand alone",
       `before "${self}" after "${page.text("#lane-social #social-dm-status")}" gate "${page.text("#lane-social #social-dm .gate")}" feed "${dmFeedStatus(page)}"`);
     page.type(L(page, "#social-dm-to"), ""); await quiet(page, W);
@@ -368,7 +369,8 @@ export async function run(t, ctx) {
   await c.exec(parley, "bindKey(uint256)", [3], { label: "bindKey" });
   p2.type(L(p2, "#social-dm-to"), "3");
   await p2.until(() => !!L(p2, "#social-dm-derive"), 40);
-  i(oneKey && /both keys are bound/.test(status()) && LL(p2, "[data-act=whisper]").length === 0 && W2.prompts().length === 0,
+  /* W13: "the key must be derived first" — the derive control — was the wait's alone; the sentence now checks it */
+  i(oneKey && /both keys are bound/.test(status()) && !!L(p2, "#social-dm-derive") && LL(p2, "[data-act=whisper]").length === 0 && W2.prompts().length === 0,
     "sealed only when both keys exist: one key reads no key — this room cannot be sealed (and a whisper in the clear is offered, labelled); both bound, the key must be derived first and nothing is offered in the clear", `one "${oneKey}" status "${status()}"`);
   p2.click(L(p2, "#social-dm-derive"));
   await p2.until(() => /^sealed/.test(status()), 80);
@@ -515,6 +517,9 @@ export async function run(t, ctx) {
     t.ok(/^would revert: ReplyWindowOpen\(\d+\)$/.test(early) && /^\d+ units$/.test(gasRow(p2)), "inside the window expire would revert ReplyWindowOpen, said before the wallet; after it the estimate passes", `early "${early}" late "${gasRow(p2)}"`);
     await sign(p2, W2, 4);
     await p2.until(() => LL(p2, "[data-act=claimRefund]").length === 1 && /refunded/.test(p2.text("#lane-social #social-receipts")), 60);
+    /* W13: the receipt row after the expire was a wait with no sentence; it is a claim of the lane, so it is one */
+    t.ok(LL(p2, "[data-act=claimRefund]").length === 1 && /refunded/.test(p2.text("#lane-social #social-receipts")) && LL(p2, "[data-act=expire]").length === 0,
+      "the expire lands: the stamp's row reads refunded, expire is no longer offered, and the refund is offered to claim", p2.text("#lane-social #social-receipts").slice(0, 160));
     await press(p2, L(p2, "[data-act=claimRefund]"));
     t.ok(/Reach/.test(p2.text("#cslab")) && /^\d+ units$/.test(gasRow(p2)), "the refund slab names the Reach as the payee", p2.text("#cslab").slice(0, 200));
     await sign(p2, W2, 5);
@@ -828,7 +833,8 @@ export async function run(t, ctx) {
     await c2.exec(agora, "bindKey(uint256)", [P3], { label: "bindKey" });
     page.type(L(page, "#social-dm-to"), "3");
     await page.until(() => !!L(page, "#social-dm-derive"), 60);
-    a5(dst() === "both keys are bound; derive yours to seal" && LL(page, "[data-act=whisper]").length === 0, "both personas bound: the key is derived first and nothing is offered in the clear", `"${dst()}"`);
+    /* W13: the derive control was the wait's alone; the sentence now checks it */
+    a5(dst() === "both keys are bound; derive yours to seal" && !!L(page, "#social-dm-derive") && LL(page, "[data-act=whisper]").length === 0, "both personas bound: the key is derived first and nothing is offered in the clear", `"${dst()}"`);
     page.click(L(page, "#social-dm-derive"));
     await page.until(() => /^sealed/.test(dst()), 80);
     const keyId3 = "0x" + (await c2.read(agora, "keyOf(uint256)", [P3])).slice(66, 130);

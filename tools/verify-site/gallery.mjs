@@ -72,11 +72,14 @@ export async function run(t, ctx0) {
   const line = (page, k) => { const r = page.$$("#cslab .kv").find((x) => x.firstChild && x.firstChild.textContent === k); return r ? r.lastChild.textContent : null; };
   const press = async (page, el) => { if (!el) throw new Error("press: no control"); page.click(el); await page.until(() => slabOpen(page) && gasRow(page) !== "estimating…", 160); };
   const dismiss = async (page) => { page.click(page.$("#cslab [data-no]")); await page.settle(); };
-  const sign = async (page, W, n) => {
+  /* a receipt that itself moves the open token's custody epoch or this wallet's rights (a buy of #1 from #1's page)
+     ends, as CONSOLE §4.7 says, on the sentence after the landing; such a call passes `moved`, and its wait names
+     that sentence (W13: the landing wait timed out there, in silence, until the shim's waits threw) */
+  const sign = async (page, W, n, moved = false) => {
     await page.until(() => !page.$("#cslab [data-go]").disabled, 60);
     const before = tick(page);
     page.click(page.$("#cslab [data-go]"));
-    await page.until(() => W.sent() === n && tick(page) !== before && /landed in block|reverted in block/.test(tick(page)), 200);
+    await page.until(() => W.sent() === n && tick(page) !== before && (moved ? tick(page) === "ownership or epoch changed — review again" : /landed in block|reverted in block/.test(tick(page))), 200);
     for (let k = 0; k < 6; k++) await page.settle();
   };
   /// the lane open and its first paint done, every read answered
@@ -334,7 +337,7 @@ export async function run(t, ctx0) {
       /the seller is paid and the token is yours/.test(pb.text("#cslab [data-sentence]")),
       "buy is Seaport.fulfillOrder(order, 0) with exactly the price as value", `${fnRow(pb).slice(0, 20)} value ${value && value.dataset.wei}`);
     const s0 = await c.balanceOf(ME), r0 = await c.balanceOf(RECEIVER);
-    await sign(pb, WB, 1);
+    await sign(pb, WB, 1, true);   // the buy moves #1's epoch and the buyer's rights on #1's page
     t.ok(await ownerOf(hub, 1) === lower(BUYER) && (await c.balanceOf(ME)) - s0 === WAD / 10n - WAD / 200n && (await c.balanceOf(RECEIVER)) - r0 === WAD / 200n,
       "a second account buys the INTACT listing at exactly the price: the token is the buyer's, the seller is paid the price less the royalty, the royalty receiver its 5 %",
       `owner ${await ownerOf(hub, 1)}`);
@@ -453,7 +456,9 @@ export async function run(t, ctx0) {
     const { page } = keep(await gallery(ctx, 1, { wallet: W, opaque: true }));
     await page.until(() => !!L(page, "#gallery-art img") && /the archive/.test(T(page, "#gallery-archive")), 80);
     page.$$("#lane-gallery button").forEach((b) => page.click(b)); await page.settle();
-    t.ok(page.$("body").dataset.mode === "viewer" && actsOf(page).length === 0 && W.prompts().length === 0 && /nothing here can sign/.test(T(page, ".gate")) && !L(page, "#gallery-sell"),
+    /* W13: "draws the gallery and its story" was the wait's alone; the sentence now checks the art and the archive */
+    t.ok(page.$("body").dataset.mode === "viewer" && !!L(page, "#gallery-art img") && /the archive/.test(T(page, "#gallery-archive")) &&
+      actsOf(page).length === 0 && W.prompts().length === 0 && /nothing here can sign/.test(T(page, ".gate")) && !L(page, "#gallery-sell"),
       "the viewer draws the gallery and its story from the chain, prompts nothing and renders no control that signs", `acts ${actsOf(page)} prompts ${W.prompts().length}`);
   }
 

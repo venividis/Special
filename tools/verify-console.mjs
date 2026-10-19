@@ -300,9 +300,23 @@ export async function openPage(browser, o = {}) {
     body: () => F().evaluate(() => ({ mode: document.body.dataset.mode, chain: document.body.dataset.chain, rights: document.body.dataset.rights })),
     /* hidden by attribute (its own or an ancestor's): what a person cannot reach */
     hidden: (s) => F().evaluate((q) => { const e = document.querySelector(q); return e ? !!e.closest("[hidden]") : null; }, s),
-    /* visible as CSS paints it: a box with a size and visibility not hidden */
-    visible: (s) => F().evaluate((q) => { const e = document.querySelector(q); return !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden"; }, s),
-    visibleAll: (s) => F().evaluate((q) => [...document.querySelectorAll(q)].map((e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden"), s),
+    /* visible as CSS paints it: a box with a size, visibility not hidden, and not folded away. A closed <details>
+       hides what it holds with content-visibility, and Chromium keeps client rects for it, so the box test alone
+       called a folded field visible (W12 measured it; INTEGRATION L2). checkVisibility() reports the fold, and the
+       walk names it in plain DOM terms too: under a closed <details> only that details' own <summary> is shown (W13) */
+    visible: (s) => F().evaluate((q) => {
+      const e = document.querySelector(q);
+      if (!e || e.getClientRects().length === 0 || getComputedStyle(e).visibility === "hidden") return false;
+      if (typeof e.checkVisibility === "function" && !e.checkVisibility({ visibilityProperty: true })) return false;
+      for (let n = e; n.parentElement; n = n.parentElement) { const d = n.parentElement; if (d.tagName === "DETAILS" && !d.open && !(n.tagName === "SUMMARY" && d.querySelector(":scope > summary") === n)) return false; }
+      return true;
+    }, s),
+    visibleAll: (s) => F().evaluate((q) => [...document.querySelectorAll(q)].map((e) => {
+      if (e.getClientRects().length === 0 || getComputedStyle(e).visibility === "hidden") return false;
+      if (typeof e.checkVisibility === "function" && !e.checkVisibility({ visibilityProperty: true })) return false;
+      for (let n = e; n.parentElement; n = n.parentElement) { const d = n.parentElement; if (d.tagName === "DETAILS" && !d.open && !(n.tagName === "SUMMARY" && d.querySelector(":scope > summary") === n)) return false; }
+      return true;
+    }), s),
     disabled: (s) => F().evaluate((q) => { const e = document.querySelector(q); return e ? e.disabled : null; }, s),
     value: (s) => F().evaluate((q) => { const e = document.querySelector(q); return e ? e.value : null; }, s),
     click: (s, opts = {}) => F().click(s, { timeout: 8000, ...opts }),
@@ -689,6 +703,16 @@ async function groupBoot(t, ctx) {
     const price = decUint(await c.read(hub, "price()"));
     t.ok(W.callsTo(hub, sel("price()")).length >= 1 && await pg.ds("#cslab [data-value]", "wei") === String(price) && await pg.fn() === "mint(address)" && await pg.text("#cslab [data-arg='0']") === checksum(buyer.from.toString()) && /^\d+ units$/.test(await pg.gasRow()),
       "the mint re-reads the price and proposes exactly it, the minter decoded from the bytes, estimated before the wallet", `wei ${await pg.ds("#cslab [data-value]", "wei")} fn ${await pg.fn()} gas "${await pg.gasRow()}"`);
+    /* W13: the harness's own visible() is honest about a fold. The slab's "the facts it signs" is a closed <details>
+       whose rows keep client rects in Chromium, so the box test alone called them visible; opened, the row is shown,
+       and closed again the slab is as it was */
+    const fold = [await pg.visible("#cslab [data-to]"), await pg.visible("#cslab details > summary"), await pg.visible("#cslab [data-gas]")];
+    await pg.click("#cslab details > summary");
+    const unfolded = await pg.visible("#cslab [data-to]");
+    await pg.click("#cslab details > summary");
+    t.ok(fold.join() === "false,true,true" && unfolded === true,
+      "the harness's visible() reads a row inside the slab's closed details as not visible, the details' summary and the gas row as visible, and the row as visible once the details is opened",
+      `closed: To, summary, Gas ${fold.join(", ")}; opened: To ${unfolded}`);
     await pg.ready();
     await pg.click("#cslab [data-go]");
     await pg.navigated(/\/token\/4\/live$/);

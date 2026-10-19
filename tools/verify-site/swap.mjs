@@ -357,7 +357,8 @@ export async function run(t, ctx) {
     page.click(page.$("#cslab [data-go]"));
     await page.until(() => !slabOpen(page), 60); await page.settle();
     const epochReads = W.callsTo(hub, sel("custodyEpoch(uint256)")).map((x) => W.calls.indexOf(x)).filter((i) => i >= mark);
-    g(/^\d+ units$/.test(passed) && epochReads.length === 1 && /ownership or epoch changed — review again/.test(tick(page)) && W.sent() === 0 && W.prompts().length === 0,
+    /* W13: "closes the slab" was the wait's alone; the sentence now checks it */
+    g(/^\d+ units$/.test(passed) && epochReads.length === 1 && !slabOpen(page) && /ownership or epoch changed — review again/.test(tick(page)) && W.sent() === 0 && W.prompts().length === 0,
       "the epoch is re-read immediately before Sign, and a changed epoch closes the slab unsent", `gas "${passed}" epochReads ${epochReads.length} tick "${tick(page)}" sent ${W.sent()}`);
     /* the page still believes its stale rights; the chain does not */
     await page.until(() => !!L(page, "#swap-your-market input[name=feeBps]"), 40);
@@ -539,6 +540,9 @@ export async function run(t, ctx) {
     await sign(page, W, 1);
     /* the approve landed with the rights unchanged: the typed 0.01 stays and the button's step moves to Swap */
     await page.until(() => L(page, "#swap-go").textContent === "Swap" && !L(page, "#swap-go").disabled && L(page, "#swap-in").value === "0.01", 40);
+    /* W13: this was a wait with no sentence, its claim in the comment above; it is a claim of the lane, so it is one */
+    t.ok(L(page, "#swap-go").textContent === "Swap" && !L(page, "#swap-go").disabled && L(page, "#swap-in").value === "0.01",
+      "after the exact-out approve lands the same button is the swap, and 0.01 is still typed", `button "${L(page, "#swap-go").textContent}" value "${L(page, "#swap-in").value}"`);
     await press(page, L(page, "#swap-go"));
     const cd = slabCd(page);
     h(page.text("#cslab [data-function]") === SWAP_OUT && word(cd, 2) === WAD / 100n && word(cd, 3) === maxIn && /Pay at most\s*/.test(page.text("#cslab")) && new RegExp(full(maxIn).replace(/\./g, "\\.") + " WETH — or nothing moves").test(page.text("#cslab")),
@@ -947,7 +951,8 @@ export async function lockAndMemory(t, ctx) {
       "and keepsakeOf reads it back: the holder, the schedule, what arrived, and the drip with the very floor the words named", `holder ${ks1.holder} floor ${ks1.drip.floor} amount ${ks1.assets[0] && ks1.assets[0].amount}`);
     /* the memory, the second slab, offered after the receipt */
     const mcd = cdOf(page), ref = swap.transactionHash;
-    mm(lower(page.text("#cslab [data-to]")) === lower(jr) && page.text('#cslab [data-arg="0"]') === cks(hub) && page.text('#cslab [data-arg="1"]') === "1" && page.text('#cslab [data-arg="2"]') === "1" &&
+    /* W13: "a second slab offers … Journal.inscribe" — the open slab and its function — was the wait's alone; the sentence now checks it */
+    mm(open(page) && page.text("#cslab [data-function]") === INSCRIBE && lower(page.text("#cslab [data-to]")) === lower(jr) && page.text('#cslab [data-arg="0"]') === cks(hub) && page.text('#cslab [data-arg="1"]') === "1" && page.text('#cslab [data-arg="2"]') === "1" &&
       lower(mcd.slice(10 + 4 * 64, 10 + 5 * 64)) === lower(ref.slice(2)) && /public/.test(page.text("#cslab [data-sentence]")) && /fingerprint/.test(page.text("#cslab [data-sentence]")) &&
       page.text("#cslab").includes("Memory" + MEMO) && /^\d+ units$/.test(gasOf(page)),
       "after the receipt a second slab offers the memory: Journal.inscribe(hub, #1, TRADE, the words, the swap's transaction), its sentence saying it is public and enters the fingerprint", `${page.text("#cslab [data-sentence]")} | ref ${ref}`);
@@ -1124,7 +1129,8 @@ export async function lockAndMemory(t, ctx) {
       "a plain swap's sentence is the card's one breath, through the market, with its deadline", page.text("#cslab [data-sentence]"));
     await sign(page, W, 1);
     const swap = [...W.receipts.values()].pop();
-    const offered = await page.until(() => open(page) && page.text("#cslab [data-function]") === INSCRIBE, 120);
+    /* soft (W13): the answer is read on the next line, so a slab that never comes fails that sentence by name */
+    const offered = await page.until(() => open(page) && page.text("#cslab [data-function]") === INSCRIBE, 120, { soft: true });
     mm(offered && swap.status === "0x1", "after a plain swap's receipt the memory's slab is offered", page.text("#cslab [data-function]") || "no slab");
     if (offered) { page.click(page.$("#cslab [data-no]")); await page.settle(); }
     await page.until(() => LL(page, "#swap-kept [data-act=inscribe]").length === 1, 40);

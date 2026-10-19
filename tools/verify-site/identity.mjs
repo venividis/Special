@@ -118,12 +118,15 @@ export async function run(t, ctx) {
   const line = (page, k) => { const r = page.$$("#cslab .kv").find((x) => x.firstChild && x.firstChild.textContent === k); return r ? r.lastChild.textContent : null; };
   const press = async (page, el) => { if (!el) throw new Error("press: no control"); page.click(el); await page.until(() => slabOpen(page) && gasRow(page) !== "estimating…", 120); };
   const dismiss = async (page) => { page.click(page.$("#cslab [data-no]")); await page.settle(); };
-  /// sign the open slab and wait for the receipt, the rights re-read and the repaint it fires
-  const sign = async (page, W, n) => {
+  /// sign the open slab and wait for the receipt, the rights re-read and the repaint it fires. A receipt that
+  /// itself moves the custody epoch or this wallet's rights (a buy) ends, as CONSOLE §4.7 says, on the sentence
+  /// after the landing; such a call passes `moved`, and its wait names that sentence (W13: the landing wait
+  /// timed out there, in silence, until the shim's waits threw)
+  const sign = async (page, W, n, moved = false) => {
     await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
     const before = tick(page);
     page.click(page.$("#cslab [data-go]"));
-    await page.until(() => W.sent() === n && tick(page) !== before && /landed in block|reverted in block/.test(tick(page)), 160);
+    await page.until(() => W.sent() === n && tick(page) !== before && (moved ? tick(page) === "ownership or epoch changed — review again" : /landed in block|reverted in block/.test(tick(page))), 160);
     for (let k = 0; k < 4; k++) await page.settle();
   };
   const repaint = async (page, vctx) => { vctx.dispatchEvent(new vctx.CustomEvent("intact:lane", { detail: { name: "identity" } })); await page.settle(); await page.settle(); };
@@ -514,7 +517,8 @@ export async function run(t, ctx) {
     const { page } = await bootToken(1, { opaque: true, wallet: W });
     await lane(page, "identity");
     await page.until(() => /^(Active|Paused)$/.test(T(page, "identity-status")) && Object.keys(chips(page)).length === 8, 80);
-    t.ok(page.$("body").dataset.mode === "viewer" && page.$("body").dataset.rights === "1" && acts(page).length === 0 && LL(page, "input").length === 1 && onlyOn(page, "HOLD") &&
+    /* W13: the status fact was the wait's alone; "reads every fact" now checks it */
+    t.ok(page.$("body").dataset.mode === "viewer" && page.$("body").dataset.rights === "1" && /^(Active|Paused)$/.test(T(page, "identity-status")) && acts(page).length === 0 && LL(page, "input").length === 1 && onlyOn(page, "HOLD") &&
       (laneText(page).match(/nothing here can sign/g) || []).length === 1 && T(page, "identity-delegate") === "not checked in the viewer" && L(page, "#ack-delegate") === null && W.prompts().length === 0 && T(page, "identity-status-rule") === RULE,
       "the viewer reads every fact and the rights of any address, offers no control, says once that nothing here can sign, and does not pretend to have checked the account's code", `acts ${acts(page).length} inputs ${LL(page, "input").length} delegate "${T(page, "identity-delegate")}"`);
     page.close();
@@ -593,7 +597,9 @@ export async function run(t, ctx) {
     const U = vctx.INTACT.ui;
     await F.lane(page, "identity");
     await page.until(() => T(page, "identity-offer") === "not listed" && !!L(page, "[data-act=list]") && T(page, "identity-role-count") === "0", 80);
+    /* W13: "not listed", "no live role" and the list control were the wait's alone; the sentence now checks them */
     t.ok((S.reported & S.bits.market) && (S.reported & S.bits.roles) && L(page, "#identity-listing .chip") === null && L(page, "#identity-roles .chip") === null &&
+      T(page, "identity-offer") === "not listed" && T(page, "identity-role-count") === "0" && !!L(page, "[data-act=list]") &&
       T(page, "identity-seals") === "the Reach unsealed · the owned market closed" && T(page, "identity-role-user") === "none" &&
       /a role holder reads what the role's data says; the page grants nothing on it/.test(page.text("#lane-identity #identity-roles")) && !!field(page, "price") && field(page, "listDays").value === "7" &&
       L(page, "[data-act=delist]") === null && L(page, "[data-act=buy]") === null,
@@ -645,12 +651,13 @@ export async function run(t, ctx) {
     await b.page.until(() => !b.page.$("#cslab [data-go]").disabled, 40);
     b.page.click(b.page.$("#cslab [data-go]"));
     await b.page.until(() => !slabOpen(b.page) && /review again/.test(tick(b.page)), 60);
-    t.ok(WB.sent() === 0 && tick(b.page) === "the listing or the token moved since it was read — review again" && lower(decAddr(await c2.read(hub2, "ownerOf(uint256)", [1]))) === lower(ME2),
+    /* W13: "the slab closes" was the wait's alone; the sentence now checks it */
+    t.ok(WB.sent() === 0 && !slabOpen(b.page) && tick(b.page) === "the listing or the token moved since it was read — review again" && lower(decAddr(await c2.read(hub2, "ownerOf(uint256)", [1]))) === lower(ME2),
       "a fingerprint that moves between the estimate and Sign is caught by the re-read: nothing is sent and the slab closes", tick(b.page));
     WB.answer(hub2, sel("getStateFingerprint(uint256)"), null);
     const owedBefore = await owedTo(ME2);
     await press(b.page, L(b.page, "[data-act=buy]"));
-    await sign(b.page, WB, 1);
+    await sign(b.page, WB, 1, true);   // the buy moves #1's epoch and the buyer's rights
     const [rcv, roy] = [decAddr(await c2.read(hub2, "royaltyInfo(uint256,uint256)", [1, PRICE]), 0), decUint(await c2.read(hub2, "royaltyInfo(uint256,uint256)", [1, PRICE]), 1)];
     /* the royalty comes out of the price first; were the receiver the seller itself, its ledger would hold both */
     const cut = /^0x0{40}$/i.test(rcv) ? 0n : roy, owed = await owedTo(ME2), want = PRICE - cut + (lower(rcv) === lower(ME2) ? cut : 0n);

@@ -388,7 +388,9 @@ export async function run(t, ctx0) {
     const { page } = await bootToken(1, { opaque: true, wallet: W });
     await lane(page, "agent");
     await page.until(() => /parses as registration-v1/.test(page.text("#lane-agent #agent-face2")) && /SESSION right/.test(page.text("#lane-agent #agent-key-facts")), 80);
-    t.ok(page.$("body").dataset.mode === "viewer" && LL(page, "[data-act]").length === 0 && page.$$("[data-go]").length === 0 && (laneText(page).match(/nothing here can sign/g) || []).length === 1 && W.prompts().length === 0 && page.fetches.length === 0,
+    /* W13: "reads the card and the key's envelope" was the wait's alone; the sentence now checks it too */
+    t.ok(page.$("body").dataset.mode === "viewer" && /parses as registration-v1/.test(page.text("#lane-agent #agent-face2")) && /SESSION right/.test(page.text("#lane-agent #agent-key-facts")) &&
+      LL(page, "[data-act]").length === 0 && page.$$("[data-go]").length === 0 && (laneText(page).match(/nothing here can sign/g) || []).length === 1 && W.prompts().length === 0 && page.fetches.length === 0,
       "F1 the viewer reads the card and the key's envelope, offers no control, prompts for nothing and fetches nothing — the one sentence", `acts ${LL(page, "[data-act]").length} prompts ${W.prompts().length}`);
     await typeRow(page, "pool.swapExactIn", ["1", "false", String(WAD / 1000n), "0", reach1, String(now() + 600n)], { value: "0.001" });
     page.click(L(page, "#agent-propose")); await waitVerdict(page);

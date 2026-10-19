@@ -43,7 +43,7 @@ import * as EVM from "./evm.mjs";
 import { Chain, sel, enc, encodeParams, decUint, decAddr, decBool, decString, decStringArray } from "./evm.mjs";
 import { ROOT, deploySite, getter, mint, PANELS, ZERO } from "./site.mjs";
 import { build, SVG_NS } from "./build-app.mjs";
-import { boot, walletFor, nap } from "./dom-shim.mjs";
+import { boot, walletFor, nap, setGroup } from "./dom-shim.mjs";
 import { CAPS } from "./gas.mjs";
 
 const ARGV = process.argv.slice(2);
@@ -157,8 +157,12 @@ for (const g of GROUPS) {
   const before = pass + fail;
   const mod = await import(file);
   const t0 = Date.now();
+  /* a wait that times out throws (tools/dom-shim.mjs, W13) and names this group: the group stops there,
+     and its one failed line is the wait's own message, with the lines of the group file that waited */
+  setGroup(g);
   try { await mod.run(t, await fresh()); }
   catch (e) { t.ok(false, `group ${g} threw: ${e && e.stack || e}`); }
+  setGroup(null);
   console.log(`      ${pass + fail - before} assertions in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 }
 
