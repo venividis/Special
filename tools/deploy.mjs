@@ -44,7 +44,7 @@
   Order (DESIGN §12, every arrow a hard constraint where a constructor
   inspects code): factory → Timelock → Engine (load head, body, six
   panels; setEngineHash; freeze) → Crest → Reach impl → Grip impl →
-  CatalogRows → CatalogRowsPost → CatalogText → CatalogState → Catalog → Renderer → hub (the
+  CatalogRows → CatalogRowsPost → CatalogRowsV2 → CatalogText → CatalogState → Catalog → Renderer → hub (the
   four facets then IntactDiamond, or the monolith, by out/ship.json) →
   KeyRegistry → Roster → Postage → Parley → Locks → Pool → Coin template
   check → Kiln → Launchpad → Router (only where venues are configured) →
@@ -95,7 +95,7 @@ import { createRequire } from "node:module";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { createAddressFromString, hexToBytes, bytesToHex, Account } from "@ethereumjs/util";
 import { compile, artifact, shipRule, LIMIT } from "./compile.mjs";
-import { enc, encodeParams, decAddr, decUint, decBool, TX_GAS_CAP } from "./evm.mjs";
+import { enc, encodeParams, decAddr, decUint, decBool, decString, TX_GAS_CAP } from "./evm.mjs";
 import * as EVM from "./evm.mjs";
 import { hubCut } from "./facets.mjs";
 import { REGISTRY, REGISTRY_RUNTIME, ZERO, PANELS, CONFIG_TYPE, CATALOG_CONFIG_TYPE,
@@ -166,6 +166,24 @@ export const VENUES = {
         permit2: "0xdcde65555316946c298e4c60c6213eb5c3aeab4354d1f3fac5427236bcbb9ebe",
         weth: "0x83f731a17e6c0cdd04bc6f60b15d3e789e215b71403087b84b48650a1e5cbb21"
       }
+    },
+    /// V2 (wave 2, W6): Seaport 1.6, its ConduitController and OpenSea's
+    /// conduit, from tools/fixtures/seaport-1.6/probe.json — read by
+    /// `node tools/verify-bazaar-fork.mjs --probe` at one pinned block, the
+    /// bytes eth_getCode returned kept beside it; the evidence is the fixture,
+    /// with its own date and block, so it rides apart from the Uniswap probe
+    seaport: "0x0000000000000068F116a894984e2DB1123eB395",
+    conduitController: "0x00000000F9490004C11Cef243f5400493c00Ad63",
+    openseaConduitKey: "0x0000007b02230091a7ed01230072f7006a004d60a8d4e71d599b8104250f0000",
+    openseaConduit: "0x1E0049783F008A0085193E00003D00cd54003c71",
+    seaportProbed: {
+      on: "2026-10-19", block: 48309960, blockHash: "0x0fcc734d8fa39434facf5fccb339994d4fe5a86427bc6f5465a0fe2ce29d01ef",
+      version: "1.6", domainSeparator: "0x4778aa25cd18fc3b8e9d053bb369734ae2ce8511b24dd9b00010466bdb496b45",
+      codehashes: {
+        seaport: "0x7912af42062ec0080cde88360c1429d58984ae16eb3f17af505b815bf6ffc745",
+        conduitController: "0x880348b652e7cce91216153a4d0107e70c77b92192f3d7a127ff1f1351961948",
+        openseaConduit: "0x069efdc9b946a332dce9951324fa197268e3ff0e00e44c6bf36049fc53113a41"
+      }
     }
   },
   11155111: {
@@ -211,8 +229,34 @@ export async function checkVenues(read, row) {
   say("the PositionManager and SwapRouter02 name this WETH", w1 === low(row.weth) && w2 === low(row.weth), `${w1} and ${w2}`);
   const f = addrOf(await ask(row.swapRouter02, "factory()"));
   say("SwapRouter02 names the v3 factory the feed names", f === low(row.probed?.v3Factory), f);
+  /*  V2 (wave 2, W6): a row that names Seaport carries its own probe, and
+      the claims tools/verify-bazaar-fork.mjs makes of it: the three
+      codehashes, `information()` saying 1.6 and naming this controller,
+      the controller naming this conduit for OpenSea's key, and the
+      conduit's channel to Seaport open. A row without Seaport says nothing. */
+  if (row.seaport) {
+    const P = row.seaportProbed || {};
+    for (const k of SEAPORT_KEYS) {
+      const code = row[k] ? await read.codeAt(row[k]) : "0x";
+      const h = code && code !== "0x" ? kecHex(code) : null;
+      const want = P.codehashes?.[k];
+      say(`the venue ${k} at ${row[k]} holds the code probed on ${P.on}`, h && want && low(h) === low(want), h ? `codehash ${h}, probed ${want}` : "no code there");
+    }
+    const info = await ask(row.seaport, "information()");
+    let version = null, controller = null;
+    try { version = decString(info); controller = addrOf("0x" + info.replace(/^0x/, "").slice(128, 192)); } catch { /* no answer */ }
+    say("Seaport's information() says version 1.6 and names this ConduitController", version === "1.6" && controller === low(row.conduitController), `${version} ${controller}`);
+    let named = null;
+    try { named = addrOf(await read.call(row.conduitController, enc("getConduit(bytes32)", [row.openseaConduitKey]))); } catch { named = null; }
+    say("the ConduitController names this conduit for OpenSea's conduit key", named === low(row.openseaConduit), named);
+    let open = null;
+    try { open = decBool(await read.call(row.conduitController, enc("getChannelStatus(address,address)", [row.openseaConduit, row.seaport]))); } catch { open = null; }
+    say("the conduit's channel to Seaport is open", open === true, String(open));
+  }
   return out;
 }
+/// The Seaport keys a venue row may carry beside the Uniswap ones (V2, W6).
+export const SEAPORT_KEYS = ["seaport", "conduitController", "openseaConduit"];
 
 /// The bands tile the edition exactly once (IPSEITY `assertTiles`, verbatim
 /// in intent): runs at import, throws on a backwards band, an overlap, a
@@ -240,17 +284,25 @@ export function bandOf(chainId) {
 /*═══════════════════ salts and predictions ═══════════════════*/
 
 export const SALT_PREFIX = "intact.v1.";
-export const saltOf = (key) => kec(Buffer.from(SALT_PREFIX + key, "utf8"));
+/// V2 (wave 2, W6): the V2 satellites are predicted under salts of their own
+/// namespace, "intact.v2.<key>"; every other key keeps "intact.v1.<key>".
+export const V2_SALTED = ["keepsake", "journal", "bazaar", "bridges", "studio", "agora"];
+export const saltName = (key) => (V2_SALTED.includes(key) ? "intact.v2." : SALT_PREFIX) + key;
+export const saltOf = (key) => kec(Buffer.from(saltName(key), "utf8"));
 
 /// Every record key that is a CREATE3 deployment, in deployment order. The
 /// three post-MVB pins are predicted and codeless on every chain today.
 export const SALTED = [
   "timelock", "crest", "reachImpl", "gripImpl",
-  "catalogRows", "catalogRowsPost", "catalogText", "catalogState", "catalog", "renderer",
+  "catalogRows", "catalogRowsPost", "catalogRowsV2", "catalogText", "catalogState", "catalog", "renderer",
   "coreFacet", "rightsFacet", "mintFacet", "siteFacet", "hub",
   "keys", "roster", "postage", "parley", "locks", "pool", "kiln", "launchpad", "router", "steward", "premises"
 ];
-export const PLACEHOLDERS = ["market", "roles", "agentCard", "nameplate", "custodian"];
+/// From schema 3 (V2, W6) the six V2 satellites are placeholders too: the
+/// hub pins the Keepsake and the Journal, the Catalog's world names all six,
+/// each CREATE3-predicted under its "intact.v2.<key>" salt and codeless until
+/// it lands.
+export const PLACEHOLDERS = ["market", "roles", "agentCard", "nameplate", "custodian", ...V2_SALTED];
 /// AgentCard, LPCustodian, Market, Roles and the Nameplate land AFTER the
 /// MVB record (DESIGN §12's tail), at the addresses the hub, the Catalog,
 /// the Renderer and the Premises already pin — the same factory, the same
@@ -443,6 +495,11 @@ export const PINS = [
   /// from schema 2 (the console round) the Catalog pins the Nameplate too; a schema-1 record's Catalog predates the getter
   ["catalog", "NAMEPLATE()", "nameplate", 2],
   ["catalogState", "TEXT()", "catalogText"], ["catalogText", "ROWS()", "catalogRows"], ["catalogText", "ROWS_POST()", "catalogRowsPost"],
+  /// from schema 3 (V2, W6): the hub's two V2 pins, the Catalog's V2 world and its third table
+  ["hub", "KEEPSAKE()", "keepsake", 3], ["hub", "JOURNAL()", "journal", 3],
+  ["catalog", "KEEPSAKE()", "keepsake", 3], ["catalog", "JOURNAL()", "journal", 3], ["catalog", "BAZAAR()", "bazaar", 3],
+  ["catalog", "BRIDGES()", "bridges", 3], ["catalog", "STUDIO()", "studio", 3], ["catalog", "AGORA()", "agora", 3],
+  ["catalog", "SEAPORT()", "venueSeaport", 3], ["catalogText", "ROWS_V2()", "catalogRowsV2", 3],
   ["renderer", "HUB()", "hub"], ["renderer", "ENGINE()", "engine"], ["renderer", "CREST()", "crest"],
   ["renderer", "CATALOG()", "catalog"], ["renderer", "AGENTCARD()", "agentCard"],
   ["premises", "HUB()", "hub"], ["premises", "RENDERER()", "renderer"], ["premises", "ENGINE()", "engine"],
@@ -468,8 +525,10 @@ export const PINS = [
 /// The record schema this tree writes, and whether a PINS row applies to a
 /// record: a row with a fourth element exists in records of that schema or
 /// later, because its holder's code in an older record has no such getter
-/// (2: the Catalog's NAMEPLATE). Every walker of PINS asks this first.
-export const RECORD_SCHEMA = 2;
+/// (2: the Catalog's NAMEPLATE; 3: V2's — the hub's KEEPSAKE and JOURNAL,
+/// the Catalog's seven V2 addresses, CatalogText's ROWS_V2). Every walker of
+/// PINS asks this first.
+export const RECORD_SCHEMA = 3;
 export const schemaOf = (rec) => Number((String(rec?.schema || "").match(/^intact\.deployment\/(\d+)$/) || [])[1] || 0);
 export const pinApplies = (row, rec) => !row[3] || schemaOf(rec) >= row[3];
 /// The venue table's addresses as PINS targets (`venue*` keys), so the
@@ -478,7 +537,8 @@ export const pinApplies = (row, rec) => !row[3] || schemaOf(rec) >= row[3];
 /// not only by the Router's codehash. Absent venues pin as address(0).
 export const venueTargets = (venues) => ({
   venuePoolManager: venues?.poolManager || ZERO, venueSwapRouter02: venues?.swapRouter02 || ZERO, venueWeth: venues?.weth || ZERO,
-  venuePositionManager: venues?.positionManager || ZERO, venuePermit2: venues?.permit2 || ZERO
+  venuePositionManager: venues?.positionManager || ZERO, venuePermit2: venues?.permit2 || ZERO,
+  venueSeaport: venues?.seaport || ZERO                                   // V2 (W6): the Catalog's SEAPORT
 });
 /// The Router's bytes32 immutables: [getter, what the chain must say given
 /// the record]. POOL_HASH is the Pool's codehash at construction; the two
@@ -825,12 +885,16 @@ export async function deployIntact(ad, opts = {}) {
                     T.market, T.roles, T.agentCard, ZERO, T.nameplate];                    // HPRYTSKNLCOWXEGQMDAUI
   await create3("catalogRows", "src/Catalog.sol", "CatalogRows", encodeParams("address[21]", [byLetter]));
   await create3("catalogRowsPost", "src/Catalog.sol", "CatalogRowsPost", encodeParams("address[21]", [byLetter]));
-  await create3("catalogText", "src/Catalog.sol", "CatalogText", encodeParams("address,address", [got.catalogRows, got.catalogRowsPost]), [code("catalogRows"), code("catalogRowsPost")]);
+  await create3("catalogRowsV2", "src/Catalog.sol", "CatalogRowsV2",
+    encodeParams("address[7]", [[T.keepsake, T.journal, T.bazaar, T.bridges, T.studio, ZERO, T.agora]]));          // VJBbZcF
+  await create3("catalogText", "src/Catalog.sol", "CatalogText", encodeParams("address,address,address", [got.catalogRows, got.catalogRowsPost, got.catalogRowsV2]),
+    [code("catalogRows"), code("catalogRowsPost"), code("catalogRowsV2")]);
   await create3("catalogState", "src/Catalog.sol", "CatalogState", encodeParams("address", [got.catalogText]), [code("catalogText")]);
   await create3("catalog", "src/Catalog.sol", "Catalog", encodeParams(CATALOG_CONFIG_TYPE, [[
     T.hub, engine, T.router, T.roster, T.postage, T.keys, T.kiln, T.agentCard,
     got.reachImpl, got.gripImpl, T.pool, T.parley, T.launchpad, T.locks, T.steward, T.market, T.roles,
-    got.timelock, T.premises, T.renderer, band.band, band.first, band.last, got.catalogText, got.catalogState, T.nameplate]]),
+    got.timelock, T.premises, T.renderer, band.band, band.first, band.last, got.catalogText, got.catalogState, T.nameplate,
+    T.keepsake, T.journal, T.bazaar, T.bridges, T.studio, T.agora, venues?.seaport || ZERO]]),
     [code("catalogText"), code("catalogState")]);
 
   /*── 8. Renderer ──*/
@@ -839,7 +903,7 @@ export async function deployIntact(ad, opts = {}) {
 
   /*── 9. the hub, by the ship rule, under one salt either way ──*/
   const config = [got.reachImpl, got.gripImpl, band.band, band.first, band.last, T.steward, T.market, T.roles, T.pool, T.parley,
-                  T.launchpad, T.locks, got.renderer, got.catalog, T.premises, got.timelock];
+                  T.launchpad, T.locks, got.renderer, got.catalog, T.premises, got.timelock, T.keepsake, T.journal];
   const cfg = encodeParams(CONFIG_TYPE, [config]);
   let facets = null, cut = null;
   if (ship.build === "diamond") {
@@ -1068,7 +1132,7 @@ export async function deploySatellite(ad, rec, key, opts = {}) {
   const factory = low(rec.factory);
   const timelock = low(rec.contracts.timelock);
   const salt = low(rec.salts?.[key] || saltOf(key));
-  if (salt !== saltOf(key)) throw new Error(`the record's salt for ${key} is not keccak("intact.v1.${key}"); refusing`);
+  if (salt !== saltOf(key)) throw new Error(`the record's salt for ${key} is not keccak("${saltName(key)}"); refusing`);
   const want = predictCreate3(factory, salt);
   if (rec.placeholders?.[key] && low(rec.placeholders[key]) !== want) throw new Error(`the record's placeholder for ${key} is ${rec.placeholders[key]}, the salt predicts ${want}; refusing`);
   if (rec.contracts?.[key] && low(rec.contracts[key]) !== want) throw new Error(`the record's ${key} is ${rec.contracts[key]}, the salt predicts ${want}; refusing`);

@@ -37,7 +37,9 @@ import {Order, Side, ItemType, ISeaportZone} from "./ISeaport.sol";
     - the consideration pays the hub's ERC-2981 receiver at least the
       royalty on the order's price (skipped when the receiver is zero).
   `validateOrder` (after the transfers) admits what `authorizeOrder`
-  admitted. An INTACT order that names no zone trades like any NFT, with
+  admitted: every floor again, and the hub's `residueOf(id)` — every
+  fingerprint term a sale does not move — as it was at `publish` (V2 wave
+  2, W6). An INTACT order that names no zone trades like any NFT, with
   none of these guarantees, and the viewer says so.
 
   Frozen after V2 wave 0: additive changes only, recorded in
@@ -52,6 +54,9 @@ interface IBazaarEvents {
     ///         the order mixes currencies.
     event Published(address indexed token, uint256 indexed identifier, bytes32 indexed orderHash, address offerer, Side side, ItemType itemType, address currency, uint256 price, uint256 endTime);
     event Pinned(bytes32 indexed zoneHash, uint256 indexed id, bytes32 fingerprint, uint256 floors);
+    /// @notice SIP-5: emitted once, when a Seaport-compatible contract is
+    ///         deployed. V2 wave 2 (W6), additive: the Bazaar's own copy moved here.
+    event SeaportCompatibleContractDeployed();
 
     error NotSeaport();
     error NotValidated(bytes32 orderHash);
@@ -69,6 +74,10 @@ interface IBazaarEvents {
     error FloorBroken(address asset, uint256 balance, uint256 min);
     error RoyaltyShort(address receiver, uint256 paid, uint256 owed);
     error Reentrancy();
+    /// @notice An INTACT order's priced side is not one currency: two
+    ///         currencies, or an item that is not a currency. V2 wave 2 (W6),
+    ///         additive: the Bazaar's own copy moved here.
+    error Unpriced();
 }
 
 interface IBazaar is IBazaarEvents, ISeaportZone {

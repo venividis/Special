@@ -59,7 +59,7 @@ import { fileURLToPath } from "node:url";
 import { decAddr, decUint, decBool } from "./evm.mjs";
 import { REGISTRY, REGISTRY_RUNTIME, ZERO, PANELS, predictCreate, encRequest, decResponse } from "./site.mjs";
 import { PINS, pinApplies, BAND_GETTERS, SALTED, PLACEHOLDERS, RECORD_KEYS, ROUTER_HASHES, venueTargets, DEPLOYED_TOPIC,
-         saltOf, predictCreate3, kec, decWords, decAddrs, decBytes4s, adapt } from "./deploy.mjs";
+         saltOf, saltName, predictCreate3, kec, decWords, decAddrs, decBytes4s, adapt } from "./deploy.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const low = (a) => String(a).toLowerCase();
@@ -78,11 +78,13 @@ function compiled(out, name, which = "deployedBytecode") {
 }
 const ARTIFACT = {
   factory: "Create3Factory", engine: "Engine", timelock: "Timelock", crest: "Crest", reachImpl: "Reach", gripImpl: "Grip",
-  catalogRows: "CatalogRows", catalogRowsPost: "CatalogRowsPost", catalogText: "CatalogText", catalogState: "CatalogState", catalog: "Catalog", renderer: "Renderer",
+  catalogRows: "CatalogRows", catalogRowsPost: "CatalogRowsPost", catalogRowsV2: "CatalogRowsV2", catalogText: "CatalogText", catalogState: "CatalogState", catalog: "Catalog", renderer: "Renderer",
   coreFacet: "CoreFacet", rightsFacet: "RightsFacet", mintFacet: "MintFacet", siteFacet: "SiteFacet",
   keys: "KeyRegistry", roster: "Roster", postage: "Postage", parley: "Parley", locks: "Locks", pool: "Pool", kiln: "Kiln",
   launchpad: "Launchpad", router: "Router", steward: "Steward", premises: "Premises",
-  market: "Market", roles: "Roles", agentCard: "AgentCard", nameplate: "Nameplate", custodian: "LPCustodian"
+  market: "Market", roles: "Roles", agentCard: "AgentCard", nameplate: "Nameplate", custodian: "LPCustodian",
+  /// V2 (W6): placeholders from schema 3, recovered by code once each lands
+  keepsake: "Keepsake", journal: "Journal", bazaar: "Bazaar", bridges: "Bridges", studio: "Studio", agora: "Agora"
 };
 
 /**
@@ -156,7 +158,7 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
   for (const key of [...SALTED, ...PLACEHOLDERS]) {
     const salt = rec.salts?.[key];
     if (!salt) continue;
-    say(`salts.${key} = keccak("intact.v1.${key}")`, saltOf(key), salt);
+    say(`salts.${key} = keccak("${saltName(key)}")`, saltOf(key), salt);
     const predicted = predictCreate3(rec.factory, salt);
     const onChain = await addrOf(rec.factory, "predict(bytes32)", [salt]);
     predictedOnChain[key] = onChain;

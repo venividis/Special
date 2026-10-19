@@ -12,13 +12,14 @@ import {Market} from "../../src/interfaces/IPool.sol";
 
   Every name starts with Bazaar. The hub here is a mock whose fingerprint
   hashes the terms the real one hashes (src/hub/SiteLogic.sol
-  `getStateFingerprint`): the holder, the custody epoch, the user, the
-  traits, the Reach's `state()` and `sealedUntil()` and the owned market's
-  `marketHash` — read through guarded staticcalls, as the hub reads them,
-  so a Reach or a Pool that stops answering contributes zero rather than a
-  revert. A transfer does what the real `_update` does to those terms: the
-  epoch moves, the single approval and the user die, and the traits, the
-  Reach and the market survive.
+  `getStateFingerprint`): the holder, the custody epoch, the user, and its
+  `residueOf` — the traits, the Reach's `state()` and `sealedUntil()`, the
+  owned market's `marketHash`, the Journal's root and the launch root (V2
+  wave 2, W6) — read through guarded staticcalls, as the hub reads them,
+  so a Reach, a Pool, a Journal or a Launchpad that stops answering, or was
+  never set, contributes zero rather than a revert. A transfer does what
+  the real `_update` does to those terms: the epoch moves, the single
+  approval and the user die, and the residue survives whole.
 
   The Seaport here is the standard path of Seaport 1.6 (seaport-core
   OrderFulfiller.sol `_validateAndFulfillAdvancedOrder`): the zone's
@@ -193,6 +194,23 @@ contract BazaarReach {
     receive() external payable {}
 }
 
+/// @dev The launch root the hub's fingerprint and residue read, moved by
+///      the holder's launch as the real Launchpad's `recordLaunch` moves it
+///      when the Kiln makes a coin for the token.
+contract BazaarLaunchpad {
+    error BazaarNotHolder();
+
+    BazaarHub public immutable hub;
+    mapping(uint256 => bytes32) public launchRoot;
+
+    constructor(BazaarHub h) { hub = h; }
+
+    function launch(uint256 id) external {
+        if (msg.sender != hub.ownerOf(id)) revert BazaarNotHolder();
+        launchRoot[id] = keccak256(abi.encode(launchRoot[id], id, hub.custodyEpoch(id), block.timestamp));
+    }
+}
+
 /// @dev The hub's surface the Bazaar reads, and a transfer that revokes
 ///      what the real one revokes.
 contract BazaarHub {
@@ -215,8 +233,18 @@ contract BazaarHub {
     mapping(uint256 => bytes32) public traitsRoot;
     mapping(uint256 => address) public getApproved;
     mapping(address => mapping(address => bool)) public isApprovedForAll;
+    /// @dev The two V2 satellites whose terms the residue reads (W6): unset,
+    ///      each reads zero, as an absent satellite does on the real hub.
+    address public journal;
+    address public launchpad;
 
     constructor(address pool) { POOL = pool; }
+
+    /// @dev The real hub pins its satellites at construction; this one is told.
+    function setSatellites(address journal_, address launchpad_) external {
+        journal = journal_;
+        launchpad = launchpad_;
+    }
 
     function mint(address to) external returns (uint256 id) {
         id = ++minted;
@@ -234,15 +262,25 @@ contract BazaarHub {
     function account(uint256 id) external view returns (address) { return address(_reach[id]); }
 
     /// @dev The real terms, in the real hub's spirit: holder, Core fields
-    ///      (epoch, user), the traits, the Reach's state and seal, the market.
+    ///      (epoch, user), then everything a sale leaves standing.
     function getStateFingerprint(uint256 id) external view returns (bytes32) {
         address o = ownerOf(id);
+        return keccak256(abi.encode(o, custodyEpoch[id], userOf[id], residueOf(id)));
+    }
+
+    /// @dev The real hub's `residueOf`, in this mock's terms: the traits, the
+    ///      Reach's state and seal, the market, the memories, the launches —
+    ///      what a sale does not move and a seller inside the fill could.
+    function residueOf(uint256 id) public view returns (bytes32) {
+        ownerOf(id);
         address r = address(_reach[id]);
         return keccak256(abi.encode(
-            o, custodyEpoch[id], userOf[id], traitsRoot[id],
+            traitsRoot[id],
             _guarded(r, abi.encodeWithSignature("state()")),
             _guarded(r, abi.encodeWithSignature("sealedUntil()")),
-            _guarded(POOL, abi.encodeWithSignature("marketHash(uint256)", id))
+            _guarded(POOL, abi.encodeWithSignature("marketHash(uint256)", id)),
+            _guarded(journal, abi.encodeWithSignature("rootOf(address,uint256)", address(this), id)),
+            _guarded(launchpad, abi.encodeWithSignature("launchRoot(uint256)", id))
         ));
     }
 

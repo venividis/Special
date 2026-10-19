@@ -9,6 +9,8 @@ import {IPool} from "../interfaces/IPool.sol";
 import {ILocks} from "../interfaces/ILocks.sol";
 import {ILaunchpad} from "../interfaces/ILaunchpad.sol";
 import {ISteward} from "../interfaces/ISteward.sol";
+import {IKeepsake} from "../interfaces/IKeepsake.sol";
+import {IJournal} from "../interfaces/IJournal.sol";
 import {IRenderer} from "../interfaces/Site.sol";
 import {ERC721Minimal} from "../vendor/ERC721Minimal.sol";
 import {LibNum} from "../lib/LibNum.sol";
@@ -20,9 +22,11 @@ import {LibNum} from "../lib/LibNum.sol";
   (ERC-7160 faces with the holder's pin stored as index+1, ERC-7496
   traits, the renderer boundary) and ANIMA AnimaAgentFacet.sol
   `getStateFingerprint` (ERC-5646 over the whole normative struct),
-  adapted for INTACT U1: the fingerprint reaches into the Reach and four
-  satellites through guarded reads, the traits are `curve` and `name`
-  (holder-set) plus five read-only mirrors flagged `validateOnSale`.
+  adapted for INTACT U1: the fingerprint reaches into the Reach and six
+  satellites through guarded reads (V2 added the Keepsake and the Journal),
+  the traits are `curve` and `name` (holder-set) plus five read-only
+  mirrors flagged `validateOnSale`. `residueOf` is the part of it a sale
+  leaves standing, for a zone that must read it again after the transfers.
 
   The bytes themselves live in the Renderer (U7): this facet owns the pin,
   the traits and the hash, and asks the Renderer for every face. Face 0 is
@@ -219,30 +223,73 @@ abstract contract SiteLogic is IntactBase {
     ///         without the token moving: the holder, the whole normative
     ///         `Core`, the traits, the Reach's state, seal and open-approval
     ///         ledger, the owned market, the locks committed to the Reach,
-    ///         the launches and the steward's plan. Balances are excluded —
-    ///         an inbound transfer must not break a trade; `Market` orders
-    ///         carry explicit floors. Reverts for an unminted id so a
-    ///         fingerprint is never confused with zero.
+    ///         the launches, the steward's plan, and (V2) the keepsakes
+    ///         committed to the Reach and the token's memories. Balances are
+    ///         excluded — an inbound transfer must not break a trade; `Market`
+    ///         orders carry explicit floors, and the Keepsake's commitment
+    ///         never moves on a gift for the same reason. Reverts for an
+    ///         unminted id so a fingerprint is never confused with zero.
     /// @dev    A missing satellite contributes zero here and flips a
-    ///         `reported` bit in `Catalog.stateOf(id)`.
+    ///         `reported` bit in `Catalog.stateOf(id)`. The two V2 terms are
+    ///         APPENDED after `planHash`, so every earlier term keeps its place.
     function getStateFingerprint(uint256 id) public view returns (bytes32) {
         IntactStorage.Layout storage $ = _s();
         address owner_ = $.nft.owner[id];
         if (owner_ == address(0)) revert NoSuchToken();
         Core memory c = $.core[id];
-        address reach = _account(id);
+        bytes32[8] memory t = _standing(id);
         return keccak256(abi.encode(
             owner_,
             c,
             keccak256(abi.encode(c.curve, c.nameHash)),
-            _guarded32(reach, abi.encodeCall(IReach.state, ())),
-            _guarded32(reach, abi.encodeCall(IReach.sealedUntil, ())),
-            _guarded32(reach, abi.encodeCall(IReach.openApprovalsRoot, ())),
-            _guarded32(_POOL, abi.encodeCall(IPool.marketHash, (id))),
-            _guarded32(_LOCKS, abi.encodeCall(ILocks.commitmentOf, (reach))),
-            _guarded32(_LAUNCHPAD, abi.encodeCall(ILaunchpad.launchRoot, (id))),
-            _guarded32(_STEWARD, abi.encodeCall(ISteward.planHash, (id)))
+            t[0],                                                        // Reach.state
+            t[1],                                                        // Reach.sealedUntil
+            t[2],                                                        // Reach.openApprovalsRoot
+            t[3],                                                        // Pool.marketHash(id)
+            t[4],                                                        // Locks.commitmentOf(reach)
+            t[5],                                                        // Launchpad.launchRoot(id)
+            _guarded32(_STEWARD, abi.encodeCall(ISteward.planHash, (id))),
+            t[6],                                                        // Keepsake.commitmentOf(reach)
+            t[7]                                                         // Journal.rootOf(this, id)
         ));
+    }
+
+    /// @notice keccak256 of every fingerprint term a sale does not move.
+    /// @dev    A sale (`_update`) moves the holder and the custody epoch and
+    ///         voids the status, the pinned face, the guardian and its hold,
+    ///         `feesToGrip`, the user, the agent wallet and its proposal, and
+    ///         the steward's plan (keyed by the epoch); everything else the
+    ///         fingerprint hashes it leaves standing — and a seller who acts
+    ///         while a fill is under way moves some of it. So a zone compares
+    ///         this, after the transfers, with what it was when the order was
+    ///         pinned: `lockCount` (zero at any sale), `transferSealUntil`,
+    ///         `createdAt`, `launchCount`, `curve`, `nameHash`, then the eight
+    ///         reads `_standing` makes, in its order.
+    function residueOf(uint256 id) external view returns (bytes32) {
+        IntactStorage.Layout storage $ = _s();
+        if ($.nft.owner[id] == address(0)) revert NoSuchToken();
+        Core storage c = $.core[id];
+        return keccak256(abi.encode(
+            c.lockCount, c.transferSealUntil, c.createdAt, c.launchCount, c.curve, c.nameHash, _standing(id)
+        ));
+    }
+
+    /// @dev The eight satellite terms a sale leaves standing, read once for
+    ///      both hashes, each behind `extcodesize` AND a staticcall: the
+    ///      Reach's state, seal and ledger root, the owned market's hash, the
+    ///      Locks and Keepsake commitments of the Reach, the launch root and
+    ///      the Journal's root for this token (`address(this)` is the hub in
+    ///      both builds: a facet runs under the diamond's delegatecall).
+    function _standing(uint256 id) internal view returns (bytes32[8] memory t) {
+        address reach = _account(id);
+        t[0] = _guarded32(reach, abi.encodeCall(IReach.state, ()));
+        t[1] = _guarded32(reach, abi.encodeCall(IReach.sealedUntil, ()));
+        t[2] = _guarded32(reach, abi.encodeCall(IReach.openApprovalsRoot, ()));
+        t[3] = _guarded32(_POOL, abi.encodeCall(IPool.marketHash, (id)));
+        t[4] = _guarded32(_LOCKS, abi.encodeCall(ILocks.commitmentOf, (reach)));
+        t[5] = _guarded32(_LAUNCHPAD, abi.encodeCall(ILaunchpad.launchRoot, (id)));
+        t[6] = _guarded32(_KEEPSAKE, abi.encodeCall(IKeepsake.commitmentOf, (reach)));
+        t[7] = _guarded32(_JOURNAL, abi.encodeCall(IJournal.rootOf, (address(this), id)));
     }
 
     function coreOf(uint256 id) external view returns (Core memory) {
