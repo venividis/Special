@@ -1279,6 +1279,70 @@ async function groupSocial(t, ctx) {
     await pg.close();
   }
   t.ok(I, "the sealed DM re-reads the key before every send and refuses after rotation");
+
+  /*  A · Agora (V2, W11), on a chain of its own (deploySite's v2: true): the lane speaks Agora, and a
+      person's path through it — a tap on the commons chip, words typed and signed, a ✦ with a tip on
+      another token's word, a follow typed and signed — every step a Playwright click or fill on what
+      Chromium paints, the wallet answering over EIP-6963 as everywhere in this battery. */
+  t.head("A · Agora in Chromium: a person speaks, reacts with a tip and follows");
+  let AJ = true;
+  const aj = (cond, name, x) => { t.ok(cond, name, x); AJ = AJ && !!cond; };
+  {
+    const X = await ctx.fresh({ v2: true });
+    try {
+      const c2 = X.c, s2 = X.site, me2 = X.actors.me, ME2 = me2.from.toString(), hub2 = s2.hub, agora = s2.agora;
+      const P = (coll, id) => (BigInt(coll) << 96n) | BigInt(id), P1 = P(hub2, 1), P2 = P(hub2, 2);
+      await mint(c2, s2, ME2); await mint(c2, s2, ME2);
+      await c2.exec(agora, SPEAK, [0, P2, 0, 0, 0, hexOf("two says hello")], { label: "speak" });
+      EVM.roll(EVM.BLOCK.header.number + 2n);
+      const sink = decAddr(await c2.read(hub2, "feeSink(uint256)", [2])), reach2 = decAddr(await c2.read(hub2, "account(uint256)", [2]));
+      const W = X.wallet(me2);
+      const pg = await X.open({ wallet: W });
+      await pg.lane("social");
+      await pg.until(() => __n("#lane-social #social-tabs button") === 6 && __on("#lane-social #social-tabs [data-tab=feed]"), null, 15000);
+      aj(await pg.count(L("#social-tabs button")) === 6 && await pg.visible(L("#social-tabs [data-tab=commons]")) && await pg.attr(L("#social-tabs [data-tab=feed]"), "aria-pressed") === "true" && !(await pg.exists(L("#social-inbox"))),
+        "with Agora reported the lane opens on the feed, the rooms one tap away as chips Chromium paints, and no Parley inbox", `chips ${await pg.count(L("#social-tabs button"))}`);
+      await pg.click(L("#social-tabs [data-tab=commons]"));
+      await pg.until(() => __n("#lane-social #social-commons .row") === 1 && __e("#lane-social #social-composer textarea"), null, 15000);
+      await pg.fill(L("#social-composer textarea"), "hello from Chromium");
+      await pg.press(L("#social-composer [data-act=speak]"));
+      aj(await pg.fn() === SPEAK && lower(await pg.text("#cslab [data-to]")) === lower(agora) && word(await pg.slabCd(), 0) === 0n && word(await pg.slabCd(), 1) === P1 && /as #1, in the commons, forever/.test(await pg.text("#cslab [data-sentence]")) && /^\d+ units$/.test(await pg.gasRow()),
+        "tapping the commons and speaking raises Agora's speak(0, #1's persona, …) with the sentence first, and the estimate passes", `fn ${await pg.fn()} gas "${await pg.gasRow()}"`);
+      await pg.sign(W, 1);
+      await pg.until(() => __n("#lane-social #social-commons .row") === 2, null, 15000);
+      const cr = await rows(pg, "#social-commons");
+      aj(cr.length === 2 && cr[1][0] === "#1" && cr[1][1] === "hello from Chromium" && /landed in block/.test(await pg.tick()) && decUint(await c2.read(agora, "stateOf(uint256)", [0]), 1) === 2n,
+        "signed, the word lands in Agora's commons and the walk shows it under #1", JSON.stringify(cr));
+      /* the tip is one tap away: the disclosure's line says what a ✦ does now, and opening it shows the two fields */
+      const opened = () => pg.evaluate(() => document.querySelector("#lane-social #social-react").open);
+      const before = [await opened(), await pg.text(L("#social-react summary"))];
+      await pg.click(L("#social-react summary"));
+      await pg.fill(L("#social-tip"), "0.0001");
+      aj(before[0] === false && before[1] === "react with ✦ · no tip" && await opened() === true && await pg.text(L("#social-react summary")) === "react with ✦ · tip 0.0001 ETH",
+        "the glyph and the tip wait one tap away, under a line that says what a ✦ does: react with ✦ · no tip, then · tip 0.0001 ETH once typed", `before ${JSON.stringify(before)} after "${await pg.text(L("#social-react summary"))}"`);
+      const b0 = await c2.balanceOf(sink);
+      await pg.press(L("#social-commons .row:first-child [data-act=react]"));
+      const rcd = await pg.slabCd();
+      aj(await pg.fn() === "react(uint256,uint256,uint64,uint256,bytes4)" && word(rcd, 1) === P1 && word(rcd, 3) === P2 && await pg.ds("#cslab [data-value]", "wei") === String(WAD / 10000n) &&
+        await pg.text("#cslab [data-sentence]") === "#1 puts ✦ on #2's message 1 and tips 0.0001 ETH to the author's fee sink, its Reach " + short(checksum(reach2)) + ", in the same call" && /^\d+ units$/.test(await pg.gasRow()),
+        "a ✦ pressed on #2's word, with a tip typed, raises react carrying exactly 0.0001 ETH, and the sentence names the payee: the author's fee sink, its Reach", `"${await pg.text("#cslab [data-sentence]")}"`);
+      await pg.sign(W, 2);
+      aj((await c2.balanceOf(sink)) - b0 === WAD / 10000n && lower(sink) === lower(reach2) && (await c2.balanceOf(agora)) === 0n,
+        "signed, the tip lands in #2's Reach in the same call and nothing stays in Agora", `delta ${(await c2.balanceOf(sink)) - b0}`);
+      await pg.fill(L("#social-follow"), "2");
+      await pg.press(L("#social-follows [data-act=follow]"));
+      const fcd = await pg.slabCd();
+      aj(await pg.fn() === "follow(uint256,uint256,bool)" && word(fcd, 0) === P1 && word(fcd, 1) === P2 && word(fcd, 2) === 1n && /stays with #1 through a sale/.test(await pg.text("#cslab [data-sentence]")),
+        "following #2, typed into the follow field, raises follow(#1's persona, #2's persona, true) and says the follow stays with the token through a sale", await pg.text("#cslab [data-sentence]"));
+      await pg.sign(W, 3);
+      await pg.until(() => __t("#lane-social #social-follow-count") === "0 followers · following 1", null, 15000);
+      aj(decUint(await c2.read(agora, "followerCount(uint256)", [P2])) === 1n && await pg.text(L("#social-follow-count")) === "0 followers · following 1" && await pg.text(L("#social-following .token")) === "#2",
+        "signed, Agora counts the follow and the lane reads the same counts: 0 followers · following 1, #2", await pg.text(L("#social-follows")));
+      aj(pg.clean(), "no script threw, no unhandled rejection, no CSP violation across the Agora journey", pg.problems());
+      await pg.close();
+    } finally { await X.close(); }
+  }
+  t.ok(AJ, "on Agora a person speaks, reacts with a tip and follows, in Chromium");
 }
 
 /*──────────────── identity ────────────────*/

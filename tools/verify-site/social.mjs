@@ -63,6 +63,24 @@
   halves that only the real panel could satisfy (the swap card's presence,
   the vault's "answers to the holder") are left out and said so.
 
+  V2 (W11): a last block, A, on a chain of its own — `ctx.fresh({ v2: true
+  })`, so deploySite lands the Journal, the Keepsake, the Bazaar on Seaport
+  1.6's probed runtime, Bridges, the Studio and Agora, and the state block
+  reports Agora: the lane speaks Agora as #1's persona in the commons, the
+  collection room and the home; Ape #7 of a MockERC721 (never registered)
+  is refused in the commons in words and speaks in its own collection's
+  room; a follow and its counts against Agora's counters; a tipped ✦ landing
+  in #2's fee sink; a sealed DM after both personas are bound through
+  Agora's bindKey (one bound from the lane), its envelope opened outside
+  the page under Agora's context; the feed joining #2's memory,
+  a gift from #2's Reach, #2's Bazaar listing and its Seaport fill, and a
+  refused range said; after that sale the seller silenced and the buyer
+  speaking with #2's follower kept; the viewer reading and pressing
+  nothing. Each claim ends its block as `t.ok(A<n>, "<sentence>")`. A direct
+  chain write waits for the page to go quiet first: the shim answers reads
+  with Chain.simulate, which checkpoints the same VM, and a write sent
+  inside one fails on its nonce (measured on this block's first run).
+
   Elements this group reads from its panel (CONSOLE §6.2; every selector
   scoped to #lane-social): #social-commons .row (.who, .body),
   #social-commons-status, #social-composer (textarea), #social-why,
@@ -73,13 +91,22 @@
   pair walk's status, which carries no id), #social-dm textarea,
   #social-dm .gate, #social-receipts, #social-inbox (its inputs, and its
   .kv rows' .k and .v), [data-act=speak|speakAsReach|whisper|found|invite|
-  join|leave|configureInbox|expire|claimRefund|claimSettled]. From the shell:
-  the slab (#cbox.on, #cslab, [data-go], [data-no], [data-to], [data-value],
-  [data-function], [data-calldata], [data-gas]), #tick, #rights-sentence,
-  body[data-rights].
+  join|leave|configureInbox|expire|claimRefund|claimSettled]; and in A,
+  #social-tabs [data-tab=feed|commons|collection|home|dm], #social-as and
+  #social-as-note, #social-collection .row, #social-home-feed .row,
+  #social-feed .row (.who, .kind, .body), #social-feed-status,
+  #social-feed-miss, #social-tip, #social-follows (#social-follow-count,
+  #social-followers .token, #social-following .token, #social-follow),
+  #social-facts, [data-act=react|follow|followThis|bindKey|whisper|speak|
+  speakAsReach]. From the shell: the slab (#cbox.on, #cslab, [data-go],
+  [data-no], [data-to], [data-value], [data-function], [data-calldata],
+  [data-gas], [data-sentence]), #tick, #rights-sentence, body[data-rights],
+  body[data-mode].
 ───────────────────────────────────────────────────────────────────────────*/
 import { secp256k1 } from "ethereum-cryptography/secp256k1.js";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
+import { etherListing, orderHashOf, signOrder, orderOf, SIG, SEAPORT } from "../verify-bazaar.mjs";
+import { whisperScope, messageContext, decryptWhisper } from "../../engine/whispers.mjs";
 
 const WAD = 10n ** 18n;
 const SPEAK = "speak(uint256,uint256,uint8,uint64,uint64,bytes)";
@@ -110,7 +137,7 @@ async function sealKey(actor, chainId, hub) {
   for (;;) { const d = BigInt("0x" + Buffer.from(h).toString("hex")); if (d > 0n && d < ORD) break; h = new Uint8Array(await crypto.subtle.digest("SHA-256", h)); }
   const k = await crypto.subtle.importKey("pkcs8", Buffer.from(PK8 + Buffer.from(h).toString("hex"), "hex"), { name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
   const jwk = await crypto.subtle.exportKey("jwk", k);
-  return { message: msg.toString("utf8"), sig: "0x" + sig.toString("hex"), pk: "0x04" + Buffer.from(jwk.x, "base64url").toString("hex") + Buffer.from(jwk.y, "base64url").toString("hex") };
+  return { message: msg.toString("utf8"), sig: "0x" + sig.toString("hex"), pk: "0x04" + Buffer.from(jwk.x, "base64url").toString("hex") + Buffer.from(jwk.y, "base64url").toString("hex"), jwk };
 }
 
 export async function run(t, ctx) {
@@ -625,5 +652,295 @@ export async function run(t, ctx) {
     t.ok(page.$("body").dataset.mode === "viewer" && page.$("body").dataset.rights === "1" && rows(page, "#social-commons").length >= 5 && LL(page, "[data-act]").length === 0 && LL(page, "textarea").length === 0 && /nothing here can sign/.test(page.text("#lane-social #social-why")) && W.prompts().length === 0,
       "in the viewer a wallet with every right still gets the walk and the sentence that nothing here can sign, and no control (end of the social group)", `mode ${page.$("body").dataset.mode} rights ${page.$("body").dataset.rights} rows ${rows(page, "#social-commons").length} acts ${LL(page, "[data-act]").length} why "${page.text("#lane-social #social-why").slice(0, 80)}"`);
     page.close();
+  }
+
+  /*═══════════ A · Agora (V2, W11): the same lane, speaking as a persona ═══════════
+       Its own chain: deploySite(…, { v2: true }) lands the Journal, the Keepsake, the Bazaar on
+       Seaport 1.6's probed runtime, Bridges, the Studio and Agora, so the state block reports Agora
+       and the lane speaks it. The cast: #1, #2, #3 to `me`, Ape #7 of a MockERC721 (a collection from
+       elsewhere, never registered) to `me`. Every id below is this chain's. */
+  t.head("A · Agora (V2): a persona speaks, follows, tips and seals; the feed joins; a sale");
+  {
+    const X = await ctx.fresh({ v2: true });
+    const c2 = X.c, s2 = X.site, hub2 = s2.hub, agora = s2.agora, me2 = X.actors.me, buyer2 = X.actors.buyer, stranger2 = X.actors.stranger;
+    const ME2 = me2.from.toString(), BUYER2 = buyer2.from.toString(), STRANGER2 = stranger2.from.toString(), ZERO32 = "0x" + "00".repeat(32);
+    const P = (coll, id) => (BigInt(coll) << 96n) | BigInt(id);
+    const shortOf = (a) => { const x = checksum(a, kec); return x.slice(0, 6) + " … " + x.slice(-4); };
+    for (let k = 0; k < 3; k++) await X.mint(c2, s2, ME2);
+    const apes = await c2.deploy(X.A("test/mocks/MockERC721.sol", "MockERC721").bytecode, "", "MockERC721");
+    await c2.exec(apes, "mint(address,uint256)", [ME2, 7]);
+    const P1 = P(hub2, 1), P2 = P(hub2, 2), P3 = P(hub2, 3), APE7 = P(apes, 7), APE = shortOf(apes) + ":7";
+    const roomOf = async (room) => { const r = await c2.read(agora, "stateOf(uint256)", [room]); return { count: decUint(r, 1), kind: decUint(r, 4), steward: decUint(r, 6), index: decUint(r, 7) }; };
+    const CK = decUint(await c2.read(agora, "collectionKey(address)", [hub2])), CKA = decUint(await c2.read(agora, "collectionKey(address)", [apes]));
+    const HK1 = decUint(await c2.read(agora, "homeKey(uint256)", [P1]));
+    const tab = async (page, name) => { page.click(L(page, "#social-tabs [data-tab=" + name + "]")); await page.settle(); };
+    const kinds = (page, feed) => rows(page, feed).map((r) => [r.querySelector(".kind") ? r.querySelector(".kind").textContent : "", r.querySelector(".who").textContent, bodyOf(r).textContent]);
+    const sentence = (page) => page.text("#cslab [data-sentence]");
+    const W = X.walletFor(c2, me2);
+    const { page, S } = await X.bootToken(1, { wallet: W });
+    await X.lane(page, "social");
+
+    let A1 = true;
+    const a1 = (cond, name, detail) => { t.ok(cond, name, detail); A1 = A1 && !!cond; };
+    await page.until(() => LL(page, "#social-tabs button").length === 6 && / · following /.test(page.text("#lane-social #social-follow-count")), 80);
+    a1(!!(S.reported & S.bits.agora) && LL(page, "#social-tabs button").length === 6 && L(page, "#social-tabs [data-tab=feed]").classList.contains("on") && L(page, "#social-tabs [data-tab=feed]").getAttribute("aria-pressed") === "true" &&
+      !L(page, "#social-inbox") && !/reactions unavailable/.test(laneText(page)) && page.text("#lane-social #social-facts").includes("#1 is 0x" + P1.toString(16)) && decUint(await c2.read(agora, "persona(address,uint256)", [hub2, 1])) === P1,
+      "with Agora reported the lane opens on the feed with the rooms one tap away as six chips, no Parley inbox, and the facts name #1's persona as Agora packs it: the hub shifted 96 bits, plus the id",
+      `chips ${LL(page, "#social-tabs button").length} inbox ${!!L(page, "#social-inbox")} facts "${page.text("#lane-social #social-facts").slice(0, 120)}"`);
+    await tab(page, "commons");
+    await page.until(() => /nothing has ever been said/.test(page.text("#lane-social #social-commons-status")) && !!L(page, "#social-composer textarea"), 60);
+    page.type(L(page, "#social-composer textarea"), "hello, agora");
+    await press(page, L(page, "#social-composer [data-act=speak]"));
+    let cd = slabCd(page);
+    a1(lower(page.text("#cslab [data-to]")) === lower(agora) && page.text("#cslab [data-function]") === SPEAK && word(cd, 0) === 0n && word(cd, 1) === P1 && /as #1, in the commons, forever/.test(sentence(page)) && /^\d+ units$/.test(gasRow(page)),
+      "speaking in the commons raises a slab to Agora, not Parley: speak(0, persona(hub, 1), …), the sentence names the commons, and the estimate passes", `to ${page.text("#cslab [data-to]")} from ${word(cd, 1)} gas "${gasRow(page)}"`);
+    await sign(page, W, 1);
+    await page.until(() => rows(page, "#social-commons").length === 1, 60);
+    a1((await roomOf(0n)).count === 1n && rows(page, "#social-commons")[0].querySelector(".who").textContent === "#1" && bodyOf(rows(page, "#social-commons")[0]).textContent === "hello, agora" && L(page, "#social-composer textarea").value === "",
+      "signed, Agora's commons counts one word, the walk shows it under #1, and the composer is cleared", JSON.stringify(kinds(page, "#social-commons")));
+    await tab(page, "collection");
+    await page.until(() => !!L(page, "#social-composer textarea"), 60);
+    page.type(L(page, "#social-composer textarea"), "hello, holders");
+    await press(page, L(page, "#social-composer [data-act=speak]"));
+    cd = slabCd(page);
+    a1(L(page, "#social-tabs [data-tab=collection]").textContent === "INTACT holders" && word(cd, 0) === CK && word(cd, 1) === P1 && /in the room of INTACT holders, forever/.test(sentence(page)) && /^\d+ units$/.test(gasRow(page)),
+      "the collection room the panel derives is Agora's collectionKey(hub), the room of INTACT's holders, and the estimate passes", `room ${word(cd, 0)} vs ${CK} gas "${gasRow(page)}"`);
+    await sign(page, W, 2);
+    await page.until(() => rows(page, "#social-collection").length === 1, 60);
+    const cr = await roomOf(CK);
+    a1(cr.count === 1n && cr.kind === 4n && cr.index === BigInt(hub2) && bodyOf(rows(page, "#social-collection")[0]).textContent === "hello, holders",
+      "signed, the first word opens the collection room: kind 4, its collection the hub", JSON.stringify({ count: String(cr.count), kind: String(cr.kind) }));
+    await tab(page, "home");
+    await page.until(() => !!L(page, "#social-composer textarea"), 60);
+    page.type(L(page, "#social-composer textarea"), "hello, home");
+    await press(page, L(page, "#social-composer [data-act=speak]"));
+    cd = slabCd(page);
+    a1(word(cd, 0) === HK1 && word(cd, 1) === P1 && /in #1's home, forever/.test(sentence(page)) && /^\d+ units$/.test(gasRow(page)),
+      "the home the panel derives is Agora's homeKey(persona), and its steward's first word passes the estimate", `room ${word(cd, 0)} vs ${HK1} gas "${gasRow(page)}"`);
+    await sign(page, W, 3);
+    await page.until(() => rows(page, "#social-home-feed").length === 1, 60);
+    const hr = await roomOf(HK1);
+    a1(hr.count === 1n && hr.kind === 3n && hr.steward === P1 && bodyOf(rows(page, "#social-home-feed")[0]).textContent === "hello, home",
+      "signed, #1's home opens with its first word: kind 3, its steward #1's persona", JSON.stringify({ kind: String(hr.kind), steward: String(hr.steward) }));
+    t.ok(A1, "on Agora the lane speaks as this token's persona, in the commons, its collection's room and its home");
+
+    let A2 = true;
+    const a2 = (cond, name, detail) => { t.ok(cond, name, detail); A2 = A2 && !!cond; };
+    page.type(L(page, "#social-as"), apes + ":7");
+    await tab(page, "commons");
+    await page.until(() => !!L(page, "#social-why"), 40); await quiet(page, W);
+    const est0 = W.count("eth_estimateGas"), why = page.text("#lane-social #social-why");
+    const unreg = await c2.simulate(agora, enc(SPEAK, [0, APE7, 0, 0, 0, hexOf("an ape in the commons")]), { from: ME2 });
+    a2(page.text("#lane-social #social-as-note") === "speaking as " + APE && /^the commons hears registered collections only/.test(why) && why.includes(APE + " is of neither") && LL(page, "#social-composer").length === 0 && LL(page, "[data-act=speak]").length === 0 &&
+      !slabOpen(page) && W.count("eth_estimateGas") === est0 && !unreg.ok && unreg.data === sel("Unregistered(address)") + apes.slice(2).toLowerCase().padStart(64, "0"),
+      "typed under speak as, Ape #7 is refused in the commons in words before any slab — registered collections only — and Agora agrees: speak as the Ape there reverts Unregistered(Apes)",
+      `note "${page.text("#lane-social #social-as-note")}" why "${why}" composers ${LL(page, "#social-composer").length} revert ${unreg.data}`);
+    await tab(page, "collection");
+    await page.until(() => !!L(page, "#social-composer textarea"), 60);
+    page.type(L(page, "#social-composer textarea"), "apes, assemble");
+    await press(page, L(page, "#social-composer [data-act=speak]"));
+    cd = slabCd(page);
+    a2(L(page, "#social-tabs [data-tab=collection]").textContent === shortOf(apes) + " holders" && word(cd, 0) === CKA && word(cd, 1) === APE7 && LL(page, "[data-act=speakAsReach]").length === 0 && /^\d+ units$/.test(gasRow(page)),
+      "and the Ape speaks in its own collection's room, collectionKey(Apes), with no Reach to offer: the estimate passes on its holder's word", `room ${word(cd, 0)} vs ${CKA} from ${word(cd, 1)} gas "${gasRow(page)}"`);
+    await sign(page, W, 4);
+    await page.until(() => rows(page, "#social-collection").length === 1, 60);
+    const ar = await roomOf(CKA);
+    a2(ar.kind === 4n && ar.index === BigInt(apes) && rows(page, "#social-collection")[0].querySelector(".who").textContent === APE && bodyOf(rows(page, "#social-collection")[0]).textContent === "apes, assemble",
+      "signed, a collection from elsewhere has a room on chain: kind 4 naming Apes, and the walk names the speaker as the collection and the id", JSON.stringify(kinds(page, "#social-collection")));
+    t.ok(A2, "a foreign persona is refused in the commons in words, and speaks in its own collection's room");
+
+    let A3 = true;
+    const a3 = (cond, name, detail) => { t.ok(cond, name, detail); A3 = A3 && !!cond; };
+    page.type(L(page, "#social-as"), "");
+    await page.until(() => page.text("#lane-social #social-as-note") === "speaking as #1" && !!L(page, "#social-follow"), 40);
+    page.type(L(page, "#social-follow"), "2");
+    await press(page, L(page, "#social-follows [data-act=follow]"));
+    cd = slabCd(page);
+    a3(page.text("#cslab [data-function]") === "follow(uint256,uint256,bool)" && word(cd, 0) === P1 && word(cd, 1) === P2 && word(cd, 2) === 1n && /#1 follows #2; a follow is the token's, so it stays with #1 through a sale/.test(sentence(page)) && /^\d+ units$/.test(gasRow(page)),
+      "following #2 raises follow(#1's persona, #2's persona, true), and the sentence says the follow stays with the token through a sale", `words ${word(cd, 0)} ${word(cd, 1)} ${word(cd, 2)} "${sentence(page)}"`);
+    await sign(page, W, 5);
+    await page.until(() => / · following 1$/.test(page.text("#lane-social #social-follow-count")), 60);
+    a3(decUint(await c2.read(agora, "followerCount(uint256)", [P2])) === 1n && decUint(await c2.read(agora, "followingCount(uint256)", [P1])) === 1n && page.text("#lane-social #social-follow-count") === "0 followers · following 1" &&
+      LL(page, "#social-following .token").map((x) => x.textContent).join() === "#2",
+      "signed, Agora counts #2's follower and #1's following, and the lane folds the same counts from the Followed logs: 0 followers · following 1, #2", page.text("#lane-social #social-follows").slice(0, 160));
+    page.type(L(page, "#social-as"), apes + ":7");
+    await page.until(() => !!L(page, "#social-follows [data-act=followThis]"), 40);
+    const ft0 = L(page, "#social-follows [data-act=followThis]").textContent;
+    await press(page, L(page, "#social-follows [data-act=followThis]"));
+    cd = slabCd(page);
+    a3(ft0 === "follow #1" && word(cd, 0) === APE7 && word(cd, 1) === P1 && word(cd, 2) === 1n && /^\d+ units$/.test(gasRow(page)),
+      "speaking as the Ape, #1's own page offers follow #1: follow(Ape #7, #1, true) on the holder's word", `"${ft0}" words ${word(cd, 0)} ${word(cd, 1)}`);
+    await sign(page, W, 6);
+    await page.until(() => page.text("#lane-social #social-follow-count") === "1 follower · following 1" && !!L(page, "#social-follows [data-act=followThis]") && L(page, "#social-follows [data-act=followThis]").textContent === "unfollow #1", 60);
+    a3(decUint(await c2.read(agora, "followerCount(uint256)", [P1])) === 1n && LL(page, "#social-followers .token").map((x) => x.textContent).join() === APE && (L(page, "#social-follows [data-act=followThis]") || {}).textContent === "unfollow #1" &&
+      /follows stay with the token: whoever holds #1 next keeps its followers/.test(page.text("#lane-social #social-follows")),
+      "signed, #1 has one follower, a token of another collection, the toggle reads unfollow #1, and the lane says plainly that follows stay with the token", page.text("#lane-social #social-follows").slice(0, 200));
+    t.ok(A3, "a follow and its counts");
+
+    let A4 = true;
+    const a4 = (cond, name, detail) => { t.ok(cond, name, detail); A4 = A4 && !!cond; };
+    page.type(L(page, "#social-as"), "");
+    /* a direct write waits for the page to go quiet: a read in flight checkpoints the same VM */
+    await quiet(page, W);
+    await c2.exec(agora, SPEAK, [0, P2, 0, 0, 0, hexOf("two speaks")], { label: "speak" });
+    const seq2 = (await roomOf(0n)).count;
+    const reach2 = decAddr(await c2.read(hub2, "account(uint256)", [2])), sink2 = decAddr(await c2.read(hub2, "feeSink(uint256)", [2]));
+    await tab(page, "commons");
+    await page.until(() => rows(page, "#social-commons").length === 2 && !!L(page, "#social-tip") && rows(page, "#social-commons").every((r) => !!r.querySelector("[data-act=react]")), 60);
+    page.type(L(page, "#social-tip"), "0.0001");
+    page.type(L(page, "#social-composer textarea"), "a draft, half typed");
+    const r2 = rows(page, "#social-commons").find((r) => r.querySelector(".who").textContent === "#2");
+    const b0 = await c2.balanceOf(sink2), g0 = await c2.balanceOf(agora);
+    await press(page, r2.querySelector("[data-act=react]"));
+    cd = slabCd(page);
+    a4(page.text("#cslab [data-function]") === "react(uint256,uint256,uint64,uint256,bytes4)" && word(cd, 0) === 0n && word(cd, 1) === P1 && word(cd, 2) === seq2 && word(cd, 3) === P2 && cd.slice(10 + 64 * 4, 10 + 64 * 4 + 8) === "e29ca600" &&
+      (page.$("#cslab [data-value]") || { dataset: {} }).dataset.wei === String(WAD / 10000n) && sentence(page) === "#1 puts ✦ on #2's message " + seq2 + " and tips 0.0001 ETH to the author's fee sink, its Reach " + shortOf(reach2) + ", in the same call" &&
+      lower(sink2) === lower(reach2) && /^\d+ units$/.test(gasRow(page)),
+      "a ✦ on #2's word with a tip raises react(0, #1, seq, #2, ✦) carrying 0.0001 ETH, and the sentence names the payee: the author's fee sink, its Reach", `"${sentence(page)}" wei ${page.$("#cslab [data-value]") && page.$("#cslab [data-value]").dataset.wei} glyph ${cd.slice(10 + 64 * 4, 10 + 64 * 4 + 8)}`);
+    await sign(page, W, 7);
+    const rx = c2.getLogs({ address: agora, topics: [S.topics.reacted] }).pop();
+    a4((await c2.balanceOf(sink2)) - b0 === WAD / 10000n && g0 === 0n && (await c2.balanceOf(agora)) === 0n && !!rx && BigInt(rx.topics[2]) === P1 && BigInt(rx.topics[3]) === P2 && BigInt("0x" + rx.data.slice(2 + 128, 2 + 192)) === WAD / 10000n,
+      "signed, 0.0001 ETH landed in #2's fee sink in the same call, none of it stayed in Agora, and the Reacted log names #1, #2 and the tip", `delta ${(await c2.balanceOf(sink2)) - b0} agora ${await c2.balanceOf(agora)}`);
+    await page.until(() => rows(page, "#social-commons").length === 2, 40); await quiet(page, W);
+    a4(L(page, "#social-composer textarea").value === "a draft, half typed" && L(page, "#social-tip").value === "0.0001" && rows(page, "#social-commons").length === 2,
+      "the receipt refreshes the room in place and keeps what is typed: the draft and the tip survive it", `draft "${L(page, "#social-composer textarea") && L(page, "#social-composer textarea").value}"`);
+    page.type(L(page, "#social-composer textarea"), "");
+    t.ok(A4, "a tipped reaction lands in the author's fee sink");
+
+    let A5 = true;
+    const a5 = (cond, name, detail) => { t.ok(cond, name, detail); A5 = A5 && !!cond; };
+    const mine2 = await sealKey(me2, 1, hub2);
+    await quiet(page, W);
+    await c2.exec(s2.keys, "setEncryptionKey(uint16,bytes)", [3, mine2.pk], { label: "setEncryptionKey" });
+    const dst = () => page.text("#lane-social #social-dm-status");
+    await tab(page, "dm");
+    page.type(L(page, "#social-dm-to"), "3");
+    await page.until(() => /has no key/.test(dst()) && !!L(page, "[data-act=bindKey]"), 60);
+    a5(dst() === "#3 has no key — this room cannot be sealed; whispers go in the clear" && L(page, "[data-act=bindKey]").textContent === "bind this wallet's key to #1" && /in the clear/.test(L(page, "[data-act=whisper]").textContent),
+      "with neither persona bound in Agora the pair room says it cannot be sealed, offers the whisper in the clear, labelled, and offers #1's binding", `"${dst()}"`);
+    await press(page, L(page, "[data-act=bindKey]"));
+    a5(page.text("#cslab [data-function]") === "bindKey(uint256)" && lower(page.text("#cslab [data-to]")) === lower(agora) && word(slabCd(page), 0) === P1 && /^\d+ units$/.test(gasRow(page)),
+      "the binding is Agora's bindKey(#1's persona), and the estimate passes on the wallet's published key", `fn ${page.text("#cslab [data-function]")} gas "${gasRow(page)}"`);
+    await sign(page, W, 8);
+    const ko1 = await c2.read(agora, "keyOf(uint256)", [P1]);
+    a5(decUint(ko1, 0) === 3n && lower("0x" + ko1.slice(2 + 64 * 4, 2 + 64 * 4 + 130)) === lower(mine2.pk), "signed, Agora's keyOf(#1's persona) answers the wallet's P-256 key", ko1.slice(0, 80));
+    await quiet(page, W);
+    await c2.exec(agora, "bindKey(uint256)", [P3], { label: "bindKey" });
+    page.type(L(page, "#social-dm-to"), "3");
+    await page.until(() => !!L(page, "#social-dm-derive"), 60);
+    a5(dst() === "both keys are bound; derive yours to seal" && LL(page, "[data-act=whisper]").length === 0, "both personas bound: the key is derived first and nothing is offered in the clear", `"${dst()}"`);
+    page.click(L(page, "#social-dm-derive"));
+    await page.until(() => /^sealed/.test(dst()), 80);
+    const keyId3 = "0x" + (await c2.read(agora, "keyOf(uint256)", [P3])).slice(66, 130);
+    page.type(L(page, "#social-dm textarea"), "hello, sealed");
+    await press(page, L(page, "[data-act=whisper]"));
+    cd = slabCd(page);
+    a5(page.text("#cslab [data-function]") === WHISPER && lower(page.text("#cslab [data-to]")) === lower(agora) && word(cd, 0) === P1 && word(cd, 1) === P3 && word(cd, 2) === 1n && "0x" + cd.slice(10 + 64 * 3, 10 + 64 * 4) === keyId3 && /^\d+ units$/.test(gasRow(page)),
+      "the sealed whisper goes to Agora from #1's persona to #3's, kind 1, naming #3's key id as read, and the estimate passes", `from ${word(cd, 0)} to ${word(cd, 1)} kind ${word(cd, 2)} gas "${gasRow(page)}"`);
+    await sign(page, W, 9);
+    const opens = () => rows(page, "#social-dm-feed").length === 1 && bodyOf(rows(page, "#social-dm-feed")[0]).textContent === "hello, sealed";
+    await page.until(opens, 80);
+    const pairA = decUint(await c2.read(agora, "pairKey(uint256,uint256)", [P1, P3]));
+    const sl = c2.getLogs({ address: agora, topics: [S.topics.said, "0x" + pairA.toString(16).padStart(64, "0")] }).pop();
+    a5(opens() && !!sl && BigInt(sl.topics[2]) === P1 && BigInt("0x" + sl.data.slice(2 + 64 * 3, 2 + 64 * 4)) === 1n && !Buffer.from(sl.data.slice(2), "hex").toString("latin1").includes("hello, sealed"),
+      "signed, the row opens on the page; on the chain it is kind 1 in Agora's pair room of the two personas, and the words are not there",
+      `rows [${rows(page, "#social-dm-feed").map((r) => bodyOf(r).textContent).join(" | ")}] ${sl && sl.data.slice(0, 80)}`);
+    /* the context is Agora's, proved outside the page: the envelope the log carries is opened here with the wallet's
+       key (bound to both personas) under the context the lane must build — this chain, the hub, Agora, #1's persona
+       and epoch, #3's persona, epoch and key id, #1's key id. decryptWhisper refuses an envelope whose context is
+       any other (Parley's address in Agora's place) before a key is tried. The page's own opener shares the
+       lane's code, so a context the lane built wrong in both places would still open there; this one is built
+       here, from the chain */
+    let opened = "no Said log in the pair room";
+    if (sl) {
+      const at = Number(BigInt("0x" + sl.data.slice(2 + 64 * 6, 2 + 64 * 7))) * 2, n = Number(BigInt("0x" + sl.data.slice(2 + at, 2 + at + 64))) * 2;
+      const ep = async (id) => decUint(await c2.read(hub2, "custodyEpoch(uint256)", [id]));
+      const kid = async (p) => "0x" + (await c2.read(agora, "keyOf(uint256)", [p])).slice(66, 130);
+      const want = messageContext(whisperScope(1, hub2, agora, P1, await ep(1)), P3, await ep(3), await kid(P3), await kid(P1));
+      try { opened = await decryptWhisper(JSON.parse(Buffer.from(sl.data.slice(2 + at + 64, 2 + at + 64 + n), "hex").toString("utf8")), want, { privateKey: mine2.jwk }, "recipient"); }
+      catch (e) { opened = "refused: " + e.message; }
+    }
+    a5(opened === "hello, sealed",
+      "the envelope on the chain is sealed to Agora's context: opened outside the page with #3's key under whisperScope(chain, hub, Agora, #1's persona, its epoch), it reads hello, sealed", opened);
+    t.ok(A5, "a sealed DM after both keys are bound");
+
+    let A6 = true;
+    const a6 = (cond, name, detail) => { t.ok(cond, name, detail); A6 = A6 && !!cond; };
+    /* #2, which #1 follows: a memory, a gift from #2's Reach, then a listing published through the Bazaar and filled on Seaport */
+    await quiet(page, W);
+    await c2.exec(s2.journal, "inscribe(address,uint256,uint8,bytes,bytes32)", [hub2, 2, 0, hexOf("two remembers"), ZERO32], { label: "inscribe" });
+    await c2.send({ to: reach2, value: WAD / 100n });
+    const WRAP = "wrap(((address,uint256)[],(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))";
+    await c2.exec(reach2, EXEC, [s2.keepsake, WAD / 100n, enc(WRAP, [[[[ZERO, WAD / 100n]], [0, 0, now() + 30n * 86400n], STRANGER2, "for you", [0, 0, 0, 0]]]), 0], { label: "execute" });
+    await c2.exec(hub2, "setApprovalForAll(address,bool)", [SEAPORT, true]);
+    const info = await c2.read(SEAPORT, "information()", []), domain = "0x" + info.slice(2 + 64, 2 + 128);
+    const order = etherListing({ token: hub2, id: 2n, seller: ME2, price: WAD / 20n, royalty: 0n, receiver: ZERO, start: now(), end: now() + 30n * 86400n, salt: 11n });
+    const osig = signOrder(me2.key, domain, orderHashOf(order, decUint(await c2.read(SEAPORT, "getCounter(address)", [ME2]))));
+    await stranger2.exec(s2.bazaar, SIG.publish, [orderOf(order, osig), []], { label: "publish" });
+    await buyer2.send({ to: SEAPORT, data: enc(SIG.fulfillOrder, [orderOf(order, osig), ZERO32]), value: WAD / 20n, label: "fill" });
+    a6(lower(decAddr(await c2.read(hub2, "ownerOf(uint256)", [2]))) === lower(BUYER2), "#2 is listed through the Bazaar and filled on Seaport: the buyer holds it");
+    await tab(page, "feed");
+    await page.until(() => kinds(page, "#social-feed").some((x) => x[0] === "sale" && /^sold to/.test(x[2])), 80);
+    const fr = kinds(page, "#social-feed"), at = (k, re) => fr.findIndex((x) => x[0] === k && re.test(x[2]));
+    const iW = at("word · the commons", /^two speaks$/), iM = at("memory", /^two remembers$/), iG = at("gift", new RegExp("^a keepsake for " + shortOf(STRANGER2).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ": for you$"));
+    const iL = at("sale", /^listed at 0\.05 ETH$/), iS = at("sale", new RegExp("^sold to " + shortOf(BUYER2).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " · it was listed at 0\\.05 ETH$"));
+    a6(iW >= 0 && iM > iW && iG > iM && iL > iG && iS > iL && [iM, iG, iL, iS].every((i) => fr[i][1] === "#2") && at("word · INTACT holders", /^hello, holders$/) >= 0 && at("word · #1's home", /^hello, home$/) >= 0 && !fr.some((x) => /apes, assemble/.test(x[2])),
+      "#1's feed joins the words of its rooms with #2's memory, #2's gift, #2's listing and its fill, in the order the chain wrote them, each line marked with its kind — and nothing from a room #1 is not in",
+      JSON.stringify(fr));
+    a6(/^\d+ lines, oldest first: the words of #1's rooms, and the memories, gifts and sales of #1 and the 1 token it follows$/.test(page.text("#lane-social #social-feed-status")) && page.text("#lane-social #social-feed-miss") === "",
+      "the feed says what it joined, and that no source was missing", `"${page.text("#lane-social #social-feed-status")}" miss "${page.text("#lane-social #social-feed-miss")}"`);
+    W.override("eth_getLogs", (params) => { if (lower(params[0].address) === lower(s2.journal)) throw new Error("range too large"); W.filtersLog.push(params[0]); return c2.getLogs(params[0]); });
+    await tab(page, "feed");
+    await page.until(() => /^memories: the range was refused/.test(page.text("#lane-social #social-feed-miss")), 60);
+    const fr2 = kinds(page, "#social-feed");
+    a6(page.text("#lane-social #social-feed-miss") === "memories: the range was refused (range too large)" && !fr2.some((x) => x[0] === "memory") && fr2.some((x) => x[0] === "gift") && fr2.some((x) => x[0] === "sale"),
+      "a range the endpoint refuses is a sentence — memories: the range was refused (…) — the gifts and sales still join, and no memory is shown as none", `miss "${page.text("#lane-social #social-feed-miss")}" kinds ${fr2.map((x) => x[0]).join(",")}`);
+    W.override("eth_getLogs", null);
+    a6(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML on #1's Agora page, and no script threw", page.errors.map((e) => e.message).join("; "));
+    page.close();
+    t.ok(A6, "the feed joins a memory, a gift and a sale");
+
+    let A7 = true;
+    const a7 = (cond, name, detail) => { t.ok(cond, name, detail); A7 = A7 && !!cond; };
+    {
+      const Ws = X.walletFor(c2, me2);
+      const { page: ps } = await X.bootToken(2, { wallet: Ws });
+      await X.lane(ps, "social");
+      await ps.until(() => !!L(ps, "#social-why") && / · following /.test(ps.text("#lane-social #social-follow-count")), 60);
+      const gone = await c2.simulate(agora, enc(SPEAK, [0, P2, 0, 0, 0, hexOf("the seller again")]), { from: ME2 });
+      a7(ps.$("body").dataset.rights === "0" && LL(ps, "[data-act=speak]").length === 0 && LL(ps, "textarea").length === 0 && /^no right on #2; only the holder/.test(ps.text("#lane-social #social-why")) &&
+        !gone.ok && gone.data === sel("NotYours()") && ps.text("#lane-social #social-follow-count") === "1 follower · following 0",
+        "after the sale the seller's page for #2 offers no composer and says why, Agora refuses the seller as NotYours, and #2 keeps its one follower", `rights ${ps.$("body").dataset.rights} why "${ps.text("#lane-social #social-why")}" count "${ps.text("#lane-social #social-follow-count")}" revert ${gone.data}`);
+      ps.close();
+    }
+    {
+      const Wb = X.walletFor(c2, buyer2);
+      const { page: pb } = await X.bootToken(2, { wallet: Wb });
+      await X.lane(pb, "social");
+      await tab(pb, "commons");
+      await pb.until(() => !!L(pb, "#social-composer textarea") && rows(pb, "#social-commons").length === 2, 60);
+      pb.type(L(pb, "#social-composer textarea"), "the buyer speaks");
+      await press(pb, L(pb, "#social-composer [data-act=speak]"));
+      a7(pb.$("body").dataset.rights === "1" && word(slabCd(pb), 1) === P2 && /^\d+ units$/.test(gasRow(pb)), "the buyer's page speaks as #2's persona and the estimate passes: the seller's brake is not the buyer's", `rights ${pb.$("body").dataset.rights} gas "${gasRow(pb)}"`);
+      await sign(pb, Wb, 1);
+      await pb.until(() => rows(pb, "#social-commons").some((r) => bodyOf(r).textContent === "the buyer speaks") && / · following /.test(pb.text("#lane-social #social-follow-count")), 60);
+      const mine3 = rows(pb, "#social-commons").find((r) => bodyOf(r).textContent === "the buyer speaks");
+      a7(!!mine3 && mine3.querySelector(".who").textContent === "#2" && pb.text("#lane-social #social-follow-count") === "1 follower · following 0" && LL(pb, "#social-followers .token").map((x) => x.textContent).join() === "#1" &&
+        decUint(await c2.read(agora, "followerCount(uint256)", [P2])) === 1n && X.decBool(await c2.read(agora, "follows(uint256,uint256)", [P1, P2])),
+        "signed, the buyer speaks as #2, and #2's follower came with the token: #1 still follows it, by Agora and by the lane", pb.text("#lane-social #social-follows").slice(0, 160));
+      a7(pb.innerHTMLWrites === 0 && pb.errors.length === 0, "nothing was assigned through innerHTML on the buyer's page, and no script threw", pb.errors.map((e) => e.message).join("; "));
+      pb.close();
+    }
+    t.ok(A7, "after a sale the seller is silenced, the buyer speaks and the follows survive");
+    {
+      /* the viewer, on Agora: the feed still joins, and nothing can be pressed */
+      const { page: pv } = await X.bootToken(1, { opaque: true, wallet: X.walletFor(c2, me2) });
+      await X.lane(pv, "social");
+      await pv.until(() => / lines, oldest first/.test(pv.text("#lane-social #social-feed-status")), 60);
+      t.ok(pv.$("body").dataset.mode === "viewer" && LL(pv, "[data-act]").length === 0 && LL(pv, "textarea").length === 0 && !L(pv, "#social-as") && /nothing here can sign/.test(pv.text("#lane-social #social-why")) && rows(pv, "#social-feed").length >= 8 && pv.innerHTMLWrites === 0,
+        "in the viewer the Agora lane still joins the feed, and offers nothing to press: no control, no textarea, no speak as, the sentence that nothing here can sign (end of the Agora block)",
+        `mode ${pv.$("body").dataset.mode} acts ${LL(pv, "[data-act]").length} rows ${rows(pv, "#social-feed").length} why "${pv.text("#lane-social #social-why").slice(0, 60)}"`);
+      pv.close();
+    }
   }
 }
