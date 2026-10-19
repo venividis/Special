@@ -49,7 +49,7 @@ import { CAPS } from "./gas.mjs";
 const ARGV = process.argv.slice(2);
 const arg = (f) => { const i = ARGV.indexOf(f); return i < 0 ? null : ARGV[i + 1]; };
 const ONLY = arg("--group");
-export const GROUPS = ["boot", "swap", "social", "launch", "vault", "identity", "agent"];
+export const GROUPS = ["boot", "swap", "social", "launch", "vault", "identity", "agent", "gallery"];
 const MIN_ASSERTIONS = 150;
 
 let pass = 0, fail = 0;

@@ -114,7 +114,13 @@ export const HOP_HEADERS = new Set(["date", "content-length", "connection", "kee
 /// The headers the contract sets, compared one by one when present.
 export const CONTRACT_HEADERS = ["content-type", "cache-control", "etag", "content-encoding", "location", "link"];
 
-export function routesFor(ids, key) {
+/// The lanes a deployment serves: the ones its record lists (six on a V1 band, seven with V2's
+/// Gallery, W8), else this tree's own. A route for a lane the Engine never held would be a 404
+/// on both sides, and a hash check would ask a 404 to inflate.
+export const lanesOf = (record) => (record && record.engine && Array.isArray(record.engine.panels) && record.engine.panels.length
+  ? record.engine.panels.map((p) => p.name) : PANELS);
+
+export function routesFor(ids, key, lanes = PANELS) {
   const R = [];
   const add = (p, kind) => R.push({ path: p, segments: p.split("/").filter(Boolean), kind });
   add("/", "document");
@@ -130,7 +136,7 @@ export function routesFor(ids, key) {
     add(`/c/${id}`, "moved");
     add(`/token/${id}`, "moved");
   }
-  for (const name of PANELS) add(`/panel/${name}.js`, "panel");
+  for (const name of lanes) add(`/panel/${name}.js`, "panel");
   add("/services.json", "json");
   add("/open", "json");
   add("/manifest", "json");
@@ -219,24 +225,26 @@ export async function checkHashes(t, { served, ids, record, codeAt, refetch = nu
   let M = null;
   try { M = JSON.parse(man.got.body.toString("utf8")); } catch { /* not JSON */ }
   if (!t.ok(M && Array.isArray(M.routes), "/manifest is JSON with routes", man.got.body.toString("utf8").slice(0, 120))) return;
+  /*  the lanes are the manifest's own, in slot order: the chain names what its Engine holds */
+  const LANES = Object.keys(M.panelHashes || {});
   const panelHashes = {};
-  for (const name of PANELS) {
+  for (const name of LANES) {
     const p = served[`/panel/${name}.js`];
     try { panelHashes[name] = kec(zlib.gunzipSync(p.got.body)); } catch { panelHashes[name] = null; }
   }
-  const panelsPacked = Buffer.concat(PANELS.map((n) => Buffer.from(String(M.panelHashes[n] || "0x").slice(2), "hex")));
+  const panelsPacked = Buffer.concat(LANES.map((n) => Buffer.from(String(M.panelHashes[n] || "0x").slice(2), "hex")));
   const route = (tpl) => (M.routes.find((x) => x.template === tpl) || {}).keccak;
   const inflatedDoc = (buf) => { const m = buf.toString("utf8").match(/self\.\$INTACT="([A-Za-z0-9+/=]+)";<\/script>/); return m ? zlib.gunzipSync(Buffer.from(m[1], "base64")) : null; };
   const live0 = served[`/token/${ids[0]}/live`];
   const shell = live0 ? inflatedDoc(live0.got.body) : null;
   const root = served["/"] ? inflatedDoc(served["/"].got.body) : null;
-  const recomputed = PANELS.every((n) => panelHashes[n] && low(panelHashes[n]) === low(M.panelHashes[n]))
+  const recomputed = LANES.length > 0 && LANES.every((n) => panelHashes[n] && low(panelHashes[n]) === low(M.panelHashes[n]))
     && low(route("/panel/<name>.js")) === low(kec(panelsPacked))
     && shell !== null && low(kec(shell)) === low(M.engineHash)
     && root !== null && low(kec(root)) === low(M.engineHash)
     && low(route("/token/<id>/live")) === low(M.engineHash) && low(route("/")) === low(M.engineHash);
   t.ok(recomputed, "/manifest hashes equal those recomputed from the bodies served",
-       `panels ${PANELS.map((n) => `${n} ${panelHashes[n] === null ? "no inflate" : low(panelHashes[n]) === low(M.panelHashes[n])}`).join(", ")}; shell ${shell ? kec(shell) : "no payload"} vs ${M.engineHash}`);
+       `panels ${LANES.map((n) => `${n} ${panelHashes[n] === null ? "no inflate" : low(panelHashes[n]) === low(M.panelHashes[n])}`).join(", ")}; shell ${shell ? kec(shell) : "no payload"} vs ${M.engineHash}`);
   for (const id of ids) {
     let h = served[`/token/${id}/hash`], live = served[`/token/${id}/live`], state = served[`/token/${id}/state.json`];
     /*  A live chain mines between two fetches, and the state block carries
@@ -260,7 +268,7 @@ export async function checkHashes(t, { served, ids, record, codeAt, refetch = nu
   if (record) {
     const E = record.engine || {};
     const same = low(M.engineHash) === low(E.engineHash) && JSON.stringify(M.shardHashes.map(low)) === JSON.stringify((E.shardHashes || []).map(low))
-      && PANELS.every((n) => low(M.panelHashes[n]) === low((E.panelHashes || {})[n])) && low(M.catalogHash) === low(record.catalogHash);
+      && LANES.join() === Object.keys(E.panelHashes || {}).join() && LANES.every((n) => low(M.panelHashes[n]) === low(E.panelHashes[n])) && low(M.catalogHash) === low(record.catalogHash);
     t.ok(same, "/manifest is the record's: engineHash, shardHashes, panelHashes, catalogHash", `manifest ${M.engineHash} ${M.catalogHash}; record ${E.engineHash} ${record.catalogHash}`);
     if (codeAt && record.contracts && record.contracts.crest) {
       const code = await codeAt(record.contracts.crest);
@@ -323,7 +331,7 @@ async function main() {
   const chainAnswer = async (segments) => decResponse(await c.call(premises, encRequest(segments)));
   const codeAt = async (a) => c.rpc("eth_getCode", [a, c.tag ? await c.tag() : "latest"]);
   const key = record?.deployer || "0x" + "ab".repeat(20);
-  const routes = routesFor(ids, key);
+  const routes = routesFor(ids, key, lanesOf(record));
 
   t.head(`${routes.length} routes: status, bytes and headers against eth_call`);
   const served = await diffRoutes(t, { gateway, prefix, routes, chainAnswer });

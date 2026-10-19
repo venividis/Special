@@ -1164,15 +1164,16 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
        Vault, Social, Studio. Identity opens as a settings sheet from the avatar in the crest and
        the agent lane as a door beside it: the same links, placed by app.css. A lit indicator
        slides under the room in use; a sheet closes back to it. ──*/
-  const ROOMS = { swap: ["Trade", "Quoted before you sign; nothing settles below the floor."],
+  const ROOMS = { gallery: ["Gallery", "Any NFT, from the chain alone: its art, its story, its price."],
+    swap: ["Trade", "Quoted before you sign; nothing settles below the floor."],
     vault: ["Vault", "What the Reach holds, who may act for it, and its seal."],
     social: ["Social", "Hold one and you are in the room."],
     launch: ["Studio", "Launch a coin: a fair raise, released slowly."],
     identity: ["Identity", "Rights, keys, traits and the listing."],
     agent: ["Agent", "The agent card, and the keys that act through it."] };
-  const SHEET = ["identity", "agent"], ORDER = ["swap", "vault", "social", "launch"];
+  const SHEET = ["identity", "agent"], ORDER = ["gallery", "swap", "vault", "social", "launch"];
   const ICON = { home: "M8.5 3.5h7a5 5 0 0 1 5 5v7a5 5 0 0 1-5 5h-7a5 5 0 0 1-5-5v-7a5 5 0 0 1 5-5zM15.6 12a3.6 3.6 0 1 1-7.2 0a3.6 3.6 0 1 1 7.2 0z",
-    swap: "M4 8h14l-3-3M20 16H6l3 3", vault: "M20.5 12a8.5 8.5 0 1 1-17 0a8.5 8.5 0 1 1 17 0zM15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0zM12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3",
+    gallery: "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15.5 8.5h.01", swap: "M4 8h14l-3-3M20 16H6l3 3", vault: "M20.5 12a8.5 8.5 0 1 1-17 0a8.5 8.5 0 1 1 17 0zM15 12a3 3 0 1 1-6 0a3 3 0 1 1 6 0zM12 3.5v3M12 17.5v3M3.5 12h3M17.5 12h3",
     social: "M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7a2.5 2.5 0 0 1-2.5 2.5H10l-5 4v-4.4A2.5 2.5 0 0 1 4 13.5z",
     launch: "M12 3l2.2 5.6L20 9.2l-4.4 3.9L17 19l-5-3.1L7 19l1.4-5.9L4 9.2l5.8-.6z", agent: "M6.5 20.5v-16a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v16M4 20.5h16M14.5 12h.01" };
   const icon = d => { const s = sv("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }); sv("path", { d }, s); return s; };

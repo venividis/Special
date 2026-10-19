@@ -128,7 +128,7 @@ ok("the no-immutable contracts reproduce from source; the pinned ones (the facto
 ok("every head and body pointer is CREATE(engine, 1 + k) in load order",
    rec.engine.head.every((a, i) => low(a) === low(predictCreate(rec.engine.address, 1 + i))) &&
    rec.engine.body.every((a, i) => low(a) === low(predictCreate(rec.engine.address, 1 + rec.engine.head.length + i))));
-eq("six panel pointers follow", rec.engine.panels.length, 6);
+eq("seven panel pointers follow: V1's six lanes, then the Gallery", rec.engine.panels.length, 7);
 eq("the panel names are the lanes in order", rec.engine.panels.map((p) => p.name).join(","), PANELS.join(","));
 ok("the record names the gas each step took and a total", Object.keys(rec.gas).length > 20 && BigInt(rec.gasTotal) > 0n);
 ok("the record names the toolchain (solc, 800 runs, viaIR, cancun, bytecodeHash none)",
@@ -211,6 +211,27 @@ head("a resume whose stored shards differ from the plan is refused before freeze
   const resumed = await deployIntact(adX, { out, plan: planX, manifest: manX, journalPath: jX, recordPath: null });
   const rX = await recover(adX, resumed, { out });
   eq("while the honest resume, with the interrupted run's own plan, completes and recovers with 0 disagreeing", `${resumed.engine.frozen} ${rX.disagreements.length}`, "true 0");
+}
+
+/*──────────────── a record of six lanes ────────────────*/
+head("a record of V1's six lanes recovers: the shape of every record written before the Gallery");
+{
+  /*  The live V1 records (deployments/31337.json, 84532.json and its first run) list six panels,
+      and V2's Engine holds up to eight (W8). A plan cut to the six V1 lanes is deployed here as such
+      a band was: its Engine freezes on the six, and the record of it — six panel entries, six
+      panelHashes — recovers, the recovery walking the lanes the record lists and finding no lane
+      past them. */
+  const { plan: planD, manifest: manD } = readDist();
+  const six = PANELS.slice(0, 6), extra = planD.panels.length - six.length;
+  const plan6 = { ...planD, panels: planD.panels.filter((p) => six.includes(p.name)) };
+  const man6 = { ...manD, panelHashes: Object.fromEntries(six.map((n) => [n, manD.panelHashes[n]])), shardHashes: manD.shardHashes.slice(0, manD.shardHashes.length - extra) };
+  const ad6 = adapt(await Chain.open({ chainId: 31337 }));
+  const rec6 = await deployIntact(ad6, { out, plan: plan6, manifest: man6, journalPath: null, recordPath: null });
+  const r6 = await recover(ad6, rec6, { out });
+  ok("a band whose Engine holds V1's six lanes deploys and freezes, and its record lists six",
+     rec6.engine.panels.map((p) => p.name).join(",") === six.join(",") && Object.keys(rec6.engine.panelHashes).join(",") === six.join(",") &&
+     decUint(await ad6.read(rec6.engine.address, "panelCount()")) === 6n, `${rec6.engine.panels.map((p) => p.name)} ${Object.keys(rec6.engine.panelHashes)}`);
+  eq("and that six-lane record recovers with 0 disagreeing", r6.disagreements.length + (r6.disagreements.length ? " " + JSON.stringify(r6.disagreements).slice(0, 300) : ""), "0");
 }
 
 /*──────────────── the refusal ────────────────*/

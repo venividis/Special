@@ -9,7 +9,7 @@
   Compiles the contracts, deploys the whole MVB into an in-process EVM at
   Cancun (tools/site.mjs — the diamond that ships, the real ERC-6551
   registry, every satellite at its predicted address), loads the shell
-  and the six panels shard by shard, freezes the engine, mints, and then
+  and the seven panels shard by shard, freezes the engine, mints, and then
   pulls tokenURI() back out and takes it apart: base64 → JSON → base64 →
   the document → the state block and the gzip shell. The document that
   comes back has to be the same bytes `/token/<id>/live` serves, the
@@ -292,6 +292,7 @@ eq("topics.said is keccak of the Said signature", S.topics.said, SAID);
 }
 eq("topics.transfer", S.topics.transfer, kec(Buffer.from("Transfer(address,address,uint256)")));
 for (const name of PANELS) eq(`panels.${name} is the pinned hash`, S.panels[name], manifest.panelHashes[name]);
+eq("the state's panel map names exactly the lanes the Engine holds, in slot order (the Gallery seventh)", Object.keys(S.panels).join(","), PANELS.join(","));
 eq("catalogHash in the gap is the Catalog's immutable", S.catalogHash, await c.read(site.catalog, "catalogHash()"));
 eq("and it is the keccak of /services.json's bytes", S.catalogHash, kec(svc.bodyBytes));
 ok("services.json names no price and no count, so its hash is a property of the deployment",
@@ -395,7 +396,7 @@ eq("catalogHash", M.catalogHash, S.catalogHash);
 eq("crestCodehash is the Crest's extcodehash", M.crestCodehash, kec(await c.vm.stateManager.getCode((await import("@ethereumjs/util")).createAddressFromString(site.crest))));
 ok("routes are templates, and there are sixteen of them, not 4,096", M.routes.length === 16 && M.routes.every((r) => !/\/token\/\d/.test(r.template)));
 ok("the templated token routes hash the engine", M.routes.find((r) => r.template === "/token/<id>/live").keccak === plan.engineHash);
-ok("the panel route hashes the six panel hashes together",
+ok(`the panel route hashes the ${PANELS.length} lanes' pins together, in slot order`,
    M.routes.find((r) => r.template === "/panel/<name>.js").keccak === kec(Buffer.concat(PANELS.map((n) => Buffer.from(manifest.panelHashes[n].slice(2), "hex")))));
 ok(`/manifest reads for under ${gas(CAPS.manifest)} gas`, man.gas <= CAPS.manifest, gas(man.gas));
 

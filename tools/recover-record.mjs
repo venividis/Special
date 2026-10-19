@@ -57,7 +57,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decAddr, decUint, decBool } from "./evm.mjs";
-import { REGISTRY, REGISTRY_RUNTIME, ZERO, PANELS, predictCreate, encRequest, decResponse } from "./site.mjs";
+import { REGISTRY, REGISTRY_RUNTIME, ZERO, predictCreate, encRequest, decResponse } from "./site.mjs";
 import { PINS, pinApplies, BAND_GETTERS, SALTED, PLACEHOLDERS, RECORD_KEYS, ROUTER_HASHES, venueTargets, DEPLOYED_TOPIC,
          saltOf, saltName, predictCreate3, kec, decWords, decAddrs, decBytes4s, adapt } from "./deploy.mjs";
 
@@ -254,9 +254,15 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
     say("engine.inflatedSize", E.inflatedSize, or(await uintOf(e, "inflatedSize()")));
     say("engine.curator", E.curator, or(await addrOf(e, "curator()")));
     sayJson("engine.shardHashes", E.shardHashes.map(low), await wordsOf(e, "shardHashes()"));
-    for (let i = 0; i < PANELS.length; i++) {
-      say(`engine.panelHashes.${PANELS[i]}`, E.panelHashes[PANELS[i]], or(await rawOf(e, "panelHash(uint256)", [i])));
+    /*  The lanes the RECORD lists, in slot order — V1's six on a record written before V2's
+        Gallery, seven after it (W8) — each against its slot, and no lane past them: a V1 Engine
+        refuses the next index (BadPanel) and a V2 Engine answers zero, and either is "none". */
+    const lanes = (E.panels || []).map((p) => p.name);
+    for (let i = 0; i < lanes.length; i++) {
+      say(`engine.panelHashes.${lanes[i]}`, E.panelHashes[lanes[i]], or(await rawOf(e, "panelHash(uint256)", [i])));
     }
+    const past = await rawOf(e, "panelHash(uint256)", [lanes.length]);
+    say(`engine holds no lane past the record's ${lanes.length}`, "none", past === null || /^0x0*$/.test(past) ? "none" : past);
     const counts = await rawOf(e, "shardCount()");
     say("engine.head.length", E.head.length, counts ? decUint(counts, 0) : NO);
     say("engine.body.length", E.body.length, counts ? decUint(counts, 1) : NO);

@@ -91,7 +91,7 @@ import { walletFor, nap } from "./dom-shim.mjs";
 
 const ARGV = process.argv.slice(2);
 const arg = (f) => { const i = ARGV.indexOf(f); return i < 0 ? null : ARGV[i + 1]; };
-export const GROUPS = ["boot", "viewer", "session", "agent", "swap", "social", "identity", "vault", "launch", "journey"];
+export const GROUPS = ["boot", "viewer", "session", "agent", "swap", "social", "identity", "vault", "launch", "journey", "gallery"];
 const MIN_ASSERTIONS = 110;
 const WAD = 10n ** 18n;
 
@@ -512,7 +512,7 @@ async function groupBoot(t, ctx) {
     const re = new RegExp("^engine " + esc(short(checksum(S1.engine))) + " pins these bytes at block (\\d+)$");
     const m = verified.match(re);
     t.ok(!!m && BigInt(m[1]) === EVM.BLOCK.header.number && W.callsTo(S1.engine, sel("engineHash()")).length === 1, "the self-hash footer: Chromium's keccak of the bytes that ran equals the baked hash and the engine's live answer, at the chain's block", verified);
-    t.ok(probe.lanes === 5 && (await pg.evaluate(() => [...document.querySelectorAll("#lanes a")].every((a) => a.getAttribute("aria-disabled") !== "true"))) && (S1.absent & S1.bits.agentcard) !== 0, "the five lanes are offered in the console, the agent link withheld while the AgentCard has no code", String(probe.lanes));
+    t.ok(probe.lanes === 6 && (await pg.evaluate(() => [...document.querySelectorAll("#lanes a")].every((a) => a.getAttribute("aria-disabled") !== "true"))) && (S1.absent & S1.bits.agentcard) !== 0, "the six lanes are offered in the console, the Gallery first, the agent link withheld while the AgentCard has no code", String(probe.lanes));
     const off = pg.log.requests.filter((u) => !u.startsWith(ctx.web.origin + "/") && !/^(data|blob):/.test(u));
     t.ok(pg.log.requests.length >= 1 && off.length === 0, `nothing points off-origin: every request Chromium made went to 127.0.0.1:${ctx.web.port} (${pg.log.requests.length} requests)`, off.join(","));
     t.ok(pg.clean(), "no script threw, no console error and no CSP violation on the holder's page", pg.problems());
@@ -2026,7 +2026,146 @@ async function groupJourney(t, ctx) {
   await journey(t, { open: ctx.open, c, site, W, WB, ME: me.from.toString(), BUYER: buyer.from.toString(), AGENT: agentW.from.toString(), mockERC20: ctx.A("test/mocks/MockERC20.sol", "MockERC20").bytecode, now: async () => ctx.now(), chainId: 1 });
 }
 
-const RUNNERS = { boot: groupBoot, viewer: groupViewer, session: groupSession, agent: groupAgent, swap: groupSwap, social: groupSocial, identity: groupIdentity, vault: groupVault, launch: groupLaunch, journey: groupJourney };
+/*──────────────── gallery (V2, W8) ────────────────*/
+/*  The Gallery lane in Chromium, on a chain of the group's own with every V2 contract and Seaport 1.6's
+    probed runtime at its canonical address: the holder lists #1 by a person's path (review, seal the
+    Reach, let Seaport move it, validate, publish — five clicks, four signatures, none of them typed
+    data), a second account finds it and buys it at exactly the price; a listing whose token moved since
+    it was listed is refused in words with no buy; and a Studio token's own page runs in the frame the
+    lane gives it — sandbox "allow-scripts" alone, an opaque origin, its script running, its parent out
+    of reach, its own CSP refusing the network. */
+async function groupGallery(t, ctx0) {
+  const F = await ctx0.fresh({ v2: true });
+  try {
+    const { c, site, actors } = F;
+    const me = actors.me, buyer = actors.buyer, ME = me.from.toString(), BUYER = buyer.from.toString(), hub = site.hub;
+    const SEAPORT = site.seaport, bazaar = site.bazaar, DAY = 86_400n, PRICE = WAD / 10n;
+    const w32 = (n) => "0x" + BigInt(n).toString(16).padStart(64, "0");
+    for (let i = 0; i < 2; i++) await mint(c, site, ME);
+    const G = (s) => "#lane-gallery " + s;
+    /* the form waits closed above the art: a person opens it first */
+    const openNft = async (pg, coll, id) => {
+      await pg.click(G("#gallery-form summary"));
+      await pg.fill(G("#gallery-form input[name=collection]"), coll);
+      await pg.fill(G("#gallery-form input[name=id]"), id == null ? "" : String(id));
+      await pg.evaluate(() => { window.INTACT.loaded.gallery = false; });
+      await pg.click(G("#gallery-open"));
+      await pg.until(() => window.INTACT.loaded.gallery === true, null, 20000);
+      await pg.settle(150);
+    };
+
+    t.head("A · the holder lists #1 by a person's path, with no signature");
+    let listed = false;
+    {
+      const W = F.wallet(me);
+      const pg = await F.open({ wallet: W });
+      await pg.lane("gallery");
+      await pg.until(() => __e("#lane-gallery #gallery-art img") && __e("#lane-gallery #gallery-review"), null, 20000);
+      const art = await pg.evaluate(() => { const i = document.querySelector("#lane-gallery #gallery-art img"); return i && i.complete && i.naturalWidth > 0 && i.getAttribute("src").startsWith("data:image/svg+xml;base64,"); });
+      await pg.fill(G("#gallery-sell input[name=price]"), "0.1");
+      await pg.click(G("#gallery-review"));
+      const order = [["sealReach", "seal(uint64)"], ["approve", "approve(address,uint256)"], ["validate", "validate("], ["publish", "publish("]];
+      let n = 0, fns = [];
+      for (const [act, fn] of order) {
+        const ok = await pg.until((a) => __e("#lane-gallery #gallery-steps [data-act=" + a + "]"), act, 20000);
+        if (!ok) throw new Error("no " + act + " step: " + await pg.text(G("#gallery-sell")));
+        await pg.press(G("#gallery-steps [data-act=" + act + "]"));
+        fns.push((await pg.fn()).startsWith(fn));
+        await pg.sign(W, ++n);
+      }
+      await pg.until(() => /listed: it shows above/.test(__t("#lane-gallery #gallery-steps")) && __e("#lane-gallery #gallery-listings [data-act=cancel]"), null, 20000);
+      const pub = c.getLogs({ address: bazaar, topics: [kec("Published(address,uint256,bytes32,address,uint8,uint8,address,uint256,uint256)"), w32(hub), w32(1)] });
+      listed = pub.length === 1 && fns.every(Boolean) && W.prompts().every((p) => p.method === "eth_sendTransaction");
+      t.ok(art && listed && W.sent() === 4 && pg.clean(),
+        "in Chromium the holder lists #1 from the Gallery by a person's path — review, seal the Reach, let Seaport move it, validate, publish — four transactions and no typed-data signature, and the Bazaar indexes it",
+        `art ${art} fns ${fns} published ${pub.length} prompts ${W.prompts().map((p) => p.method)} ${pg.problems()}`);
+      await pg.close();
+    }
+
+    t.head("B · a second account finds the listing and buys it at exactly the price");
+    {
+      const WB = F.wallet(buyer);
+      const pg = await F.open({ wallet: WB });
+      await pg.lane("gallery");
+      await pg.until(() => __e("#lane-gallery #gallery-listings [data-act=buy]"), null, 20000);
+      const state = await pg.text(G("#gallery-listings .listing .state")), price = await pg.visible(G("#gallery-price")) ? await pg.text(G("#gallery-price")) : "hidden";
+      await pg.press(G("#gallery-listings [data-act=buy]"));
+      const wei = await pg.ds("#cslab [data-value]", "wei"), fn = await pg.fn();
+      await pg.sign(WB, 1);
+      const owner = lower(decAddr(await c.read(hub, "ownerOf(uint256)", [1])));
+      t.ok(listed && state === "live" && /^0\.1 ETH · on Seaport, until /.test(price) && fn.startsWith("fulfillOrder(") && wei === String(PRICE) && owner === lower(BUYER) && pg.clean(),
+        "in Chromium a second account finds the Gallery listing from the chain's logs, its price under the art, and buys it with one click and one signature at exactly the price: the INTACT token is the buyer's",
+        `state ${state} price "${price}" fn ${fn.slice(0, 14)} value ${wei} owner ${owner} ${pg.problems()}`);
+      await pg.close();
+    }
+
+    t.head("C · a listing whose token moved since it was listed is refused in words");
+    {
+      const id = 2n, end = F.now() + 30n * DAY;
+      const reach = decAddr(await c.read(hub, "account(uint256)", [id]));
+      await c.exec(reach, "seal(uint64)", [end]);
+      await c.exec(hub, "approve(address,uint256)", [SEAPORT, id]);
+      const fp = "0x" + (await c.read(hub, "getStateFingerprint(uint256)", [id])).slice(2, 66);
+      const zh = "0x" + (await c.read(bazaar, "pinHash(uint256,bytes32,(address,uint256)[])", [id, fp, []])).slice(2, 66);
+      const OF = "(uint8,address,uint256,uint256,uint256)", CO = "(uint8,address,uint256,uint256,uint256,address)";
+      const PAR = `(address,address,${OF}[],${CO}[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256)`;
+      const params = [ME, bazaar, [[2, hub, id, 1, 1]], [[0, ZERO, 0, PRICE, PRICE, ME]], 2, F.now(), end, zh, 77, w32(0), 1];
+      await c.exec(SEAPORT, `validate((${PAR},bytes)[])`, [[[params, "0x"]]]);
+      await c.exec(bazaar, `publish((${PAR},bytes),(address,uint256)[])`, [[params, "0x"], []]);
+      await c.exec(hub, "setTrait(uint256,bytes32,bytes32)", [id, kec("name"), "0x" + Buffer.from("moved").toString("hex").padEnd(64, "0")]);
+      const WB = F.wallet(buyer);
+      const pg = await F.open({ wallet: WB });
+      await pg.lane("gallery");
+      await openNft(pg, hub, id);
+      await pg.until(() => /refused/.test(__t("#lane-gallery #gallery-listings")), null, 20000);
+      const words = await pg.text(G("#gallery-listings"));
+      const visible = await pg.visible(G("#gallery-listings .listing .blurb"));
+      t.ok(/refused by the zone: FingerprintMoved — the token changed since it was listed/.test(words) && visible && !(await pg.exists(G("#gallery-listings [data-act=buy]"))) && WB.count("eth_estimateGas") === 0 && pg.clean(),
+        "in Chromium a listing whose token moved since it was listed reads refused by the zone, in words a person can see, and offers no buy", words.slice(0, 200));
+      await pg.close();
+    }
+
+    t.head("D · a Studio token's own page, in the frame the lane gives it");
+    {
+      const SPEC_T = "(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes)";
+      const page = '<!doctype html><html><head><meta charset="utf-8"><title>Lantern #{{id}}</title></head><body><h1>Lantern #{{id}}</h1>' +
+        "<script>document.body.dataset.seed='{{seed}}';try{document.body.dataset.parent=String(parent.document.title)}catch(e){document.body.dataset.parent='out of reach'}" +
+        "fetch('/services.json').then(function(){document.body.dataset.net='reached'},function(){document.body.dataset.net='refused'})</script></body></html>";
+      const spec = ["Lantern", "LANT", "", 10, 0, 0, 0, 0, 0, 0, "0x" + Buffer.from(page, "utf8").toString("hex"), "0x"];
+      const r = await c.exec(site.studio, `launch(uint256,${SPEC_T},bytes32)`, [(BigInt(hub) << 96n) | 2n, spec, w32(9)]);
+      const lantern = decAddr(r.ret);
+      await c.exec(lantern, "mint(address,uint256)", [ME, 0]);
+      const W = F.wallet(me);
+      const pg = await F.open({ wallet: W });
+      await pg.lane("gallery");
+      await openNft(pg, lantern, 1);
+      await pg.until(() => __e("#lane-gallery #gallery-site"), null, 20000);
+      const sandbox = await pg.attr(G("#gallery-site"), "sandbox");
+      const h = await pg.frame.$(G("#gallery-site"));
+      const fr = await h.contentFrame();
+      await fr.waitForFunction(() => !!document.body && !!document.body.dataset.parent && !!document.body.dataset.net, null, { timeout: 10000 });
+      const inside = await fr.evaluate(() => ({ origin: self.origin, seed: document.body.dataset.seed, parent: document.body.dataset.parent, net: document.body.dataset.net, h1: document.querySelector("h1").textContent }));
+      const box = await h.boundingBox();
+      /*  Playwright runs a context's init scripts in every frame, the sandboxed one too, and its own
+          serviceWorkers: "block" probe reads navigator.serviceWorker there — which a sandbox without
+          allow-same-origin refuses with a SecurityError. That refusal is the harness's, not the page's;
+          every other problem still fails the sentence. */
+      const SW = /Failed to read the 'serviceWorker' property from 'Navigator': Service worker is disabled because the context is sandboxed/;
+      /* the page's own fetch is refused by the CSP the lane put in its srcdoc, and Chromium says so in the console: expected, and named */
+      const REFUSED = /services\.json.*(violates the following Content Security Policy directive: "default-src 'none'"|Refused to connect because it violates the document's Content Security Policy)/s;
+      const all = [...pg.log.errors, ...pg.log.consoleErrors, ...pg.log.csp], refusedNet = all.filter((p) => REFUSED.test(p)), problems = all.filter((p) => !SW.test(p) && !REFUSED.test(p));
+      const sent = pg.log.requests.filter((u) => /\/services\.json$/.test(u));
+      t.ok(sandbox === "allow-scripts" && inside.origin === "null" && /^0x[0-9a-f]{64}$/.test(inside.seed) && inside.parent === "out of reach" && inside.h1 === "Lantern #1" && box && box.width > 200 && box.height > 200 && problems.length === 0,
+        "in Chromium a token's own page runs in an iframe whose sandbox is allow-scripts and nothing else: its script runs, its origin is opaque, its parent is out of its reach",
+        `sandbox "${sandbox}" ${JSON.stringify(inside)} ${problems.join(" | ").slice(0, 300)}`);
+      t.ok(inside.net === "refused" && refusedNet.length >= 1 && sent.length === 0,
+        "and its own fetch is refused by the CSP the lane wrote into its srcdoc: no request leaves the frame", `net ${inside.net} refusals ${refusedNet.length} sent ${sent.join(",")}`);
+      await pg.close();
+    }
+  } finally { await F.close(); }
+}
+
+const RUNNERS = { boot: groupBoot, viewer: groupViewer, session: groupSession, agent: groupAgent, swap: groupSwap, social: groupSocial, identity: groupIdentity, vault: groupVault, launch: groupLaunch, journey: groupJourney, gallery: groupGallery };
 
 /*═══════════════════ the runner ═══════════════════*/
 

@@ -98,7 +98,7 @@ import { compile, artifact, shipRule, LIMIT } from "./compile.mjs";
 import { enc, encodeParams, decAddr, decUint, decBool, decString, TX_GAS_CAP } from "./evm.mjs";
 import * as EVM from "./evm.mjs";
 import { hubCut } from "./facets.mjs";
-import { REGISTRY, REGISTRY_RUNTIME, ZERO, PANELS, CONFIG_TYPE, CATALOG_CONFIG_TYPE,
+import { REGISTRY, REGISTRY_RUNTIME, ZERO, CONFIG_TYPE, CATALOG_CONFIG_TYPE,
          predictCreate, encRequest, decResponse } from "./site.mjs";
 /*  A static import, although recover-record.mjs imports this file back:
     ESM resolves a static cycle (each side touches the other's exports only
@@ -868,10 +868,10 @@ export async function deployIntact(ad, opts = {}) {
   for (let i = 0; i < plan.panels.length; i++) pointers.panels.push(pointerOf("panel", i) || predictCreate(engine, shardBase + i));
   pointers.head.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, 1 + i))) throw new Error(`head shard ${i} is not at CREATE(engine, ${1 + i})`); });
   pointers.body.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, 1 + plan.head.length + i))) throw new Error(`body shard ${i} is not at CREATE(engine, ${1 + plan.head.length + i})`); });
-  pointers.panels.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, shardBase + i))) throw new Error(`panel ${PANELS[i]} is not at CREATE(engine, ${shardBase + i})`); });
+  pointers.panels.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, shardBase + i))) throw new Error(`panel ${plan.panels[i].name} is not at CREATE(engine, ${shardBase + i})`); });
   for (let i = 0; i < plan.panels.length; i++) {
     const c = await ad.codeAt(pointers.panels[i]);
-    if (kecHex(c.slice(4)) !== low(plan.panels[i].gzipHash)) throw new Error(`panel ${PANELS[i]}'s pointer ${pointers.panels[i]} does not hold its gzip bytes`);
+    if (kecHex(c.slice(4)) !== low(plan.panels[i].gzipHash)) throw new Error(`panel ${plan.panels[i].name}'s pointer ${pointers.panels[i]} does not hold its gzip bytes`);
   }
 
   /*── 4–6. Crest, Reach impl, Grip impl ──*/
@@ -1014,9 +1014,14 @@ export async function deployIntact(ad, opts = {}) {
   if (decUint(await ad.read(engine, "inflatedSize()")) !== BigInt(manifest.inflatedSize)) fail("inflatedSize differs from dist/manifest.json");
   const shardHashes = decWords(await ad.read(engine, "shardHashes()"));
   if (JSON.stringify(shardHashes.map(low)) !== JSON.stringify(manifest.shardHashes.map(low))) fail("shardHashes() differ from dist/manifest.json");
-  for (let i = 0; i < PANELS.length; i++) {
-    if (low(await ad.read(engine, "panelHash(uint256)", [i])) !== low(manifest.panelHashes[PANELS[i]])) fail(`panel ${PANELS[i]}'s hash differs from the manifest`);
+  /*  the lanes the plan loaded, in slot order (the Engine holds up to eight, W8): each slot's pin is
+      the manifest's, and the Engine holds nothing past them (panelCount is the loaded prefix) */
+  for (let i = 0; i < plan.panels.length; i++) {
+    const name = plan.panels[i].name;
+    if (low(await ad.read(engine, "panelHash(uint256)", [i])) !== low(manifest.panelHashes[name])) fail(`panel ${name}'s hash differs from the manifest`);
   }
+  const lanes = decUint(await ad.read(engine, "panelCount()"));
+  if (lanes !== BigInt(plan.panels.length)) fail(`the Engine holds ${lanes} lanes and the plan ${plan.panels.length}`);
   const curator = low(decAddr(await ad.read(engine, "curator()")));
 
   // /manifest over ERC-5219 names the same hashes
@@ -1070,7 +1075,7 @@ export async function deployIntact(ad, opts = {}) {
       engineHash: low(manifest.engineHash), inflatedSize: manifest.inflatedSize,
       shardHashes: shardHashes.map(low), panelHashes: manifest.panelHashes,
       head: pointers.head.map(low), body: pointers.body.map(low),
-      panels: PANELS.map((name, i) => ({ name, address: low(pointers.panels[i]), hash: low(manifest.panelHashes[name]), gzipHash: low(plan.panels[i].gzipHash) })),
+      panels: plan.panels.map(({ name, gzipHash }, i) => ({ name, address: low(pointers.panels[i]), hash: low(manifest.panelHashes[name]), gzipHash: low(gzipHash) })),
       storedBytes: plan.storedBytes, placeholder: Boolean(plan.placeholder)
     },
     catalogHash, coinTemplate,

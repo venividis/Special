@@ -154,7 +154,7 @@ export async function run(t, ctx) {
       "M1 the rule is printed verbatim", `"${T(page, "identity-status-rule")}" status ${T(page, "identity-status")}`);
     /* M13 */
     const manifest = page.text("#lane-identity #identity-manifest");
-    t.ok(new RegExp("engine\\s*" + S.engineHash).test(manifest) && new RegExp("catalog\\s*" + S.catalogHash).test(manifest) && Object.keys(S.panels).length === 6 &&
+    t.ok(new RegExp("engine\\s*" + S.engineHash).test(manifest) && new RegExp("catalog\\s*" + S.catalogHash).test(manifest) && Object.keys(S.panels).length === ctx.PANELS.length &&
       Object.entries(S.panels).every(([k, h]) => new RegExp("panel " + k + "\\s*" + h).test(manifest)) && /^0x[0-9a-f]{64}$/.test(S.engineHash),
       "M13 the hash manifest is the state's: the engine hash, the catalog hash and every panel's pin, printed from the block", manifest.slice(0, 200));
     /* M10 */
