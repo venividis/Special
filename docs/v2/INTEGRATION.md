@@ -101,10 +101,10 @@ Requests from the lanes:
 | L6 | The identity lane on an Agora band binds and reads keys through Agora | W11 | yes | open |
 | L7 | The slab: a per-step label on the exact-approval line ("Lets the market pull…" when the spender is the Keepsake); argument rows for tuple arguments | W9 | yes | open |
 | L8 | `IEngine.panelCount` is `view`, not `pure` (INTERFACE-CHANGES) | W8 | yes | open |
-| L9 | CONSOLE.md §5 (`ui.data` builds tuples since 959acee), §6.2 (every lane's new ids), §9, §14, §16, §18, §19 | all | yes | open |
+| L9 | CONSOLE.md §5 (`ui.data` builds tuples since 959acee), §6.2 (every lane's new ids), §9, §14, §16, §18, §19 | all | yes | written in 3a094fc: §5, §6.2's V2 table, §9 under Agora, §14, §18, §19. After W14: §4.2's tuple rows, the approval label, identity's Agora ids, §16's bytes |
 | L10 | INVARIANTS and DESIGN §14: W10-1…15, W9's F16–F22, W11's N10–N17, W8's F16–F18 and Y1–Y10 (renumbered at integration) | all | yes, pending until the battery | written, pending: F16–F19, K13–K32, J8, S17–S26, N10–N17, Y1–Y10 (53 rows; the id map below). Every cited sentence was found verbatim with all 53 read as live in a scratch copy: the checker read 331 passed, 0 failed. They flip after the battery, each by its own mutation evidence |
-| L11 | CLAUDE.md: the panel sizes; a panel's style goes in the head; a suite's own chain write while a shim read is in flight fails on its nonce; Playwright's service-worker error in sandboxed frames; never `pkill -f` | W8, W9, W11 | yes | open |
-| L12 | "six panels" wording in DESIGN and DEPLOYMENT; V2.md §3.3 as built (off-chain art is a link, selling needs no signature, OpenSea stays off, no WETH offers yet) | W8 | yes | open |
+| L11 | CLAUDE.md: the panel sizes; a panel's style goes in the head; a suite's own chain write while a shim read is in flight fails on its nonce; Playwright's service-worker error in sandboxed frames; never `pkill -f` | W8, W9, W11 | yes | traps written: PID-only kills, the shim's throwing waits (W13), solc's unhandled rejection (W12), the nonce, the shim's clock, the closed details, the sandboxed frame. The sizes line and the panel-style rule wait for W14, which moves the styles (L4) |
+| L12 | "six panels" wording in DESIGN and DEPLOYMENT; V2.md §3.3 as built (off-chain art is a link, selling needs no signature, OpenSea stays off, no WETH offers yet) | W8 | yes | written: V2.md §3.3 as built and §4's eight; DESIGN's deploy order. DEPLOYMENT.md waits for W15 |
 | L13 | verify-console's viewer group no longer needs the Grip clipboard observation (fixed in W10) | W10 | yes | open |
 | L14 | `tools/mutations.mjs` adopts the panels' mutation tables | W11 | later | open |
 | W7-7 | the Grip's copy button in a `data:` frame | W7 | yes | done in W10 |

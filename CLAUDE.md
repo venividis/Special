@@ -244,6 +244,44 @@ after wave 0: a change is additive only and goes in
   variable first (`let ok := staticcall(…)`), then read `returndatasize()`.
   Keepsake's first draft paid nothing for every honest token this way, and
   its suite caught it (docs/v2/W1-keepsake.md).
+- **Stop your own processes by PID, never `pkill -f`.** Units share four
+  cores and one process table, so a pattern matches their runs too. One
+  `pkill -f "tools/verify-site.mjs"` killed another unit's run (exit 143)
+  on 2026-10-19.
+- **The shim's waits throw.** `page.until` (tools/dom-shim.mjs) throws an
+  `UntilTimeout` naming the group, the lines that waited and the
+  condition, and the group stops there. `{ soft: true }` keeps the old
+  answer, for a wait whose answer the caller reads or a deliberate pause;
+  each soft call says why. A wait raced against another promise must be
+  soft: one that loses the race and throws later is an unhandled
+  rejection. A `sign` after a transaction that moves the epoch or the
+  wallet's rights (a panic, a buy) ends on "ownership or epoch changed —
+  review again" (CONSOLE §4.7), so the helpers take `moved`
+  (docs/v2/W13-waits.md).
+- **solc kills a run on any unhandled rejection.**
+  `node_modules/solc/soljson.js` registers
+  `process.on("unhandledRejection", reason => { throw reason; })`, and every
+  suite that compiles loads it. So a panel's unhandled rejection in the
+  shim ends the run before its summary. A panel's promise chain ends in
+  `.catch`; `.then(ok, err)` does not cover a throw inside `ok`.
+- **A suite's own write while the page has a read in flight fails on its
+  nonce.** The shim answers `eth_call` with `Chain.simulate`, which
+  checkpoints the shared VM, and the suite's write reads its nonce outside
+  that checkpoint: "the tx doesn't have the correct nonce". Wait for the
+  page to go quiet (`quiet(page, W)` in the social group) before the suite
+  writes.
+- **The shim's clock moves 12 s on every `eth_sendTransaction`.** A paint
+  after a receipt reads a newer clock than the one before it.
+- **Chromium hides a closed `<details>` with `content-visibility`**, and its
+  fields keep their client rects, so a box test calls them visible.
+  verify-console's `visible()` asks `checkVisibility()` and walks the
+  ancestors.
+- **Playwright's service-worker block throws in a sandboxed frame.**
+  `serviceWorkers: "block"` installs an init script that reads
+  `navigator.serviceWorker` in every frame, and a frame sandboxed without
+  `allow-same-origin` throws a SecurityError there. The error is the
+  harness's: filter it by its text, as the gallery group does, and
+  nothing else.
 
 ## The mutation gate (INVARIANTS E1/E3)
 
