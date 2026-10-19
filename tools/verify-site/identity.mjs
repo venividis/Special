@@ -24,7 +24,11 @@
   the Reach is unsealed, the hand-laid list slab, the buy at the exact
   price with the re-read at Sign caught moving, the seller's claim, the
   USER role live and expired, and a listing made stale by its holder's
-  panic cleared by a stranger). No BUILD-PLAN §U9 sentence is owned here (CONSOLE §15
+  panic cleared by a stranger); G the ENS row on band 0 (tools/verify-plate.mjs's
+  ENS fixture, the site deployed after it with the Nameplate at the Catalog's
+  pin: nothing before the registration, nothing while a wallet holds the
+  apex, every id resolving to its own Reach once the apex sits in #3073's,
+  and the lapse on the registrar's clock). No BUILD-PLAN §U9 sentence is owned here (CONSOLE §15
   names identity.mjs beside the eleven); M1's rule is asserted verbatim.
 
   Dropped from H §7.6: nothing. M3 is asserted on `data-right` and
@@ -56,7 +60,8 @@
   setEncryptionKey|bindKey|list|delist|buy|claim], [data-spend],
   #identity-listing (.chip, #identity-offer, #identity-seals,
   #identity-pinned, #identity-owed, input[name=price|listDays]),
-  #identity-roles (.chip, #identity-role-count, #identity-role-user). From the shell: the slab (#cbox.on,
+  #identity-roles (.chip, #identity-role-count, #identity-role-user),
+  #identity-ens (.chip, #identity-ens-name). From the shell: the slab (#cbox.on,
   #cslab, [data-go], [data-no], [data-function], [data-calldata], [data-gas],
   [data-sentence]), #tick, body[data-rights], body[data-mode].
 ───────────────────────────────────────────────────────────────────────────*/
@@ -709,5 +714,69 @@ export async function run(t, ctx) {
     t.ok(T(e3.page, "identity-role-user") === "none live: the grant stamped at epoch 1 expired" && decUint(await c2.read(RO, "roleEpoch(uint256,bytes32)", [3, USER])) === 1n,
       "past its expiry the USER role reads none live, the grant stamped at epoch 1 expired: none and a dead grant are two facts", T(e3.page, "identity-role-user"));
     e3.page.close();
+  }
+
+  /*═══════════ G · the name: band 0, the Nameplate at the Catalog's pin ═══════════*/
+  t.head("G · the ENS row where the band has a Nameplate");
+  {
+    /* an ENS in the real one's shape (tools/verify-plate.mjs's fixture) deployed first, then the site with band 0's
+       bounds and the Nameplate as its last CREATE, at the address the Catalog pins (deploySite's deployNameplate) */
+    const { labelhash, namehash, ETH_NODE } = await import("../ens-name.mjs");
+    const { boot } = await import("../dom-shim.mjs");
+    const YEAR = 365n * 86400n;
+    const c3 = await ctx.Chain.open(), F3 = c3.from.toString();
+    const ens = await c3.deploy(ctx.A("test/mocks/EnsRegistry.sol", "EnsRegistry").bytecode, "", "EnsRegistry");
+    const registrar = await c3.deploy(ctx.A("test/mocks/EnsRegistrar.sol", "EnsRegistrar").bytecode, ctx.encodeParams("address,bytes32", [ens, ETH_NODE]), "EnsRegistrar");
+    await c3.exec(ens, "setSubnodeOwner(bytes32,bytes32,address)", ["0x" + "00".repeat(32), labelhash("eth"), registrar]);
+    const wrapper = await c3.deploy(ctx.A("test/mocks/EnsNameWrapper.sol", "EnsNameWrapper").bytecode, ctx.encodeParams("address,address", [ens, registrar]), "EnsNameWrapper");
+    await c3.exec(registrar, "addController(address)", [wrapper]);
+    const s3 = await ctx.deploySite(c3, ctx.out, { band: 0, lo: 3073n, hi: 3584n, deployNameplate: { ens, wrapper, registrar } });
+    const { id } = await ctx.mint(c3, s3);
+    const { id: id2 } = await ctx.mint(c3, s3);
+    const reach3 = decAddr(await c3.read(s3.hub, "account(uint256)", [id]));
+    const GET3 = ctx.getter(c3, s3.premises);
+    const open3 = async (tid) => {
+      const r = await GET3(["token", String(tid), "live"]);
+      const pg = await boot(r.body, { wallets: [walletFor(c3, c3)], url: `/token/${tid}/live`, GET: GET3 });
+      await lane(pg, "identity");
+      await pg.until(() => /\.intact\.eth · /.test(T(pg, "identity-ens-name")), 80);
+      return { pg, S: pg.ctx.INTACT };
+    };
+    const name = (pg) => T(pg, "identity-ens-name");
+    {
+      const { pg, S } = await open3(id);
+      t.ok(lower(S.nameplate) === lower(s3.nameplate) && (S.reported & S.bits.nameplate) !== 0 && !!L(pg, "#identity-ens") && L(pg, "#identity-ens .chip") === null &&
+        name(pg) === "3073.intact.eth · resolves to nothing: no token holds intact.eth" && !/no ENS name on this band/.test(laneText(pg)) && /a key is replaced by publishing and binding again, never revoked here/.test(laneText(pg)),
+        "on band 0 the state names the Nameplate and it reported; the lane draws the ENS row, and before the apex is registered the name resolves to nothing",
+        `nameplate ${S.nameplate} reported ${S.reported} name "${name(pg)}"`);
+      pg.close();
+    }
+    const registeredAt = ctx.BLOCK().timestamp;
+    await c3.exec(wrapper, "registerAndWrapETH2LD(string,address,uint256,address,uint16)", ["intact", F3, YEAR, s3.nameplate, 0]);
+    const lapses = decUint(await c3.read(registrar, "nameExpires(uint256)", [BigInt(labelhash("intact"))]));
+    {
+      const { pg } = await open3(id);
+      t.ok(name(pg) === "3073.intact.eth · resolves to nothing: no token holds intact.eth" && lapses >= registeredAt + YEAR,
+        "registered and wrapped to a plain wallet, the apex is held by no token, and the name still resolves to nothing", name(pg));
+      pg.close();
+    }
+    await c3.exec(wrapper, "safeTransferFrom(address,address,uint256,uint256,bytes)", [F3, reach3, BigInt(namehash("intact.eth")), 1, "0x"]);
+    {
+      const a = await open3(id), b = await open3(id2);
+      t.ok(name(a.pg) === "3073.intact.eth · resolves to this token's Reach; the registration lapses " + date(lapses) &&
+        name(b.pg) === "3074.intact.eth · resolves to this token's Reach; the registration lapses " + date(lapses) &&
+        decUint(await c3.read(s3.nameplate, "tokenForName(bytes)", ["0x04" + Buffer.from("3074").toString("hex") + "06" + Buffer.from("intact").toString("hex") + "03" + Buffer.from("eth").toString("hex") + "00"])) === id2,
+        "with the apex in #3073's Reach every id of the band resolves to its own token's Reach: the lane's wire name is the one tokenForName reads, and the registrar's clock is printed beside it",
+        `#3073 "${name(a.pg)}" #3074 "${name(b.pg)}"`);
+      t.ok(L(a.pg, "#identity-ens [data-act]") === null && a.pg.errors.length === 0, "the ENS row offers nothing to sign: moving a name is the Vault's composer, registering it the ENS app's", acts(a.pg).join(","));
+      a.pg.close(); b.pg.close();
+    }
+    ctx.warp(lapses + 86400n);
+    {
+      const { pg } = await open3(id);
+      t.ok(name(pg) === "3073.intact.eth · resolves to nothing: intact.eth lapsed " + date(lapses),
+        "past the registrar's expiry the name resolves to nothing and the lane says the registration lapsed, read on the chain's clock", name(pg));
+      pg.close();
+    }
   }
 }

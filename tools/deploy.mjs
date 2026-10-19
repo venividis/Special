@@ -440,6 +440,8 @@ export const PINS = [
   ["catalog", "MARKET()", "market"], ["catalog", "ROLES()", "roles"], ["catalog", "TIMELOCK()", "timelock"],
   ["catalog", "PREMISES()", "premises"], ["catalog", "RENDERER()", "renderer"],
   ["catalog", "TEXT()", "catalogText"], ["catalog", "STATE()", "catalogState"],
+  /// from schema 2 (the console round) the Catalog pins the Nameplate too; a schema-1 record's Catalog predates the getter
+  ["catalog", "NAMEPLATE()", "nameplate", 2],
   ["catalogState", "TEXT()", "catalogText"], ["catalogText", "ROWS()", "catalogRows"], ["catalogText", "ROWS_POST()", "catalogRowsPost"],
   ["renderer", "HUB()", "hub"], ["renderer", "ENGINE()", "engine"], ["renderer", "CREST()", "crest"],
   ["renderer", "CATALOG()", "catalog"], ["renderer", "AGENTCARD()", "agentCard"],
@@ -463,6 +465,13 @@ export const PINS = [
   ["custodian", "HUB()", "hub"], ["custodian", "LAUNCHPAD()", "launchpad"], ["custodian", "KILN()", "kiln"],
   ["custodian", "POOL_MANAGER()", "venuePoolManager"], ["custodian", "POSITION_MANAGER()", "venuePositionManager"], ["custodian", "PERMIT2()", "venuePermit2"]
 ];
+/// The record schema this tree writes, and whether a PINS row applies to a
+/// record: a row with a fourth element exists in records of that schema or
+/// later, because its holder's code in an older record has no such getter
+/// (2: the Catalog's NAMEPLATE). Every walker of PINS asks this first.
+export const RECORD_SCHEMA = 2;
+export const schemaOf = (rec) => Number((String(rec?.schema || "").match(/^intact\.deployment\/(\d+)$/) || [])[1] || 0);
+export const pinApplies = (row, rec) => !row[3] || schemaOf(rec) >= row[3];
 /// The venue table's addresses as PINS targets (`venue*` keys), so the
 /// Kiln's and the Router's venue immutables are read back like every other
 /// pin: a record that lies about `venues.poolManager` is caught by name,
@@ -821,7 +830,7 @@ export async function deployIntact(ad, opts = {}) {
   await create3("catalog", "src/Catalog.sol", "Catalog", encodeParams(CATALOG_CONFIG_TYPE, [[
     T.hub, engine, T.router, T.roster, T.postage, T.keys, T.kiln, T.agentCard,
     got.reachImpl, got.gripImpl, T.pool, T.parley, T.launchpad, T.locks, T.steward, T.market, T.roles,
-    got.timelock, T.premises, T.renderer, band.band, band.first, band.last, got.catalogText, got.catalogState]]),
+    got.timelock, T.premises, T.renderer, band.band, band.first, band.last, got.catalogText, got.catalogState, T.nameplate]]),
     [code("catalogText"), code("catalogState")]);
 
   /*── 8. Renderer ──*/
@@ -980,7 +989,7 @@ export async function deployIntact(ad, opts = {}) {
                     : admin === ZERO ? "renounced" : `rotated to ${admin} (through the queue; the burner no longer holds it)`;
   const burner = { nonceAfter: (await ad.nonceNow()).toString(), balanceAfter: (await ad.balanceOf(from)).toString() };
   const record = {
-    schema: "intact.deployment/1",
+    schema: "intact.deployment/" + RECORD_SCHEMA,
     chainId, network: band.name,
     band: { band: band.band, lo: band.first.toString(), hi: band.last.toString(), rehearsal: band.rehearsal },
     deployer: from,
@@ -1070,8 +1079,9 @@ export async function deploySatellite(ad, rec, key, opts = {}) {
   const world = { ...(rec.placeholders || {}), ...(rec.contracts || {}), ...venueTargets(rec.venues) };
   for (const p of sat.pins) if (!world[p]) throw new Error(`the record has no ${p}, which ${key}'s constructor pins; refusing`);
   /// every holder that pinned this satellite at the MVB pinned THIS address
-  for (const [holder, getter, target] of PINS) {
-    if (target !== key || !rec.contracts?.[holder]) continue;
+  for (const row of PINS) {
+    const [holder, getter, target] = row;
+    if (target !== key || !rec.contracts?.[holder] || !pinApplies(row, rec)) continue;
     const have = low(decAddr(await ad.read(rec.contracts[holder], getter)));
     if (have !== want) throw new Error(`the ${holder}'s ${getter.replace("()", "")} is ${have}, the ${key} salt predicts ${want}; refusing`);
   }

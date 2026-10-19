@@ -63,10 +63,15 @@
         as recipientOf, roleExpirationDate, roleData and roleEpoch answer
         it; the ROLE chip above is rightsOf's bit, which the hub reads from
         hasAnyRole. Nothing is granted here: ROLE is viewing only (§3).
+      · the Nameplate (U18), on band 0 alone: <id>.intact.eth as the
+        catalogue's nameFor (tokenForName of the DNS wire bytes) and
+        nameExpiry (the registrar's clock) answer it, read on the chain's
+        clock; nothing is signed here (moving a name is the Vault's
+        composer, registering it the ENS app's). A band without one — its
+        bit absent, or a Catalog older than the pin — draws no row at all.
     Still not here (CONSOLE §14), and the lane says so where a holder would
-    look: no ENS row (there is no Nameplate on this band), no
-    revokeEncryptionKey (a key is replaced by publishing and binding
-    again).
+    look: no revokeEncryptionKey (a key is replaced by publishing and
+    binding again); on a band without a Nameplate, no ENS row.
 
     Elements this panel introduces (CONSOLE §6.2; the suite reads them
     scoped to #lane-identity):
@@ -86,6 +91,8 @@
       #identity-listing            the chip, or #identity-offer: not listed / <price> ETH until <date> · by <seller> · epoch e[ · expired |
                                    stale: the custody epoch moved; nothing can buy it], #identity-seals, #identity-pinned, #identity-owed;
                                    input[name=price|listDays]
+      #identity-ens                band 0 only: the chip, or #identity-ens-name: <id>.intact.eth · resolves to this token's Reach; the registration
+                                   lapses <date> / · resolves to nothing: no token holds intact.eth / · resolves to nothing: intact.eth lapsed <date>
       [data-act=setTrait(×2)|setStatus|pause|setGuardian|setUser|proposeAgentWallet|acceptAgentWallet|setFeesToGrip|pinTokenURI|
                 unpinTokenURI|sealTransfer|setApprovalForAllUntil|setApprovalForAll|approve|revokeAllApprovals|setEncryptionKey|bindKey|
                 list|delist|buy|claim]
@@ -114,6 +121,8 @@
      ["reach", "sealedUntil()"], ["pool", "marketOf(uint256)"],
      ["roles", "liveRoleCount(uint256)", "USER()", "recipientOf(address,uint256,bytes32)", "roleData(address,uint256,bytes32)",
       "roleExpirationDate(address,uint256,bytes32)", "roleEpoch(uint256,bytes32)"]].forEach(function (r) { r.slice(1).forEach(function (s) { M[r[0] + "." + s.split("(")[0]] = s; }); });
+    /* the Nameplate's two rows are named by the catalogue, not by the function (nameFor is tokenForName) */
+    M["nameplate.nameFor"] = "tokenForName(bytes)"; M["nameplate.nameExpiry"] = "expiry(bytes32)";
     ui.rows(M);
 
     /*── words ──*/
@@ -315,7 +324,7 @@
 
     /* a satellite whose bit is clear is a chip, never a zero (CONSOLE §6.3); 1 when it was drawn */
     var three = function (p, n) { var b = S.bits[n]; if (S.reported & b) return 0; ui.chip(p, n + ": " + (S.absent & b ? "not deployed on this chain" : "could not be read at block " + S.block), S.absent & b ? "absent" : "unread"); return 1; };
-    var fmt = function (v) { return ui.fmt(v) + " ETH"; };
+    var fmt = function (v) { return ui.fmt(v) + " ETH"; }, MOVED = "the listing or the token moved since it was read — review again";
 
     /*═══════════ roles (ERC-7432, U16): read here, granted nowhere on this page ═══════════*/
     function roles(p, g, cr) {
@@ -337,6 +346,23 @@
       }).catch(bad(g, u));
     }
 
+    /*═══════════ the name (U18): <id>.intact.eth while the apex sits in a token's account; nothing is signed here ═══════════*/
+    function ens(p, g) {
+      /* no row at all on a band without a Nameplate, nor under a Catalog older than its pin (CONSOLE §6.2) */
+      if (!S.bits.nameplate || S.absent & S.bits.nameplate) return;
+      p.append(el("h3", "", "ENS"));
+      var box = el("div"); box.id = "identity-ens"; p.append(box);
+      if (three(box, "nameplate")) return;
+      var NP = S.nameplate, n = slot(box, "name", "identity-ens-name"), nm = ID + ".intact.eth";
+      /* DNS wire bytes: each label length-prefixed, then the root's zero; the registrar's clock is the lapse */
+      var w = function (l) { return (l.length < 16 ? "0" : "") + l.length.toString(16) + hex(new TextEncoder().encode(l)); };
+      Promise.all([read(NP, "nameplate.nameFor", ["0x" + w(String(ID)) + w("intact") + w("eth") + "00"]), read(NP, "nameplate.nameExpiry", [ui.khex("intact")]), clock()]).then(function (v) {
+        if (g !== gen) return;
+        var e = v[1].w(0);
+        n.textContent = nm + (v[0].w(0) === ID ? " · resolves to this token's Reach; the registration lapses " + date(e) : e > v[2] || !e ? " · resolves to nothing: no token holds intact.eth" : " · resolves to nothing: intact.eth lapsed " + date(e));
+      }, bad(g, n));
+    }
+
     /*═══════════ the Market (U15): a listing is a seal to its expiry; a sale moves the epoch ═══════════*/
     function listing(p, g, cr) {
       p.append(el("h3", "", "listing"));
@@ -354,7 +380,7 @@
         if (v[6] && v[6].w(0)) {
           var o = v[6].w(0); kv(b, "owed to this wallet", fmt(o) + ", from every sale it made").lastChild.id = "identity-owed";
           if (can) act(b, "claim", "claim " + fmt(o), 0, function () {
-            return send(MK, "market.claim", [], [["Pays", fmt(o) + " to " + checksum(acct)], ["From", "the Market's ledger: every sale this wallet made, not only " + tok]],
+            return send(MK, "market.claim", [], [["Pays", fmt(o) + " to " + checksum(acct)], ["From", "every sale this wallet made"]],
               "claims the " + fmt(o) + " the Market owes this wallet", { need: 0 });
           });
         }
@@ -371,7 +397,7 @@
               var E = ui.enc, data = S.sel["market.list"] + E.W(ID) + E.W(pr) + E.W(x) + E.B32(fp) + E.W(160) + E.W(0);
               return send(MK, null, null, [["Token", tok], ["Price", fmt(pr) + ", exactly"], ["Until", date(x)], ["Floors", "none: the fingerprint and the seals bind it"]],
                 "lists " + tok + " on the Market at " + fmt(pr) + " until " + date(x) + ": it stays locked to the listing, and whoever pays exactly that takes it, moving its custody epoch",
-                { data: data, sig: LIST, recheck: function () { return read(HUB, "hub.getStateFingerprint", [ID]).then(function (r) { return same("0x" + r.words[0], fp) ? "" : "the fingerprint moved since it was read — review again"; }); } });
+                { data: data, sig: LIST, recheck: function () { return read(HUB, "hub.getStateFingerprint", [ID]).then(function (r) { return same("0x" + r.words[0], fp) ? "" : MOVED; }); } });
             });
           }));
         }
@@ -386,12 +412,11 @@
             "takes " + tok + "'s listing down and releases the lock it holds", { need: dead ? 0 : R.HOLD });
         });
         act(b, "buy", "buy " + tok + " for " + fmt(price), 0, function () {
-          return send(MK, "market.buy", [ID, price, pin], [["Token", tok], ["Pays", fmt(price) + ", the listed price exactly"], ["Against", "fingerprint " + pin.slice(0, 10) + "… · custody epoch " + lep],
-            ["Royalty", "out of the price, to the collection's receiver"]],
+          return send(MK, "market.buy", [ID, price, pin], [["Token", tok], ["Pays", fmt(price) + ", the listed price exactly"], ["Against", "fingerprint " + pin.slice(0, 10) + "… · custody epoch " + lep]],
             "buys " + tok + " for " + fmt(price) + ": the Market checks the fingerprint, the epoch and the floors, credits the seller and moves the token here, ending every authority the seller gave",
             { need: 0, value: price, recheck: function () {
               return Promise.all([read(MK, "market.listingOf", [ID]), read(HUB, "hub.getStateFingerprint", [ID]), read(HUB, "hub.custodyEpoch", [ID])]).then(function (w) {
-                var l = w[0]; return same(l.a(1), seller) && l.w(2) === price && same("0x" + l.words[5], pin) && same("0x" + w[1].words[0], pin) && w[2].w(0) === lep ? "" : "the listing or the token moved since it was read — review again";
+                var l = w[0]; return same(l.a(1), seller) && l.w(2) === price && same("0x" + l.words[5], pin) && same("0x" + w[1].words[0], pin) && w[2].w(0) === lep ? "" : MOVED;
               });
             } });
         });
@@ -458,7 +483,7 @@
       var m = el("div"); m.id = "identity-manifest"; p.append(m);
       kv(m, "engine", S.engineHash); kv(m, "catalog", S.catalogHash);
       for (var k in S.panels) kv(m, "panel " + k, S.panels[k]);
-      note(p, "no ENS name on this band: there is no Nameplate; a key is replaced by publishing and binding again, never revoked here", "s");
+      note(p, (S.bits.nameplate && !(S.absent & S.bits.nameplate) ? "" : "no ENS name on this band: there is no Nameplate; ") + "a key is replaced by publishing and binding again, never revoked here", "s");
     }
 
     /*═══════════ paint ═══════════*/
@@ -474,7 +499,7 @@
       ui.gate(host, R.HOLD);
       can = ui.mode() === "console" && !!acct && ui.rights() !== null; hold = !!(can && ui.rights() & R.HOLD);
       var cr = read(HUB, "hub.coreOf", [ID]); cr.catch(function () {});
-      status(host, g, cr); rights(host, g); roles(host, g, cr); fingerprint(host, g); delegate(host); traits(host, g); core(host, g, cr); listing(host, g, cr); operators(host); key(host, g, cr); manifest(host);
+      status(host, g, cr); rights(host, g); roles(host, g, cr); fingerprint(host, g); delegate(host); traits(host, g); core(host, g, cr); listing(host, g, cr); operators(host); key(host, g, cr); ens(host, g); manifest(host);
       S.loaded.identity = true;
     }
     paint();

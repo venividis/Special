@@ -348,7 +348,13 @@ for (const k of ["schema", "chainId", "band", "deployer", "factory", "factoryVia
                  "shipBuild", "engine", "catalogHash", "coinTemplate", "registry", "price", "timelock", "venues", "gas", "gasTotal", "toolchain", "writtenAt", "block"]) {
   ok(`has ${k}`, k in rec);
 }
-eq("schema", rec.schema, "intact.deployment/1");
+eq("schema", rec.schema, "intact.deployment/2");
+{
+  /* a record of the schema before the Catalog's Nameplate pin is recovered without that pin: its Catalog has no such getter */
+  const r1s = await recover(ad1, { ...rec, schema: "intact.deployment/1" }, { out });
+  /* the one row is two checks: its drift against the record and its contradiction with factory.predict(salts.nameplate) */
+  ok("a schema-1 record is recovered without the pin its Catalog predates, and still agrees", r1s.disagreements.length === 0 && r1.checked - r1s.checked === 2, `${r1s.checked} vs ${r1.checked}, ${r1s.disagreements.length} disagreeing`);
+}
 const written = JSON.parse(fs.readFileSync(recordPath, "utf8"));
 eq("the file on disk is the record (minus the path it was written to)", JSON.stringify({ ...written }), JSON.stringify((({ path: _p, ...r }) => r)(rec)));
 eq("RECORD_KEYS names the factory, the engine and every salted key", RECORD_KEYS.length, SALTED.length + 2);

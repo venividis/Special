@@ -63,7 +63,9 @@ admin, venue table and Coin template by name, reports a factory etched
 with a stranger's as a contradiction, and walks a codeless Engine to the
 end.
 
-## The schema (`intact.deployment/1`)
+## The schema (`intact.deployment/2`)
+
+Schema 2 (the console round) is schema 1 with one pin more: the Catalog's `NAMEPLATE()`, band 0's resolver or the codeless placeholder, read back like every other pin. A record of schema 1 (every record written before 2026-10-19: 31337, 84532 and its first run) is recovered without that one row — its Catalog has no such getter — and agrees on everything else; `tools/deploy.mjs`'s `PINS` names the schema a row starts in.
 
 | Field | Meaning |
 |---|---|

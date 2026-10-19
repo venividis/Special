@@ -278,7 +278,7 @@ the length of the run: `ethereum-sepolia-rpc.publicnode.com` answered
 ## What a run leaves behind
 
 - `deployments/<chainId>.json` — the deployment record, schema
-  `intact.deployment/1`, written by `deployIntact` as its last act after
+  `intact.deployment/2` (schema 1 before the Catalog pinned the Nameplate), written by `deployIntact` as its last act after
   an in-process recovery with 0 disagreeing (`deployments/README.md`,
   "The schema").
 - `deployments/<chainId>.campaign.json` — the campaign record, schema

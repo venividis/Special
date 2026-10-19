@@ -42,8 +42,10 @@ export const NAMEPLATE_PLACEHOLDER = "0x00000000000000000000000000000000A3E97A7E
 
 export const CONFIG_TYPE =
   "(address,address,uint8,uint256,uint256,address,address,address,address,address,address,address,address,address,address,address)";
+/// the Catalog's config, field for field (src/Catalog.sol `CatalogConfig`); the
+/// last address is the Nameplate's pin, appended in the console round
 export const CATALOG_CONFIG_TYPE =
-  "(address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,uint8,uint256,uint256,address,address)";
+  "(address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,address,uint8,uint256,uint256,address,address,address)";
 
 /// The address CREATE gives `from` at `nonce`.
 export function predictCreate(from, nonce) {
@@ -163,9 +165,16 @@ export async function deploySite(c, out, opts = {}) {
   let next = opts.deployAgentCard ? 21 : 20;
   if (opts.deployMarket) P.market = at(next++);
   if (opts.deployRoles) P.roles = at(next++);
+  /*  The console round (additive): `deployNameplate: { ens, wrapper, registrar }`
+      deploys src/Nameplate.sol last, at the address the Catalog pins, against an
+      ENS the caller deployed first (test/mocks' registry, wrapper and registrar,
+      as tools/verify-plate.mjs builds them) — band 0's resolver, so the identity
+      lane's ENS row reads a real one. Without it the pin is `opts.nameplate` or
+      the codeless placeholder.                                               */
+  if (opts.deployNameplate) P.nameplate = at(next++);
   const market = opts.deployMarket ? P.market : MARKET_PLACEHOLDER;
   const roles = opts.deployRoles ? P.roles : ROLES_PLACEHOLDER;
-  const nameplate = opts.nameplate || NAMEPLATE_PLACEHOLDER;      // band 0 only; deployed beside the site by tools/verify-plate.mjs
+  const nameplate = opts.deployNameplate ? P.nameplate : (opts.nameplate || NAMEPLATE_PLACEHOLDER);      // band 0 only
   const router = opts.router || ZERO;
   const agentCard = opts.deployAgentCard ? P.agentCard : (opts.agentCard || AGENTCARD_PLACEHOLDER);
 
@@ -186,7 +195,7 @@ export async function deploySite(c, out, opts = {}) {
     encodeParams(CATALOG_CONFIG_TYPE, [[
       P.hub, engine, router, P.roster, P.postage, keys, P.kiln, agentCard,
       reachImpl, gripImpl, P.pool, P.parley, P.launchpad, P.locks, P.steward, market, roles,
-      timelock, P.premises, P.renderer, band, lo, hi, catalogText, catalogState]]), "Catalog");
+      timelock, P.premises, P.renderer, band, lo, hi, catalogText, catalogState, nameplate]]), "Catalog");
   const renderer = await c.deploy(A("src/Renderer.sol", "Renderer").bytecode,
     encodeParams("address,address,address,address,address", [P.hub, engine, crest, catalog, agentCard]), "Renderer");
   const premises = await c.deploy(A("src/Premises.sol", "Premises").bytecode,
@@ -223,6 +232,11 @@ export async function deploySite(c, out, opts = {}) {
   }
   if (opts.deployMarket) got.market = await c.deploy(A("src/Market.sol", "Market").bytecode, encodeParams("address,address", [hub, pool]), "Market");
   if (opts.deployRoles) got.roles = await c.deploy(A("src/Roles.sol", "Roles").bytecode, encodeParams("address", [hub]), "Roles");
+  if (opts.deployNameplate) {
+    const e = opts.deployNameplate;
+    got.nameplate = await c.deploy(A("src/Nameplate.sol", "Nameplate").bytecode,
+      encodeParams("address,address,address,address,address,string", [hub, premises, e.ens, e.wrapper, e.registrar, "intact"]), "Nameplate");
+  }
   const missed = Object.keys(P).filter((k) => P[k].toLowerCase() !== got[k].toLowerCase());
   if (missed.length) throw new Error("a prediction missed: " + missed.map((k) => `${k} ${P[k]} vs ${got[k]}`).join(", "));
 

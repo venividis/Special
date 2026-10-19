@@ -177,8 +177,10 @@ after wave 0: a change is additive only and goes in
   `sel` map and one `services` array, and the drift gate in
   `tools/verify.mjs` holds a row to its contract's interface until the
   contract lands, then to both.
-- **The shell is 45 B under its gzip ceiling** (14,955 of 15,000) and the
-  vault panel 26 B under its own; any fix to either pays in cuts first.
+- **The shell is 45 B under its gzip ceiling** (14,955 of 15,000), the
+  vault panel 26 B under its own and the identity panel 7 B (8,185, the
+  listing, the roles and the ENS row); any fix to any of them pays in cuts
+  first.
 - **The monolith is over EIP-170** (25,402 B); the diamond ships. Both
   builds are compiled and tested on every run; the harness deploys with the
   size limit lifted, so the gate is `compile.mjs`, not the test runner.
