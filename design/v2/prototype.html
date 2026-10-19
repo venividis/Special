@@ -185,6 +185,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;heigh
 .mini{height:150px;border-radius:16px;overflow:hidden;position:relative;background:#0b0916}
 .phone{width:210px;margin:6px auto 0;border-radius:34px;padding:9px;background:linear-gradient(160deg,#2b2348,#101a2a);border:1px solid var(--line2);box-shadow:0 30px 60px -20px rgba(0,0,0,.8)}
 .phone .scr{border-radius:26px;overflow:hidden;background:#07060d;height:380px;position:relative}
+.seg{display:flex;gap:4px;padding:4px;margin-top:16px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--line)}
+.seg button{flex:1;appearance:none;border:0;cursor:pointer;padding:11px 10px;border-radius:999px;background:none;color:var(--mute);font-weight:700;font-size:14px;transition:all .3s var(--ease)}
+.seg button.on{color:#0c0618;background:linear-gradient(120deg,#e4dbff,#b9f6ea);box-shadow:0 6px 18px -6px rgba(167,243,228,.6)}
 .toast{position:fixed;z-index:40;left:50%;top:calc(env(safe-area-inset-top) + 74px);transform:translate(-50%,-140%);padding:12px 18px;border-radius:999px;font-weight:650;font-size:14px;transition:transform .55s var(--ease),opacity .4s;white-space:nowrap;opacity:0;pointer-events:none}
 .toast.on{transform:translate(-50%,0);opacity:1}
 @media (min-width:900px){#app{padding-top:96px}h1{font-size:40px}}
@@ -368,7 +371,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;heigh
 
 <!-- ═══════════ STUDIO ═══════════ -->
 <section class="view" data-view="studio"><div class="stagger">
-  <div class="col" style="gap:4px;margin-top:6px"><span class="tiny">launch from #1</span><h1 class="grad">Studio</h1><span class="mute">Launch a collection where every token is a website — with its own room, vault and memories.</span></div>
+  <div class="col" style="gap:4px;margin-top:6px"><span class="tiny">launch from #1</span><h1 class="grad">Studio</h1><span class="mute">Launch a collection where every token is a website — or a coin, raised fairly and released slowly.</span></div>
+  <div class="seg" id="studioSeg"><button class="on" data-k="col">A collection</button><button data-k="coin">A coin</button></div>
+  <div data-studio="col">
   <span class="tiny" style="display:block;margin-top:18px">Pick a kind of site</span>
   <div class="tpls" style="margin-top:10px" id="tpls"></div>
   <div class="glass card">
@@ -382,6 +387,19 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;heigh
   </div>
   <div class="phone"><div class="scr" id="phone"></div></div>
   <button class="btn" style="margin-top:18px" data-sheet="launch">Launch the collection</button>
+  </div>
+  <div data-studio="coin" hidden>
+  <div class="glass card">
+    <div class="grid2"><div><span class="tiny">Name</span><input class="field" style="margin-top:8px" value="Moonlight"></div><div><span class="tiny">Symbol</span><input class="field" style="margin-top:8px" value="MOON"></div></div>
+    <div class="grid2" style="margin-top:12px"><div><span class="tiny">Supply</span><input class="field num" style="margin-top:8px" value="1,000,000,000"></div><div><span class="tiny">To the raise</span><input class="field num" style="margin-top:8px" value="40%"></div></div>
+    <span class="tiny" style="display:block;margin-top:16px">The raise</span>
+    <svg viewBox="0 0 500 120" style="width:100%;height:96px;margin-top:8px"><defs><linearGradient id="cv" x1="0" x2="1"><stop offset="0" stop-color="#a78bfa"/><stop offset="1" stop-color="#fde68a"/></linearGradient><linearGradient id="cvf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a78bfa" stop-opacity=".35"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/></linearGradient></defs><path d="M0,112 C160,108 300,84 420,20 L420,120 L0,120Z" fill="url(#cvf)"/><path d="M0,112 C160,108 300,84 420,20" fill="none" stroke="url(#cv)" stroke-width="3"/><line x1="420" y1="0" x2="420" y2="120" stroke="#fff" stroke-opacity=".3" stroke-dasharray="3 4"/><circle cx="420" cy="20" r="6" fill="#fde68a"/><text x="410" y="112" text-anchor="end" fill="#fde68a" font-size="13" font-family="system-ui" font-weight="700">graduates to Uniswap v4</text></svg>
+    <p class="mute" style="font-size:13px;margin-top:4px">A curve anyone can buy into; at its goal it seeds a v4 pool whose position is locked, and nobody can pull the curve's funds.</p>
+    <div class="row between" style="margin-top:16px"><div class="col" style="gap:2px"><h3>Your share vests</h3><span class="mute" style="font-size:13px">30-day cliff, then over a year — locked by the chain.</span></div><div class="sw on"></div></div>
+    <div class="row between" style="margin-top:16px"><div class="col" style="gap:2px"><h3>Gift it to Moonlit holders</h3><span class="mute" style="font-size:13px">5% to every holder as a keepsake that frees over 90 days — an airdrop nobody can dump.</span></div><div class="sw on"></div></div>
+  </div>
+  <button class="btn" style="margin-top:18px" data-sheet="coin">Launch the coin</button>
+  </div>
 </div></section>
 
 </div></main>
@@ -634,6 +652,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;heigh
   $$(".tpl").forEach(function (el) { el.addEventListener("click", function () { $$(".tpl").forEach(function (x) { x.classList.toggle("on", x === el); }); pulse = .5; }); });
   $("#phone").innerHTML = '<div style="position:absolute;inset:0;background:radial-gradient(90% 60% at 50% 30%,#2a2160,#07060d)"></div><div style="position:absolute;left:18px;right:18px;top:22px;aspect-ratio:1;border-radius:20px;overflow:hidden;background:conic-gradient(from 200deg,#1e1b4b,#0f766e,#831843,#1e1b4b)"><div style="position:absolute;inset:18%;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fef3c7,#f59e0b 40%,#7c2d12)"></div></div><div style="position:absolute;left:18px;top:212px;color:#fff;font-weight:760;font-size:17px">Moonlit #213</div><div style="position:absolute;left:18px;top:236px;color:rgba(255,255,255,.6);font-size:11px">a map of the night it was minted</div><div style="position:absolute;left:14px;right:14px;top:266px;display:flex;flex-direction:column;gap:7px"><div style="align-self:flex-start;max-width:80%;padding:7px 10px;border-radius:12px;background:rgba(255,255,255,.1);font-size:11px;color:#eee">#88: found the north star on mine ✦</div><div style="align-self:flex-end;max-width:80%;padding:7px 10px;border-radius:12px;background:linear-gradient(90deg,#c4b5fd,#5eead4);font-size:11px;color:#0c0618;font-weight:600">mine has two moons??</div><div style="margin-top:4px;padding:9px;border-radius:999px;text-align:center;font-size:11px;font-weight:700;color:#0c0618;background:linear-gradient(120deg,#d9ccff,#a7f3e4)">Mint yours · 0.02 ETH</div></div>';
 
+  $$("#studioSeg button").forEach(function (b) { b.addEventListener("click", function () {
+    $$("#studioSeg button").forEach(function (x) { x.classList.toggle("on", x === b); });
+    $$("[data-studio]").forEach(function (d) { d.hidden = d.dataset.studio !== b.dataset.k; });
+    pulse = .5;
+  }); });
+
   /*════════ the confirm sheet ════════*/
   function sheet(kind, from) {
     var out = quote(), lock = +($("#lockChips .chip.on") || { dataset: { d: 30 } }).dataset.d, rel = +$("#rel").value, priv = $("#privSw").classList.contains("on");
@@ -643,6 +667,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;heigh
       gift: ['<span class="tiny">Review</span><p class="say">You wrap <b>0.1 ETH, 1 WETH and 50 USDC</b> into one bundle for <b>#7</b>. It opens in <b>30 days</b> and frees slowly over <b>60 days</b>. Your note travels with it.</p>', [["Recipient", "#7 · Moonlit Cartographer"], ["They can", "claim as it frees · pass it on"], ["You can", "nothing more: a gift is a gift"]], "Wrap and send", "The gift is on its way to #7 ✦"],
       buy: ['<span class="tiny">Review</span><p class="say">You buy <b>INTACT #1 · Agent One</b> for exactly <b>0.25 ETH</b>. It becomes yours with its site, its vault and every public memory; the seller keeps nothing of it.</p>', [["Price", "0.25 ETH, exactly"], ["Royalty", "to the collection, from the price"], ["If anything moves", "nothing is sent"]], "Buy for 0.25 ETH", "Welcome home. #1 is yours ✦"],
       offer: ['<span class="tiny">Make an offer</span><p class="say">Offer <b>0.21 ETH</b> for <b>#1</b> for <b>3 days</b>. The holder sees it in their room; you can take it back any time.</p>', [["Offer", "0.21 ETH"], ["Expires", "in 3 days"]], "Send offer", "Offer sent — #1's holder will see it."],
+      coin: ['<span class="tiny">Review</span><p class="say">You launch <b>$MOON</b> from <b>#1</b>: <b>1,000,000,000</b> coins, <b>40%</b> to a raise on a curve that graduates to <b>Uniswap v4</b>. Your share vests over a year after a <b>30-day</b> cliff, and <b>5%</b> goes to every Moonlit holder as a keepsake that frees over <b>90 days</b>.</p>', [["Creator", "#1 · Agent One"], ["Raise", "a curve, then a locked v4 position"], ["Airdrop", "keepsakes, released over 90 days"]], "Launch the coin", "$MOON is live — the raise is open ✦"],
       launch: ['<span class="tiny">Review</span><p class="say">You launch <b>Moonlit Cartographers</b>: <b>777</b> tokens at <b>0.02 ETH</b>, each one a website with its own room, vault and memories. <b>#1</b> is the creator and receives the proceeds; holders who share bring <b>10%</b> home.</p>', [["Kind", ($(".tpl.on .mini") && $(".tpl.on").textContent) || "Gallery"], ["Creator", "#1 · Agent One"], ["Room", "opens with the first mint"]], "Launch", "Moonlit Cartographers is live ✦"]
     }[kind];
     $("#sheetBody").innerHTML = S[0] + S[1].map(function (kv) { return '<div class="kv"><span>' + kv[0] + '</span><span>' + kv[1] + '</span></div>'; }).join("") + '<button class="btn" id="go" style="margin-top:18px">' + S[2] + '</button><button class="btn ghost" id="nope" style="margin-top:10px">Not now</button>';
