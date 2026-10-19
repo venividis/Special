@@ -76,14 +76,25 @@ take any row the Catalog serves. Measured on that tree:
 | W11 Social | 2082cf0 | social 12,160 B | verify-site 645, verify-console 184; 13/13 killed |
 | W8 Gallery and the seventh lane | 46d26f5 | gallery 12,209 B | verify-site 646, verify-console 179, forge 643 on both builds, gas 84 probes |
 
-The totals on the merged lanes are the next battery's to measure.
+The battery on the merged lanes, `node tools/check.mjs --keep-going` on
+80ae2d1: **check: green — all 33 steps passed in 60 m 40 s**. compile 46,
+facets 96, selftest 60, build 22,224 B of 24,000, forge 643 on the
+monolith and 643 on the diamond, gas 84, verify 253, verify:site 799, mcp
+29, verify:pool 144, verify:vault 184, verify:parley 81, verify:launch 307,
+verify:steward 91, verify:timelock 35, verify:premises 64, verify:plate
+228, verify:keepsake 81, verify:journal 48, verify:bazaar 67, verify:studio
+47, verify:agora 53, fuzz 9, verify:findings 36, agents 6,825,
+static-audit 14, verify:recover 186, verify:console 214, invariants 225;
+0 failed in every step. W12 (Studio) merged as c69ea76, and its payee
+sentence was corrected in 80ae2d1.
 
 Requests from the lanes:
 
 | # | Request | From | Decision | State |
 |---|---|---|---|---|
-| L1 | The DOM shim's `page.until` returns false on a timeout instead of throwing: 279 waits drop the result, so an assertion only a wait checked cannot fail | W11 | yes: make it throw, and give every wait that is a real expectation its own sentence | open, first |
-| L2 | verify-console's `visible()` reports what is inside a closed `<details>` as visible | W11 | yes | open |
+| L1 | The DOM shim's `page.until` returns false on a timeout instead of throwing: 279 waits drop the result, so an assertion only a wait checked cannot fail | W11 | yes: make it throw, and give every wait that is a real expectation its own sentence | done: W13. 374 of verify-site's 380 waits throw, 22 claims became sentences, and the 5 silent timeouts were all right pages |
+| L2 | verify-console's `visible()` reports what is inside a closed `<details>` as visible | W11 | yes | done: W13 |
+| L15 | verify-console's own `until`: 122 of 129 waits drop their answer. None timed out silently in W13's measured run; fixing it touches testnet-drive | W13 | yes | open |
 | L3 | `#cslab [data-sentence]{overflow-wrap:anywhere}`: a full address runs off a 390 px screen | W10 | yes | open |
 | L4 | Panel styles into app.css (W9's switch and orb; W11's `.post`), freeing panel bytes | W9, W11 | yes | open |
 | L5 | Catalog rows: `keepsake.ownerOf`, `keepsake.tokenURI`; Agora's counts, `follows`, `isRegistered`, `collectionKey`, `homeKey`, `persona`; `seaport.*`, `erc721.*` | W10, W11, W8 | yes, one CatalogRowsV2 pass | open |
