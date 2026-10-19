@@ -23,10 +23,20 @@ full-tree runs that re-prove them are listed under "The full-tree proof".
 ## The full-tree proof
 
 Each unit ran its suite in a copy pruned to what that suite imports. The
-merged tree has never been compiled or tested as one. Before any
-integration change, the merged head is run once as it stands:
-`node tools/compile.mjs`, then `node tools/forge.mjs` on the monolith and
-on the diamond. Its counts are written here when the run ends.
+merged head (96b3edc, the five units and nothing else) was then run once as
+it stood, on 2026-10-19:
+
+- `node tools/compile.mjs`: every gated contract under EIP-170, in 5 m 2 s
+  cold. The V2 contracts: Keepsake 16,036 B, Collection 14,688 B, Bazaar
+  11,705 B, Agora 11,311 B, KeepsakeArt 11,207 B, Studio 7,067 B, Journal
+  2,142 B, Bridges 1,996 B. Intact is unchanged at 25,364 B, so the diamond
+  ships.
+- `node tools/forge.mjs` on the monolith: **631 passed, 0 failed** (38 m 53 s,
+  the cold src+test compile included). The diamond: **631 passed, 0
+  failed** (7 m 12 s). The seven V2 suites counted the same as in the
+  pruned copies: Keepsake 47, Journal 36, Bazaar 53, Bridges 14, Studio 21,
+  Collection 29, Agora 79. That is 279 V2 tests beside V1's 352 across 36
+  suites, and no name collided in the shared compile.
 
 ## Requests, decisions, state
 
