@@ -173,3 +173,49 @@ rights were rerun on both builds after the hub's one-line change (Rights
 | `IKiln.sol` | unchanged; `deployHook(1, salt, bytes32(uint160(coin)))` and `recipeHash(1, bytes32(uint160(coin)))` are the kind-1 recipe | — |
 
 No error was added to `Launchpad`'s or `Kiln`'s ABI (the Catalog's error table, `tools/verify.mjs`'s drift gate, is untouched); the custodian's and the hook's errors are new contracts' and need Catalog rows only when the Catalog learns the custodian (below).
+
+## V2 wave 0 — eight new interfaces and two shared files (2026-10-19)
+
+docs/V2.md is V2's specification. Nothing below changes a V1 signature:
+every file is new, and the one shared library that changed (`Transient`)
+only gained registry rows. These eight interfaces and two libraries are
+frozen from here as V1's were: an addition is a row in a new section of
+this file, and a change that is not additive is a new file.
+
+| File | What it declares | Unit |
+|---|---|---|
+| `src/interfaces/IKeepsake.sol` | `Asset`, `Schedule`, `DripTerms`, `Wrap`, `SwapAndWrap`, `KeepsakeView`; `wrap`, `swapAndWrap`, `claim`, `claimable`, `extend`, `setDrip`, `clearDrip`, `drip`, `keepsakeOf`, `commitmentOf`, `keepsakeCount`; ERC-721 metadata | W1 |
+| `src/interfaces/IJournal.sol` | `inscribe(collection, id, kind, body, ref)`, `countOf`, `rootOf`, `mayInscribe`; kinds NOTE..SEALED; `Inscribed` | W2 |
+| `src/interfaces/ISeaport.sol` | Seaport 1.6's structs and enums field for field, the calls INTACT makes (`validate`, `fulfillOrder`, `fulfillAdvancedOrder`, `cancel`, `getOrderHash`, `getOrderStatus`, `getCounter`, `information`) and `ISeaportZone` | W3 |
+| `src/interfaces/IBazaar.sol` | `publish(order, floors)`, `pinHash`, `pinOf`, `check`; the zone; `Published`, `Pinned` | W3 |
+| `src/interfaces/IBridges.sol` | `endpointOf`, `setEndpoint` (Timelock), `names` | W3 |
+| `src/interfaces/ICollection.sol` | `CollectionSpec`; `mint(to, via)`, `claim(persona)`, `owed`, `custodyEpoch`, `seedOf`, `spec`, `creator`, `room`; ERC-721 metadata and ERC-2981 | W4 |
+| `src/interfaces/IStudio.sol` | `launch(creator, spec, salt)`, `predict`, `isCollection`, `parentOf`, the registry reads | W4 |
+| `src/interfaces/IAgora.sol` | Parley's surface over personas, plus `collectionKey`, `react` (tipped), `follow`, `isRegistered` | W5 |
+| `src/lib/Persona.sol` | `pack`/`split` (`collection << 96 \| id`), `holderOf`, `actsFor`, `payeeOf`, `epochOf`, `stampOf` | shared: W4, W5 |
+| `src/lib/ERC721Base.sol` | the one ERC-721 the V2 satellites inherit, with `_beforeMove` before every change of owner | shared: W1, W4 |
+| `src/lib/Transient.sol` | six registry rows: `KEEPSAKE_LOCK`, `JOURNAL_LOCK`, `BAZAAR_LOCK`, `STUDIO_LOCK`, `COLLECTION_LOCK`, `AGORA_LOCK` (14 → 20; `test/Transient.t.sol` walks the registry, so it covers them unchanged) | shared |
+
+Where wave 0 departed from the plan's first draft, and why:
+
+- **Keepsake takes one struct per entry** (`Wrap`, `SwapAndWrap`). This
+  avoids stack-too-deep, and it lets the drip ride in the same call as the
+  swap. The draft's `bytes32 note` became `string message`, printed on the
+  keepsake's face; a Journal memory names a keepsake by
+  `ref = keccak(Keepsake, id)`.
+- **`claim` is anyone's and pays only the holder**, as `Locks.release`
+  does.
+- **`commitmentOf` moves only on the holder's own acts**: a keepsake
+  leaving the account, or a term change on one it holds. It never moves on
+  anything a stranger can do. The draft folded every keepsake an account
+  held, and then a stranger could break any INTACT listing by gifting
+  dust to its Reach.
+- **A drip needs a floor**: `floor == 0` means "no drip". A drip can be
+  set at `wrap` only on a keepsake you keep.
+- **Journal takes any ERC-721**, not only registered collections. A
+  collection that lies about `ownerOf` can pollute only its own
+  namespace, and memories on every NFT are the provenance §5.6 is about.
+- **IntactZone and the order publisher are one contract, the Bazaar**, so
+  the zone an INTACT order names is the contract that pinned its floors.
+- **Identity is a persona**: `collection << 96 | id`. It reverses with no
+  registry and no hash. Ids at or above 2^96 are refused by name.

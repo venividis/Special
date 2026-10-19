@@ -51,13 +51,20 @@ library Transient {
     bytes32 internal constant MARKET_LOCK     = bytes32(uint256(keccak256("intact.market.lock")) - 1);
     bytes32 internal constant CUSTODIAN_LOCK  = bytes32(uint256(keccak256("intact.custodian.lock")) - 1);
     bytes32 internal constant TIMELOCK_LOCK   = bytes32(uint256(keccak256("intact.timelock.lock")) - 1);
+    /*── V2 (docs/V2.md §3) ──*/
+    bytes32 internal constant KEEPSAKE_LOCK   = bytes32(uint256(keccak256("intact.keepsake.lock")) - 1);
+    bytes32 internal constant JOURNAL_LOCK    = bytes32(uint256(keccak256("intact.journal.lock")) - 1);
+    bytes32 internal constant BAZAAR_LOCK     = bytes32(uint256(keccak256("intact.bazaar.lock")) - 1);
+    bytes32 internal constant STUDIO_LOCK     = bytes32(uint256(keccak256("intact.studio.lock")) - 1);
+    bytes32 internal constant COLLECTION_LOCK = bytes32(uint256(keccak256("intact.collection.lock")) - 1);
+    bytes32 internal constant AGORA_LOCK      = bytes32(uint256(keccak256("intact.agora.lock")) - 1);
 
     /// @notice Every slot above, with the name it was derived from, so a
     ///         test can check the formula and the distinctness of the whole
     ///         set rather than of whichever slots it happened to think of.
     function registry() internal pure returns (bytes32[] memory slots, string[] memory names) {
-        slots = new bytes32[](14);
-        names = new string[](14);
+        slots = new bytes32[](20);
+        names = new string[](20);
         slots[0]  = HUB_LOCK;        names[0]  = "intact.hub.lock";
         slots[1]  = POOL_LOCK;       names[1]  = "intact.pool.lock";
         slots[2]  = REACH_LOCK;      names[2]  = "intact.reach.lock";
@@ -72,6 +79,12 @@ library Transient {
         slots[11] = MARKET_LOCK;     names[11] = "intact.market.lock";
         slots[12] = CUSTODIAN_LOCK;  names[12] = "intact.custodian.lock";
         slots[13] = TIMELOCK_LOCK;   names[13] = "intact.timelock.lock";
+        slots[14] = KEEPSAKE_LOCK;   names[14] = "intact.keepsake.lock";
+        slots[15] = JOURNAL_LOCK;    names[15] = "intact.journal.lock";
+        slots[16] = BAZAAR_LOCK;     names[16] = "intact.bazaar.lock";
+        slots[17] = STUDIO_LOCK;     names[17] = "intact.studio.lock";
+        slots[18] = COLLECTION_LOCK; names[18] = "intact.collection.lock";
+        slots[19] = AGORA_LOCK;      names[19] = "intact.agora.lock";
     }
 
     /// @notice The formula every registered slot is derived by.
