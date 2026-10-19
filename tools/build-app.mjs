@@ -3,15 +3,15 @@
   INTACT · build the console into shards
 
   Origin: IPSEITY tools/build-engine.mjs, adapted for INTACT U7 (DESIGN.md
-  §5.1, §5.5). One document and six panels become the bytes `Engine`
-  holds:
+  §5.1, §5.5). One document and its panels (six in V1, seven with V2's
+  Gallery) become the bytes `Engine` holds:
 
       head     the PROLOGUE — a plain-text <!doctype …</head><body> with the
                CSP meta, served as-is; `tokenURI` writes the token's state
                into the gap after it, then the loader
       body     the whole shell, gzip, inflated in the browser by its own
                DecompressionStream (nothing is fetched)
-      panels   swap, social, launch, vault, identity, agent — each gzip,
+      panels   swap, social, launch, vault, identity, agent, gallery — each gzip,
                each hash-pinned by the keccak of its INFLATED text, which
                is the number the shell checks before injecting one
 
@@ -123,7 +123,8 @@ const CHUNK = Number(arg("--chunk", 24000));
 const MAX_SHARD = 24575;                       // EIP-170 minus the STOP prefix
 export const SHELL_GZIP_CEILING = 24_000;      // V2 (docs/V2.md §2, W7); 15,000 in V1 (U9, D16) — see the header
 export const PANEL_GZIP_CEILING = 12_288;      // V2 (docs/V2.md §2, W7); 8,192 in V1 (DESIGN §5.1)
-export const PANELS = ["swap", "social", "launch", "vault", "identity", "agent"];
+/// the Engine's slots in order: V1's six, then V2's Gallery, the seventh (W8; up to eight fit)
+export const PANELS = ["swap", "social", "launch", "vault", "identity", "agent", "gallery"];
 
 if (CHUNK > MAX_SHARD) throw new Error(`--chunk ${CHUNK} exceeds the EIP-170 ceiling`);
 

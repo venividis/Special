@@ -164,6 +164,23 @@ struct World {
     address seaport;        // a venue, not a satellite: an address and no bit
 }
 
+/// @dev The lanes, numbered as the shell's hash router does: verb 1 is
+///      Home and verbs 2.. are the Engine's panels 0.. — V1's six, then
+///      V2's Gallery (W8), the seventh. One list for the state gap's panel
+///      map (CatalogState) and for `Catalog.verbWord`, which the Premises'
+///      router and `/manifest` read; "" past the last named lane.
+function laneWord(uint8 verb) pure returns (string memory) {
+    if (verb == 1) return "home";
+    if (verb == 2) return "swap";
+    if (verb == 3) return "social";
+    if (verb == 4) return "launch";
+    if (verb == 5) return "vault";
+    if (verb == 6) return "identity";
+    if (verb == 7) return "agent";
+    if (verb == 8) return "gallery";
+    return "";
+}
+
 /// @dev The hub's immutables, in the order `Catalog._hub()` reads them.
 library H {
     uint256 internal constant REACH_IMPL = 0;
@@ -1254,9 +1271,12 @@ contract CatalogState is Templated {
     string internal constant TPL_COLLECTION =
         '"price":"\x02","minted":\x02,"open":\x04,"recent":\x04,"commons":\x04,';
 
+    /*  The panel map is one hole (V2, W8): the Engine holds up to eight
+        lanes and the map names exactly the ones it loaded, in slot order,
+        so a band whose Engine holds six names six and the shell offers no
+        lane its router cannot serve (`_panels` below).                  */
     string internal constant TPL_TAIL =
-        '"sel":\x04,"err":\x04,"topics":\x04,"panels":{"swap":"\x04","social":"\x04","launch":"\x04","vault":"\x04",'
-        '"identity":"\x04","agent":"\x04"},"engineHash":"\x04","catalogHash":"\x04","block":\x02,"time":\x02}';
+        '"sel":\x04,"err":\x04,"topics":\x04,"panels":\x04,"engineHash":"\x04","catalogHash":"\x04","block":\x02,"time":\x02}';
 
     string internal constant TPL_MARKET =
         '{"open":\x03,"sealed":\x03,"base":"\x01","quote":"\x01","baseSymbol":"\x04","quoteSymbol":"\x04",'
@@ -1339,18 +1359,33 @@ contract CatalogState is Templated {
 
     /// @notice The tables, the panel hashes, the engine hash and the clock.
     function tail(address engine, bytes32 catalogHash) external view returns (bytes memory) {
-        bytes[] memory B = new bytes[](11);
+        bytes[] memory B = new bytes[](6);
         B[0] = TEXT.selectors();
         B[1] = TEXT.errors();
         B[2] = TEXT.topics();
-        for (uint256 i; i < 6; ++i) {
-            (bool ok, bytes memory ret) = _probe(engine, abi.encodeCall(IEngine.panelHash, (i)), 32);
-            B[3 + i] = _hex(ok ? bytes32(ret) : bytes32(0), 32);
-        }
+        B[3] = _panels(engine);
         (bool okE, bytes memory retE) = _probe(engine, abi.encodeCall(IEngine.engineHash, ()), 32);
-        B[9] = _hex(okE ? bytes32(retE) : bytes32(0), 32);
-        B[10] = _hex(catalogHash, 32);
+        B[4] = _hex(okE ? bytes32(retE) : bytes32(0), 32);
+        B[5] = _hex(catalogHash, 32);
         return _fill(bytes(TPL_TAIL), abi.encode(block.number, block.timestamp), B);
+    }
+
+    /// @dev `{"swap":"0x…",…}`: each lane of the Engine's loaded prefix
+    ///      (`panelCount()`, read behind the guard: an Engine that does not
+    ///      answer has no lane) that a lane word names, with the hash its
+    ///      slot pins, in slot order — the order `engine.panel(i)` serves.
+    ///      Never more than eight, whatever a count says.
+    function _panels(address engine) private view returns (bytes memory o) {
+        (bool ok, bytes memory ret) = _probe(engine, abi.encodeCall(IEngine.panelCount, ()), 32);
+        uint256 n = ok ? uint256(bytes32(ret)) : 0;
+        o = "{";
+        for (uint256 i; i < n && i < 8; ++i) {
+            bytes memory w = bytes(laneWord(uint8(i + 2)));
+            if (w.length == 0) break;
+            (ok, ret) = _probe(engine, abi.encodeCall(IEngine.panelHash, (i)), 32);
+            o = abi.encodePacked(o, i == 0 ? "" : ",", '"', w, '":"', _hex(ok ? bytes32(ret) : bytes32(0), 32), '"');
+        }
+        o = abi.encodePacked(o, "}");
     }
 
     /// @notice `/token/<id>/services.json`: the token's own addresses and
@@ -1881,16 +1916,9 @@ contract Catalog {
         names[0] = "MetaMask EIP7702StatelessDeleGator";
     }
 
-    /// @notice The seven lanes, numbered as the shell's hash router does;
-    ///         panels 0..5 are verbs 2..7.
+    /// @notice The eight lanes, numbered as the shell's hash router does;
+    ///         panels 0..6 are verbs 2..8 (V2's Gallery is verb 8, W8).
     function verbWord(uint8 verb) external pure returns (string memory) {
-        if (verb == 1) return "home";
-        if (verb == 2) return "swap";
-        if (verb == 3) return "social";
-        if (verb == 4) return "launch";
-        if (verb == 5) return "vault";
-        if (verb == 6) return "identity";
-        if (verb == 7) return "agent";
-        return "";
+        return laneWord(verb);
     }
 }

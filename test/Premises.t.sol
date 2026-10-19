@@ -115,7 +115,8 @@ abstract contract SiteFixture is IntactFixture {
         engine = new Engine();
         engine.loadHead(bytes(HEAD));
         engine.loadBody(GZ);
-        for (uint256 i; i < 6; ++i) engine.loadPanel(i, GZ, keccak256(abi.encodePacked("panel", i)));
+        // the seven lanes V2 ships: V1's six, then the Gallery (W8)
+        for (uint256 i; i < 7; ++i) engine.loadPanel(i, GZ, keccak256(abi.encodePacked("panel", i)));
         engine.setEngineHash(keccak256(bytes(DOC)), uint32(bytes(DOC).length));
         engine.freeze();
         crest = new Crest();
@@ -470,6 +471,76 @@ contract PremisesTest is SiteFixture {
         e2.setEngineHash(keccak256(bytes(DOC)), uint32(bytes(DOC).length));
         vm.expectRevert(Engine.BadPanel.selector);
         e2.freeze();
+    }
+
+    /*═══════════════════ the seventh lane (V2, W8) ═══════════════════*/
+
+    function test_theGalleryIsTheSeventhLaneAndIsServedLikeTheRest() public {
+        uint256 id = mintTo(alice);
+        assertEq(engine.panelCount(), 7, "seven lanes: V1's six and the Gallery");
+        bytes32 g = keccak256(abi.encodePacked("panel", uint256(6)));
+        (uint16 status, bytes memory body, KeyValue[] memory h) = get(path2("panel", "gallery.js"));
+        assertEq(uint256(status), 200, "/panel/gallery.js is served");
+        assertEq(body, GZ, "the stored gzip bytes, as stored");
+        assertEq(header(h, "ETag"), string.concat("\"", LibNum.hex32(g), "\""));           // its ETag is the seventh slot's pin
+        assertEq(catalog_.verbWord(8), "gallery");                                    // verb 8 is the Gallery
+        assertEq(catalog_.verbWord(9), "");                                           // and no word names an eighth lane yet
+        bytes memory agentPin = bytes(LibNum.hex32(keccak256(abi.encodePacked("panel", uint256(5)))));
+        assertTrue(has(catalog_.state(id), abi.encodePacked('"agent":"', agentPin, '","gallery":"', bytes(LibNum.hex32(g)), '"},')),
+            "the state gap names the Gallery seventh, after the agent, and nothing after it");
+        (, bytes memory man, ) = get(path1("manifest"));
+        assertTrue(has(man, abi.encodePacked('"gallery":"', bytes(LibNum.hex32(g)), '"}')), "/manifest names its pin last among the panels");
+        bytes memory packed;
+        for (uint256 i; i < 7; ++i) packed = abi.encodePacked(packed, keccak256(abi.encodePacked("panel", i)));
+        assertTrue(has(man, abi.encodePacked('{"template":"/panel/<name>.js","keccak":"', bytes(LibNum.hex32(keccak256(packed))), '"}')),
+            "and the panel route hashes the seven pins together, in slot order");
+    }
+
+    function test_theEngineHoldsEightLanesAndFreezesOnlyAPrefixWithoutAGap() public {
+        Engine e = new Engine();
+        e.loadHead(bytes(HEAD));
+        e.loadBody(GZ);
+        e.setEngineHash(keccak256(bytes(DOC)), uint32(bytes(DOC).length));
+        assertEq(e.PANELS(), 8, "room for eight");
+        vm.expectRevert(Engine.BadPanel.selector);
+        e.loadPanel(8, GZ, bytes32(uint256(1)));
+        e.loadPanel(0, GZ, bytes32(uint256(1)));
+        e.loadPanel(2, GZ, bytes32(uint256(3)));
+        assertEq(e.panelCount(), 1, "the lanes are the loaded prefix: slot 2 behind an empty slot 1 is not one");
+        assertEq(e.shardHashes().length, 3, "and the shard list is the head, the body and that one lane");
+        vm.expectRevert(Engine.BadPanel.selector);
+        e.freeze();
+        e.loadPanel(1, GZ, bytes32(uint256(2)));
+        for (uint256 i = 3; i < 8; ++i) e.loadPanel(i, GZ, bytes32(i + 1));
+        assertEq(e.panelCount(), 8, "eight loaded, eight lanes");
+        assertEq(e.shardHashes().length, 10, "the shard list is the head, the body and the eight panels");
+        e.freeze();
+        assertTrue(e.frozen(), "a prefix without a gap freezes");
+        assertEq(e.panelHash(7), bytes32(uint256(8)), "the eighth slot keeps its pin");
+        vm.expectRevert(Engine.BadPanel.selector);
+        e.panel(8);
+    }
+
+    function test_anEngineOfSixLanesIsNamedSixAndServesNoGallery() public {
+        Engine e6 = new Engine();
+        e6.loadHead(bytes(HEAD));
+        e6.loadBody(GZ);
+        for (uint256 i; i < 6; ++i) e6.loadPanel(i, GZ, keccak256(abi.encodePacked("panel", i)));
+        e6.setEngineHash(keccak256(bytes(DOC)), uint32(bytes(DOC).length));
+        e6.freeze();
+        assertEq(e6.panelCount(), 6, "V1's six");
+        bytes memory agentPin = bytes(LibNum.hex32(keccak256(abi.encodePacked("panel", uint256(5)))));
+        bytes memory t6 = stateC.tail(address(e6), bytes32(0));
+        assertTrue(has(t6, abi.encodePacked('"agent":"', agentPin, '"},')), "the panel map of a six-lane Engine ends at the agent");
+        assertFalse(has(t6, bytes('"gallery"')), "and names no Gallery the Engine does not hold");
+        Premises p6 = new Premises(predictedHub, address(renderer_), address(e6), address(catalog_), address(crest), AGENTCARD0);
+        (uint16 sg, , ) = p6.request(path2("panel", "gallery.js"), new KeyValue[](0));
+        assertEq(uint256(sg), 404, "its router serves no Gallery");
+        (uint16 sa, , ) = p6.request(path2("panel", "agent.js"), new KeyValue[](0));
+        assertEq(uint256(sa), 200, "and serves the six it holds");
+        (, string memory man, ) = p6.request(path1("manifest"), new KeyValue[](0));
+        assertFalse(has(bytes(man), bytes('"gallery"')), "and its manifest names six");
+        assertTrue(has(stateC.tail(address(engine), bytes32(0)), bytes('"gallery":"')), "while this world's seven-lane Engine names the Gallery");
     }
 
     function test_theCatalogAgreesWithTheHubAndAMispredictionIsVisible() public {

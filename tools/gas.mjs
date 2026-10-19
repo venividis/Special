@@ -134,7 +134,7 @@ async function buildProbes(chain, out) {
       Catalog's documents beside them. Without a dist/ this half is
       skipped and says so, so the sweep above still runs alone.         */
   if (fs.existsSync(path.join(ROOT, "dist/shards.json"))) {
-    const { deploySite, mint, encRequest } = await import("./site.mjs");
+    const { deploySite, mint, encRequest, PANELS } = await import("./site.mjs");
     const satellites = { market: Boolean(out.contracts["src/Market.sol"]?.Market) };
     /*  Wave 4: the sweep measures the deployment shape a band will have once
         the post-MVB satellites have landed — the card, the Roles (and the
@@ -165,7 +165,7 @@ async function buildProbes(chain, out) {
     route(["token", i, "state.json"], "state");
     route(["token", i, "hash"], "live");
     route(["token", i, "services.json"], "state");
-    for (const name of ["swap", "social", "launch", "vault", "identity", "agent"]) route(["panel", name + ".js"], "panel");
+    for (const name of PANELS) route(["panel", name + ".js"], "panel");
     route(["services.json"], "state");
     route(["open"], "state");
     route(["manifest"], "manifest");

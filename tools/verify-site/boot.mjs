@@ -670,8 +670,10 @@ export async function run(t, ctx) {
        token #1; the map is a function of the payload, so another deployment pins another number —
        re-pinned in wave 4 when the service table became two contracts (CatalogRowsPost, one more
        CREATE before the Premises), which moved the harness Premises to the next nonce and so the
-       payload the QR carries; the decoder sentences below prove the new map is the new address */
-    const PIN = "0x9ebd22a1940d9d19f3de6f72c90e2ee1b2730f7118c0450b9d236cf9c106308c";
+       payload the QR carries; the decoder sentences below prove the new map is the new address.
+       Re-pinned in V2 wave 2 (W8) for the same reason: the Gallery is the Engine's seventh panel, one
+       more loadPanel from the deployer before the Premises, so the harness Premises moved one nonce on */
+    const PIN = "0x610e7c44219772c44e4cfe6f8568dcd4741f5507afc528f0f32bd255a94a861e";
     t.ok(mapHash === PIN, `the module map's keccak is pinned (${mapHash})`, "want " + PIN);
     /* an independent decoder: the map rasterised at 4 px per module, including the quiet zone */
     let decoded = null, how = "";
