@@ -38,6 +38,19 @@ it stood, on 2026-10-19:
   Collection 29, Agora 79. That is 279 V2 tests beside V1's 352 across 36
   suites, and no name collided in the shared compile.
 
+## The battery on the merged head
+
+`node tools/check.mjs --keep-going` on 3d33e4d (the five units, W6 and W7
+merged): **check: green — all 33 steps passed in 64 m 24 s**. compile 46,
+facets 96, selftest 52, build 21,949 B of 24,000, forge 640 on the
+monolith and 640 on the diamond, gas 83, verify 249, verify:site 604,
+mcp 29, verify:pool 144, verify:vault 184, verify:parley 81,
+verify:launch 307, verify:steward 91, verify:timelock 35, verify:premises
+63, verify:plate 228, verify:keepsake 81, verify:journal 48,
+verify:bazaar 67, verify:studio 47, verify:agora 53, fuzz 9 properties,
+verify:findings 36, agents 6,923, static-audit 14, verify:recover 184,
+verify:console 174, invariants 107; 0 failed in every step.
+
 ## Requests, decisions, state
 
 Interfaces (additive only, one new section in `docs/INTERFACE-CHANGES.md`):
@@ -89,7 +102,7 @@ The battery:
 | # | Request | From | Decision | State |
 |---|---|---|---|---|
 | B1 | `check.mjs` steps and `package.json` scripts: `verify:keepsake`, `verify:journal`, `verify:bazaar`, `verify:studio`, `verify:agora` (the fork proof stays out: it needs the network) | all | yes | done: 33 steps; `verify:bazaar-fork` is a script only |
-| B2 | `invariants-check.mjs` learns V2's row letters; INVARIANTS and DESIGN §14 gain the units' rows | all | yes; pending until they run in `npm run check` | done: ids `[A-Z]\d+`; 55 rows pending; the checker read 107 passed, 0 failed |
+| B2 | `invariants-check.mjs` learns V2's row letters; INVARIANTS and DESIGN §14 gain the units' rows | all | yes | done: ids `[A-Z]\d+`; the 55 unit rows and W6's A12, A13, Z12 and F15 are live since the battery ran green on 3d33e4d (the checker: 225 passed, 0 failed); W7's F9–F14 wait for Chromium sentences |
 | B3 | `fuzz.mjs`: no drip ever executes below its floor | W1, V2 §8 | yes | open |
 | B4 | `agents.mjs`: a keeper motive pressing `drip` and `claim` | W1 | later | open |
 | B5 | `mutations.mjs`: the units' rows | W5 | later; the units' tables are the evidence until then | open |

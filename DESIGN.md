@@ -614,7 +614,7 @@ An AI agent is a holder-authorised key on the Reach and nothing more. **Manifest
 | H2 | All signatures EIP-712 with chainId + verifyingContract + nonce + tokenId + epoch | `test/Reach7739.t.sol` · `test_aSignatureFromOneBandIsInvalidOnAnother` |
 | H3 | Deployment records hold salts, facet hashes, shard addresses, gas assumptions; burner deployer | `tools/recover-record.mjs` · "0 disagreeing" |
 
-**V2 (docs/V2.md).** The rows below mirror INVARIANTS K, J, Z, S and N. They stay pending until they run in the battery.
+**V2 (docs/V2.md).** The rows below mirror INVARIANTS K, J, Z, S and N, live since the battery ran green on 3d33e4d.
 
 | # | Item | Test file · assertion |
 |---|---|---|
