@@ -79,11 +79,31 @@
     RPC_URL=… PRIVATE_KEY=0x… node tools/testnet.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA
         [--rpc URL] [--record path] [--journal path] [--campaign path] [--gateway URL]
         [--endpoints URL,URL,URL] [--preflight-only] [--skip-deploy] [--resume] [--key-file path] [--price wei]
+        [--fork URL] [--v2] [--port n] [--gateway-port n]
     node tools/testnet.mjs --chain 31337 --confirm DEPLOY_INTACT_LOCAL --record /tmp/x/31337.json
         --journal /tmp/x/31337.journal.json --campaign /tmp/x/31337.campaign.json      # spawns hardhat on 8547
     node tools/testnet.mjs --chain 31337 --confirm DEPLOY_INTACT_LOCAL --rpc http://127.0.0.1:8547 …  # a running node
-    node tools/testnet.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --fork https://sepolia.base.org
+    node tools/testnet.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --fork <url>
         # a hardhat fork of the chain at its latest block, spawned on 8548: records under out/fork/
+        # (<url> is the chain's public endpoint, given on the command line; docs/DEPLOYMENT.md names it)
+    node tools/testnet.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --fork <url> --v2 --port 8549 --gateway-port 8083
+        # the same with V2 landed by the burner in the deployment (tools/deploy.mjs --v2), on ports no other tool spawns
+
+  V2 (W15). `--v2` is passed to deployIntact: the burner lands V2's seven
+  contracts right after the Premises (tools/deploy.mjs V2_ORDER). Without
+  it, where the clock moves, the satellites phase lands them through the
+  Timelock's queue like the post-MVB four (they are SATELLITE_ORDER's
+  tail); on a public chain it queues them. Wherever they have landed the
+  campaign walks a V2 family, after the v4 family and before the lock: a
+  keepsake of ether wrapped as a gift to the second key; a memory
+  inscribed into token 1; token 2 listed through the Bazaar on the chain's
+  own Seaport — its Reach sealed past the listing's end, Seaport approved
+  for that one token, the order validated from the seller's wallet with no
+  signature and published, then bought by the holder for exactly the
+  price; a Studio collection launched from token 1 with the default site
+  (engine/sitepage.mjs) and minted by the second key; and a word in
+  Agora's commons spoken as token 1. `--port` and `--gateway-port` move
+  the spawned node and gateway off 8547/8548 and 8082.
 
   The fork. `--fork <url>` runs the whole rehearsal against a hardhat fork
   of a rehearsal chain (hardhat.fork.config.cjs: the chain's own id, cancun
@@ -118,9 +138,13 @@ import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { compile, artifact, shipRule } from "./compile.mjs";
 import { enc, sel, decAddr, decUint, decBool, decString } from "./evm.mjs";
 import { adapt, deployIntact, bandOf, CONFIRM, SALTED, atomicWrite, parseArgs, readDist, awaitBlock, awaitCode, logsBy, ROOT,
-         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite, VENUES, checkVenues } from "./deploy.mjs";
+         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite, VENUES, checkVenues, V2_ORDER, RECORD_SCHEMA } from "./deploy.mjs";
 import { recover } from "./recover-record.mjs";
 import { encRequest, decResponse, ZERO } from "./site.mjs";
+/*  V2 (W15): Seaport 1.6's order, built the one way the Bazaar's suite holds
+    to Seaport's own getOrderHash, and the Studio's default site, one source */
+import { etherListing, orderOf, componentsOf, pinHashOf, SIG as SEAPORT_SIG, TOPIC as BAZAAR_TOPIC, FLOORS_T, decodePublished } from "./verify-bazaar.mjs";
+import { sitePage } from "../engine/sitepage.mjs";
 
 const kec = (b) => "0x" + Buffer.from(keccak256(Buffer.isBuffer(b) ? b : Buffer.from(b))).toString("hex");
 const low = (s) => String(s).toLowerCase();
@@ -151,8 +175,13 @@ export const AMOUNTS = {
   /// the Router family (where a venue table exists) and the v4 family (where the custodian has landed)
   routerSwap: UNIT / 20n, v4Gas: 6_000_000n, v4EthIn: UNIT / 100n,
   /// the v4 launch's hook terms: opens at once, locked a day, 10 % → 1 % over an hour
-  v4Terms: [0, 86400, 100000, 10000, 3600]
+  v4Terms: [0, 86400, 100000, 10000, 3600],
+  /// the V2 family (W15, where V2 has landed): the keepsake's ether, the listing's price, a collection's mint price,
+  /// the second key's gas for its V2 steps, the seconds the keepsake frees over and the listing stays open
+  keepsake: UNIT / 10n, listing: UNIT / 5n, collectionPrice: UNIT / 10n, v2SecondGas: 1_500_000n, v2HolderGas: 9_000_000n, keepsakeSeconds: 120n, listingSeconds: 3600n
 };
+/// What the V2 family spends besides gas: the holder's keepsake and purchase, the second key's mint.
+export const V2_SPEND = { holder: AMOUNTS.keepsake + AMOUNTS.listing, second: AMOUNTS.collectionPrice };
 /// What the holder spends besides gas (two mints at the hub's price are
 /// added at run time), and what the second key is funded with besides gas.
 export const HOLDER_SPEND = AMOUNTS.marketQuote + 2n * AMOUNTS.buy + AMOUNTS.postage + AMOUNTS.lock;
@@ -175,8 +204,10 @@ export const CAMPAIGN_BUDGET_GAS = 30_000_000n;
 /// 2,696,364 to land), the Market 1,647,536, the Roles 1,524,439; and on the
 /// fork of Base Sepolia of 2026-10-18, the first chain with a venue table:
 /// the custodian 3,556,363 (387,918 to queue, 3,168,445 to land). The budget
-/// sits over the largest.
-export const SATELLITE_BUDGET_GAS = 4_000_000n;
+/// sits over the largest — since V2 (W15) the Studio, whose initcode carries
+/// the Collection's creation code and whose constructor stores it: 6,189,198
+/// in-process (627,434 to queue, 5,561,764 to land), the Keepsake 4,172,705.
+export const SATELLITE_BUDGET_GAS = 6_500_000n;
 
 /*═══════════════════ signatures and topics ═══════════════════*/
 
@@ -195,7 +226,12 @@ const SIG = {
   grant: "grantSession(address,uint64,uint128,(address,uint128)[],address[],bytes4[],uint32,uint32)",
   asSession: "executeAsSession(address,uint256,bytes)", execute: "execute(address,uint256,bytes,uint8)", seal: "seal(uint64)",
   arrange: "arrange(uint256,bytes32,uint64,uint64,address[],uint8)", summon: "summon(uint256,address,bytes32)", cancel: "cancel(uint256)",
-  stillHere: "stillHere(uint256)", transfer: "transfer(address,uint256)", approve: "approve(address,uint256)"
+  stillHere: "stillHere(uint256)", transfer: "transfer(address,uint256)", approve: "approve(address,uint256)",
+  /* V2 (W15): the journey's calls, each the signature its Catalog row serves */
+  wrap: "wrap(((address,uint256)[],(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))",
+  inscribe: "inscribe(address,uint256,uint8,bytes,bytes32)",
+  studioLaunch: "launch(uint256,(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes),bytes32)",
+  collectionMint: "mint(address,uint256)", agoraSpeak: "speak(uint256,uint256,uint8,uint64,uint64,bytes)"
 };
 const TOPIC = {
   transfer: topic("Transfer(address,address,uint256)"),
@@ -209,13 +245,19 @@ const TOPIC = {
   launchCreated: topic("LaunchCreated(uint256,uint256,address,uint8,bytes32)"),
   seeded: topic("Seeded(uint256,bytes32,address,uint256,uint160,uint160,uint256)"),
   collected4: topic("Collected(uint256,address,uint256,uint256)"),
-  released4: topic("Released(uint256,address,uint256,uint256)")
+  released4: topic("Released(uint256,address,uint256,uint256)"),
+  /* V2 (W15) */
+  wrapped: topic("Wrapped(uint256,address,address,uint64,uint64,uint64,uint256,string)"),
+  inscribed: topic("Inscribed(address,uint256,uint256,uint8,address,uint64,bytes32,bytes32,bytes)"),
+  collectionLaunched: topic("Launched(address,uint256,address,string,string,uint32,uint128)"),
+  collectionMinted: topic("Minted(uint256,address,uint256,uint256,uint256)")
 };
 
 /*═══════════════════ the CLI, the token first ═══════════════════*/
 
 export const CLI_OPTIONS = ["chain", "confirm", "rpc", "record", "journal", "campaign", "gateway", "endpoints",
-                            "preflight-only", "skip-deploy", "resume", "key-file", "price", "keep", "fork"];
+                            "preflight-only", "skip-deploy", "resume", "key-file", "price", "keep", "fork",
+                            "v2", "port", "gateway-port"];
 
 const args = parseArgs(process.argv.slice(2));
 for (const k of Object.keys(args)) {
@@ -237,7 +279,13 @@ if (FORK && LOCAL) { console.error("--fork forks a rehearsal chain (84532, 11155
 if (FORK && (args["key-file"] || args.rpc || args["skip-deploy"] || args.resume)) { console.error("--fork spawns its own node and makes its own key for one run: --rpc, --key-file, --skip-deploy and --resume do not apply"); process.exit(2); }
 /// a chain whose clock this tool may move: 31337, or a fork
 const MOVABLE = LOCAL || Boolean(FORK);
-const RPC_PORT = 8547, GW_PORT = 8082, FORK_PORT = 8548;
+/// --port moves the node this tool spawns (31337 or a fork), --gateway-port the gateway it spawns (W15)
+const portArg = (k) => { if (!args[k]) return null; const n = Number(args[k]); if (!Number.isInteger(n) || n < 1024 || n > 65535) { console.error(`--${k} takes a port number from 1024 to 65535`); process.exit(2); } return n; };
+const PORT = portArg("port"), GATEWAY_PORT = portArg("gateway-port");
+const RPC_PORT = PORT || 8547, GW_PORT = GATEWAY_PORT || 8082, FORK_PORT = PORT || 8548;
+/// --v2 (W15): the deployment lands V2 by the burner (tools/deploy.mjs's switch)
+const V2 = Boolean(args.v2);
+if (args.v2 !== undefined && args.v2 !== true) { console.error("--v2 is a switch and takes no value"); process.exit(2); }
 const RPC = FORK ? `http://127.0.0.1:${FORK_PORT}` : args.rpc && args.rpc !== true ? String(args.rpc) : (process.env.RPC_URL || (LOCAL ? `http://127.0.0.1:${RPC_PORT}` : null));
 const SCRATCH = path.join(os.tmpdir(), "intact-testnet");
 const where = (opt, name) => args[opt] && args[opt] !== true ? path.resolve(ROOT, String(args[opt])) : (LOCAL ? path.join(SCRATCH, name) : FORK ? path.join(ROOT, "out", "fork", name) : path.join(ROOT, "deployments", name));
@@ -359,7 +407,9 @@ async function main() {
     const r0 = new RpcChain(RPC, key, chainId);
     await until(() => r0.rpc("eth_chainId"), "the fork at " + RPC, 120000);
     const meta = await r0.rpc("hardhat_metadata", []);
-    forkInfo = { url: FORK, block: meta.forkedNetwork ? String(meta.forkedNetwork.forkBlockNumber) : null, hash: meta.forkedNetwork ? meta.forkedNetwork.forkBlockHash : null };
+    /*  the fork block and its hash, never the endpoint: a record names no RPC
+        endpoint (docs/DEPLOYMENT.md), a fork's under out/fork/ included (W15) */
+    forkInfo = { block: meta.forkedNetwork ? String(meta.forkedNetwork.forkBlockNumber) : null, hash: meta.forkedNetwork ? meta.forkedNetwork.forkBlockHash : null };
     /*  Execution at the fork block itself would need the forked chain's
         hardfork history; a local block runs this node's own rules
         (cancun), so the first thing the fork does is mine one.          */
@@ -429,20 +479,30 @@ async function main() {
     l1PerStep = BigInt(await c.call(ORACLE, enc("getL1Fee(bytes)", ["0x" + "ab".repeat(600)])));
     note(`L1 data fee: ≈ ${l1Deploy} wei (${eth(l1Deploy, 9)} ETH) for the deploy, ≈ ${l1PerStep} wei per 600-byte campaign step (oracle at ${ORACLE})`);
   } else note("no GasPriceOracle predeploy on this chain — no L1 data term");
-  const deployNeed = skipDeploy ? 0n : (120_000_000n * gasPrice * 15n) / 10n + l1Deploy;
+  /*  The MVB's 120 M budget, or with --v2 the 140 M that covers V2's seven
+      as well: measured in-process (tools/verify-recover.mjs, W15) at
+      109.78 M for the MVB without a Router and 127.46 M with V2's seven
+      (17.68 M of them) on a row that names only Seaport; the fork's
+      figures with the Router are in docs/v2/W15-deploy.md.             */
+  const deployGas = V2 ? 140_000_000n : 120_000_000n;
+  const deployNeed = skipDeploy ? 0n : (deployGas * gasPrice * 15n) / 10n + l1Deploy;
   const measured = CAMPAIGN_GAS.measuredOn !== null;
   const campaignGas = measured ? CAMPAIGN_GAS.total : CAMPAIGN_BUDGET_GAS;
   const secondGas = measured ? CAMPAIGN_GAS.second : CAMPAIGN_BUDGET_GAS / 8n;
   const steps = 50n;
   const price = args.price && args.price !== true ? BigInt(args.price) : (skipDeploy ? decUint(await c.read(JSON.parse(fs.readFileSync(RECORD, "utf8")).contracts.hub, "price()")) : 10n ** 16n);
   const secondFund = (secondGas * gasPrice * 15n) / 10n + l1PerStep * 12n + SECOND_SPEND + 2n * 27_300n * gasPrice;
-  const campaignNeed = (campaignGas * gasPrice * 15n) / 10n + l1PerStep * steps + HOLDER_SPEND + 2n * price + secondFund;
+  /// with --v2 the V2 family runs too: its ether, and its gas as a budget until a run has measured it (W15)
+  const v2Need = V2 ? V2_SPEND.holder + V2_SPEND.second + ((AMOUNTS.v2HolderGas + AMOUNTS.v2SecondGas) * gasPrice * 15n) / 10n + l1PerStep * 12n : 0n;
+  const campaignNeed = (campaignGas * gasPrice * 15n) / 10n + l1PerStep * steps + HOLDER_SPEND + 2n * price + secondFund + v2Need;
   const hasArtifact = (f, n) => { try { artifact(out, f, n); return true; } catch { return false; } };
   /// the budget's list, before any record exists: what this chain's band and venue table admit
-  const satelliteKeys = SATELLITE_ORDER.filter((k) => !admitsSatellite(k, { chainId, band: { band: band.band }, venues: VENUES[chainId] || null }) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
+  /// (a fresh deployment writes this tree's schema; with --v2 the burner lands V2 itself, so the Timelock lands none of it)
+  const satelliteKeys = SATELLITE_ORDER.filter((k) => !(V2 && V2_ORDER.includes(k)) &&
+    !admitsSatellite(k, { chainId, band: { band: band.band }, venues: VENUES[chainId] || null, schema: "intact.deployment/" + RECORD_SCHEMA }) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
   const satelliteNeed = (BigInt(satelliteKeys.length) * SATELLITE_BUDGET_GAS * gasPrice * 15n) / 10n + l1PerStep * 2n * BigInt(satelliteKeys.length);
   const need = deployNeed + campaignNeed + satelliteNeed;
-  ok(bal >= need, `preflight · balance ${eth(bal)} ETH covers ${eth(need)} ETH: the deploy ${eth(deployNeed)} (120M gas × ${gasPrice} wei × 1.5 + L1) plus the campaign ${eth(campaignNeed)} (${campaignGas} gas ${measured ? `measured on ${CAMPAIGN_GAS.measuredOn}` : "BUDGET: no wire run measured yet"} × 1.5, two mints at ${eth(price)} ETH, ${eth(HOLDER_SPEND)} ETH the holder spends, ${eth(secondFund)} ETH funding the second key)${satelliteKeys.length ? ` plus the satellites ${eth(satelliteNeed)} (${satelliteKeys.join(", ")}: ${SATELLITE_BUDGET_GAS} gas each, a budget, × 1.5)` : ""}`,
+  ok(bal >= need, `preflight · balance ${eth(bal)} ETH covers ${eth(need)} ETH: the deploy ${eth(deployNeed)} (${M(deployGas)} gas × ${gasPrice} wei × 1.5 + L1${V2 ? ", V2 landed by the burner" : ""}) plus the campaign ${eth(campaignNeed)} (${campaignGas} gas ${measured ? `measured on ${CAMPAIGN_GAS.measuredOn}` : "BUDGET: no wire run measured yet"} × 1.5, two mints at ${eth(price)} ETH, ${eth(HOLDER_SPEND)} ETH the holder spends, ${eth(secondFund)} ETH funding the second key)${satelliteKeys.length ? ` plus the satellites ${eth(satelliteNeed)} (${satelliteKeys.join(", ")}: ${SATELLITE_BUDGET_GAS} gas each, a budget, × 1.5)` : ""}`,
      `fund ${me} with at least ${eth(need - bal)} ETH more`);
   if (bal < need) throw refuse(`underfunded: ${eth(need)} ETH needed, ${eth(bal)} ETH held`);
   const preflight = { rpcChainId: c.chainId, blockA: blockA.toString(), blockB: blockB.toString(), latestTimestamp: String(BigInt(latest.timestamp)), wallClock: wall.toString(), skewSeconds: skew.toString(),
@@ -465,7 +525,7 @@ async function main() {
     ok(record.chainId === chainId && record.contracts && record.contracts.hub, `deploy · skipped: the record at ${rel(RECORD)} names the hub ${record.contracts && record.contracts.hub}`);
   } else {
     try {
-      record = await deployIntact(ad, { out, plan, manifest, journalPath: JOURNAL, recordPath: RECORD, price: args.price && args.price !== true ? BigInt(args.price) : undefined, log: (s) => console.log("    " + s.trim()) });
+      record = await deployIntact(ad, { out, plan, manifest, journalPath: JOURNAL, recordPath: RECORD, price: args.price && args.price !== true ? BigInt(args.price) : undefined, v2: V2, log: (s) => console.log("    " + s.trim()) });
     } catch (e) {
       ok(false, `deploy · deployIntact threw: ${e.message}`);
       note(`nothing was published; the journal at ${rel(JOURNAL)} holds what landed`);
@@ -481,6 +541,10 @@ async function main() {
   const landKeys = SATELLITE_ORDER.filter((k) => !admitsSatellite(k, record) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
   if (!landKeys.length) note("no satellite contract is compiled in this tree; the phase runs once one lands (U14–U18)");
   for (const key of landKeys) {
+    if (record.satellites?.[key]?.via === "burner" && record.contracts?.[key]) {
+      ok(true, `satellites · ${key} landed at ${record.contracts[key]} by the burner in the deployment (--v2), ${M(record.satellites[key].executed.gas)} gas, and recovered with the record`);
+      continue;
+    }
     try {
       const r = await deploySatellite(ad, record, key, { out, recordPath: RECORD, log: (s) => console.log("    " + s.trim()) });
       if (r.queued) {
@@ -929,6 +993,126 @@ async function main() {
         });
       } else note("a public chain's clock cannot be moved: the release waits for unlocksAt (refused above, by its selector)");
     } else note(`the v4 family is skipped: ${!ROUTER ? "no Router on this chain (no venue table)" : "the custodian has not landed here yet — it waits for the Timelock's delay; a fork (--fork) walks this path in-run"}`);
+
+    /*── V2 (W15): where V2 has landed, one walk through each contract, every step with its receipt.
+         Token 2 is the one listed, so token 1 keeps its holder for the steps after this family. ──*/
+    const landedV2 = {};
+    for (const k of ["keepsake", "journal", "bazaar", "studio", "agora"]) landedV2[k] = Boolean(S[k]) && (await ad.codeAt(S[k])) !== "0x";
+    if (Object.values(landedV2).some(Boolean)) {
+      const PA = (BigInt(HUB) << 96n) | A;                                  // token 1 as a persona: the hub in the high 160 bits, the id in the low 96
+      const hexText = (s) => "0x" + Buffer.from(s, "utf8").toString("hex");
+      const ZERO32 = "0x" + "00".repeat(32);
+      await step("fund the second key for the V2 family", "v2", "holder", async () => {
+        const gp = BigInt(await c.rpc("eth_gasPrice"));
+        const need = (AMOUNTS.v2SecondGas * gp * 15n) / 10n + V2_SPEND.second;
+        const have = await c.balanceOf(second);
+        if (have >= need) return { status: "skipped", notes: `the second key holds ${eth(have)} ETH; its V2 steps need ${eth(need)} (${AMOUNTS.v2SecondGas} gas at ${gp} wei × 1.5 and a mint)` };
+        const raw = await c.send({ to: second, value: need - have, label: "fund" });
+        return { fn: "(transfer)", to: second, r: { gas: raw.gas, hash: raw.hash, block: raw.block, logs: [] }, notes: `${eth(need - have)} ETH: ${AMOUNTS.v2SecondGas} gas at ${gp} wei × 1.5 and the mint price` };
+      });
+      if (landedV2.keepsake) {
+        await step("wrap a keepsake: ether that frees over two minutes, a gift to the second key", "v2", "holder", async () => {
+          const end = (await now(c)) + AMOUNTS.keepsakeSeconds;
+          const w = [[[ZERO, AMOUNTS.keepsake]], [0, 0, end], second, "kept for the second key by the rehearsal", [0, 0, 0, 0]];
+          const r = await ad.exec(S.keepsake, SIG.wrap, [w], { value: AMOUNTS.keepsake, label: "wrap" });
+          const ev = logsBy(r.logs, S.keepsake, TOPIC.wrapped);
+          if (ev.length !== 1) throw Object.assign(new Error(`expected one Wrapped log, saw ${ev.length}`), { r });
+          const id = BigInt(ev[0].topics[1]);
+          const owner = addrAt(await read(S.keepsake, "ownerOf(uint256)", [id]));
+          if (owner !== second) throw Object.assign(new Error(`keepsake ${id} is held by ${owner}, not the second key`), { r });
+          return { fn: SIG.wrap, to: S.keepsake, r, notes: `keepsake ${id} from the Wrapped log, held by the second key: ${eth(AMOUNTS.keepsake)} ETH freeing until ${end} on the chain's clock`, vars: { keepsakeId: id.toString() } };
+        });
+      }
+      if (landedV2.journal) {
+        await step("inscribe a memory into token 1", "v2", "holder", async () => {
+          const before = decUint(await read(S.journal, "countOf(address,uint256)", [HUB, A]));
+          const r = await ad.exec(S.journal, SIG.inscribe, [HUB, A, 0, hexText("the rehearsal remembers this token"), ZERO32], { label: "inscribe" });
+          const ev = logsBy(r.logs, S.journal, TOPIC.inscribed);
+          if (ev.length !== 1) throw Object.assign(new Error(`expected one Inscribed log, saw ${ev.length}`), { r });
+          const after = decUint(await read(S.journal, "countOf(address,uint256)", [HUB, A]));
+          if (after !== before + 1n) throw Object.assign(new Error(`countOf moved ${before} → ${after}`), { r });
+          return { fn: SIG.inscribe, to: S.journal, r, notes: `memory ${BigInt(ev[0].topics[3])} from the Inscribed log; countOf(hub, ${A}) ${before} → ${after}, rootOf ${word(await read(S.journal, "rootOf(address,uint256)", [HUB, A]), 0).slice(0, 14)}…` };
+        });
+      }
+      const SEA = record.venues?.seaport || null;
+      if (landedV2.bazaar && SEA) {
+        const BZ = S.bazaar;
+        if (!V.listEnd) { V.listStart = (await now(c)).toString(); V.listEnd = (BigInt(V.listStart) + AMOUNTS.listingSeconds).toString(); V.listSalt = BigInt(kec(Buffer.from(`intact.campaign/1:listing:${HUB}:${B}`, "utf8"))).toString(); save(); }
+        const reachB2 = addrAt(await read(HUB, "account(uint256)", [B]));
+        await step("seal token 2's Reach past the listing's end (the Bazaar's floor on the Reach)", "v2", "second", async () => {
+          const until = BigInt(V.listEnd) + 600n;
+          const r = await ad2.exec(reachB2, SIG.seal, [until], { label: "seal" });
+          return { fn: SIG.seal, to: reachB2, r, notes: `sealedUntil ${decUint(await read(reachB2, "sealedUntil()"))}, past the listing's end ${V.listEnd}` };
+        });
+        await step("approve Seaport for token 2 alone", "v2", "second", () => tx("second", HUB, SIG.approve, [SEA, B], { label: "approve", notes: `getApproved(${B}) is Seaport 1.6 at ${SEA}; a sale clears it` }));
+        /* the order, built after the last write to the token so the fingerprint it pins is the one a fill finds */
+        const roy = await read(HUB, "royaltyInfo(uint256,uint256)", [B, AMOUNTS.listing]);
+        const receiver = addrAt(roy, 0), royalty = decUint(roy, 1);
+        const fp = word(await read(HUB, "getStateFingerprint(uint256)", [B]), 0);
+        const zh = pinHashOf(BZ, B, fp, []);
+        const theirs = word(await read(BZ, `pinHash(uint256,bytes32,${FLOORS_T})`, [B, fp, []]), 0);
+        if (low(theirs) !== low(zh)) throw new Error(`the Bazaar's pinHash ${theirs} is not the page's ${zh}`);
+        const o = etherListing({ token: HUB, id: B, seller: second, price: AMOUNTS.listing, royalty, receiver, zone: BZ, zoneHash: zh,
+                                 start: BigInt(V.listStart), end: BigInt(V.listEnd), salt: BigInt(V.listSalt) });
+        const counter = decUint(await read(SEA, "getCounter(address)", [second]));
+        const orderHash = word(await read(SEA, SEAPORT_SIG.getOrderHash, [componentsOf(o, counter)]), 0);
+        await step("validate the listing on Seaport from the seller's wallet, with no signature", "v2", "second", async () => {
+          const r = await ad2.exec(SEA, SEAPORT_SIG.validate, [[orderOf(o)]], { label: "validate" });
+          const st = await read(SEA, "getOrderStatus(bytes32)", [orderHash]);
+          if (!decBool(st, 0) || decBool(st, 1)) throw Object.assign(new Error(`Seaport says validated ${decBool(st, 0)}, cancelled ${decBool(st, 1)}`), { r });
+          return { fn: SEAPORT_SIG.validate, to: SEA, r, notes: `order ${orderHash.slice(0, 14)}… at the seller's counter ${counter}, validated on the chain's own Seaport; ${eth(AMOUNTS.listing)} ETH${royalty ? `, ${eth(royalty)} of it the royalty to ${receiver}` : ", no royalty owed"}, zoned to the Bazaar under pin ${zh.slice(0, 14)}…`, vars: { orderHash } };
+        });
+        await step("publish it through the Bazaar, which pins the fingerprint and indexes the order", "v2", "holder", async () => {
+          const r = await ad.exec(BZ, SEAPORT_SIG.publish, [orderOf(o), []], { label: "publish" });
+          const ev = logsBy(r.logs, BZ, BAZAAR_TOPIC.published);
+          if (ev.length !== 1) throw Object.assign(new Error(`expected one Published log, saw ${ev.length}`), { r });
+          const pub = decodePublished(ev[0]);
+          if (low(pub.orderHash) !== low(orderHash) || pub.identifier !== B || pub.price !== AMOUNTS.listing) throw Object.assign(new Error(`Published names ${pub.orderHash} for ${pub.identifier} at ${pub.price}`), { r });
+          const chk = word(await read(BZ, "check(bytes32,uint256)", [zh, BigInt(V.listEnd)]), 0);
+          if (BigInt(chk) !== 0n) throw Object.assign(new Error(`check says ${chk.slice(0, 10)}: a fill would be refused`), { r });
+          return { fn: SEAPORT_SIG.publish, to: BZ, r, notes: `Published log: order ${pub.orderHash.slice(0, 14)}…, token ${pub.identifier}, ${eth(pub.price)} ETH until ${pub.endTime}; check() is zero, so a fill would pass` };
+        });
+        await step("buy it on Seaport for exactly the price: the seller is paid and token 2 moves to the holder", "v2", "holder", async () => {
+          const before = await c.balanceOf(second);
+          const r = await ad.exec(SEA, SEAPORT_SIG.fulfillOrder, [orderOf(o), ZERO32], { value: AMOUNTS.listing, label: "fulfillOrder" });
+          const owner = addrAt(await read(HUB, "ownerOf(uint256)", [B]));
+          const paid = (await c.balanceOf(second)) - before;
+          if (owner !== me || paid !== AMOUNTS.listing - royalty) throw Object.assign(new Error(`owner ${owner}, the seller was paid ${paid}`), { r });
+          const fills = logsBy(r.logs, SEA, BAZAAR_TOPIC.orderFulfilled).length;
+          return { fn: SEAPORT_SIG.fulfillOrder, to: SEA, r, notes: `token ${B} is the holder's; the seller received ${eth(paid)} ETH; ${fills} OrderFulfilled log; custodyEpoch ${decUint(await read(HUB, "custodyEpoch(uint256)", [B]))}` };
+        });
+      } else if (landedV2.bazaar) note("the Bazaar has landed but the record's venue row names no Seaport: the listing is skipped");
+      if (landedV2.studio) {
+        const SALT = kec(Buffer.from(`intact.campaign/1:collection:${HUB}:${A}`, "utf8"));
+        const at = addrAt(await read(S.studio, "predict(uint256,bytes32)", [PA, SALT]));
+        const spec = ["Rehearsal", "RHRSL", "A collection the rehearsal launched from token 1; every token is its own site.", 100, AMOUNTS.collectionPrice,
+                      0, 0, 0, 0, 0, hexText(sitePage("Rehearsal")), "0x"];
+        await step("launch a Studio collection from token 1, with the default site", "v2", "holder", async () => {
+          const r = await ad.exec(S.studio, SIG.studioLaunch, [PA, spec, SALT], { label: "launch collection" });
+          const ev = logsBy(r.logs, S.studio, TOPIC.collectionLaunched);
+          if (ev.length !== 1 || low("0x" + ev[0].topics[1].slice(26)) !== low(at)) throw Object.assign(new Error(`the Launched log names ${ev.length ? "0x" + ev[0].topics[1].slice(26) : "nothing"}, predict said ${at}`), { r });
+          await awaitCode(ad, at, "the collection");
+          return { fn: SIG.studioLaunch, to: S.studio, r, notes: `collection ${at} from the Launched log, where predict(${PA.toString(16).slice(0, 10)}…, salt) said it would be; the default site is ${Buffer.byteLength(sitePage("Rehearsal"))} B`, vars: { collection: at } };
+        });
+        await step("mint from it", "v2", "second", async () => {
+          const r = await ad2.exec(V.collection, SIG.collectionMint, [second, 0], { value: AMOUNTS.collectionPrice, label: "mint collection" });
+          const ev = logsBy(r.logs, V.collection, TOPIC.transfer);
+          if (ev.length !== 1) throw Object.assign(new Error(`expected one Transfer log, saw ${ev.length}`), { r });
+          const id = BigInt(ev[0].topics[3]);
+          const supply = decUint(await read(V.collection, "totalSupply()"));
+          return { fn: SIG.collectionMint, to: V.collection, r, notes: `token ${id} from the Transfer log, the second key's; totalSupply ${supply}; ${eth(AMOUNTS.collectionPrice)} ETH owed to token 1`, vars: { collectionId: id.toString() } };
+        });
+      }
+      if (landedV2.agora) {
+        await step("speak in Agora's commons as token 1", "v2", "holder", async () => {
+          const r = await ad.exec(S.agora, SIG.agoraSpeak, [0, PA, 0, 0, 0, hexText("gm from the rehearsal")], { label: "speak" });
+          const said = logsBy(r.logs, S.agora, TOPIC.said);
+          if (said.length !== 1 || BigInt(said[0].topics[2]) !== PA) throw Object.assign(new Error(`expected one Said log from token 1's persona, saw ${said.length}`), { r });
+          const st = await read(S.agora, "stateOf(uint256)", [0]);
+          return { fn: SIG.agoraSpeak, to: S.agora, r, notes: `one Said log in the commons from persona ${PA.toString(16).slice(0, 12)}…; the commons now counts ${decUint(st, 1)}` };
+        });
+      }
+    } else note("no V2 contract has landed here: the V2 family is skipped (--v2 lands them in the deployment, the satellites phase where the clock moves)");
 
     /*── a lock to the Reach ──*/
     await step("lock ETH to the Reach, due in two minutes", "lock", "holder", async () => {
