@@ -39,10 +39,13 @@ single verifiers. Four cores are shared.
 `tools/check.mjs` runs every step as a child process in this order: compile
 (the EIP-170 gate and the ship rule) → facets (+ selftest) → selftest →
 build → forge on the monolith → forge on the diamond → gas (+ selftest) →
-verify → verify:site → verify:pool → verify:vault → verify:parley →
-verify:launch → verify:steward → verify:timelock → verify:premises → fuzz →
-verify:findings → agents → static-audit (+ selftest) → verify:recover →
-verify:console → invariants. Every step must print EXACTLY ONE summary line
+verify → verify:site → mcp → verify:pool → verify:vault → verify:parley →
+verify:launch → verify:steward → verify:timelock → verify:premises →
+verify:plate → V2's verify:keepsake → verify:journal → verify:bazaar →
+verify:studio → verify:agora → fuzz → verify:findings → agents →
+static-audit (+ selftest) → verify:recover → verify:console → invariants
+(33 steps; `node tools/check.mjs --list`). `verify:bazaar-fork` is not a
+step: it forks Base Sepolia over the network. Every step must print EXACTLY ONE summary line
 of the shape that tool prints (`node tools/check.mjs --list` shows the
 regex per step) reporting zero failures; a non-zero exit, no summary, two
 summaries, M > 0, or a step file that does not exist fails the run. The
@@ -205,6 +208,12 @@ after wave 0: a change is additive only and goes in
 - **`block.number` is read once per transaction by the optimiser**, so a
   test that straddles `vm.roll` reads its evidence from storage, not from
   `block.number`.
+- **Yul evaluates a call's arguments right to left.** In
+  `and(staticcall(…), gt(returndatasize(), 31))` the size is read BEFORE
+  the call runs, so it measures the previous call. Bind the call to a
+  variable first (`let ok := staticcall(…)`), then read `returndatasize()`.
+  Keepsake's first draft paid nothing for every honest token this way, and
+  its suite caught it (docs/v2/W1-keepsake.md).
 
 ## The mutation gate (INVARIANTS E1/E3)
 
