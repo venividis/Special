@@ -266,6 +266,25 @@ eq("sel['bridges.endpointOf'] — b", S.sel["bridges.endpointOf"], selOf("endpoi
 eq("sel['studio.launch'] — Z", S.sel["studio.launch"], selOf("launch(uint256,(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes),bytes32)"));
 eq("sel['collection.mint'] — c", S.sel["collection.mint"], selOf("mint(address,uint256)"));
 eq("sel['agora.speak'] — F", S.sel["agora.speak"], selOf("speak(uint256,uint256,uint8,uint64,uint64,bytes)"));
+/* the integration's rows (W15, INTEGRATION L5): what the lanes asked for, each a function its contract serves */
+{
+  const PAR = "(address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256)";
+  const L5 = {
+    "keepsake.ownerOf": "ownerOf(uint256)", "keepsake.tokenURI": "tokenURI(uint256)",
+    "agora.followerCount": "followerCount(uint256)", "agora.followingCount": "followingCount(uint256)", "agora.follows": "follows(uint256,uint256)",
+    "agora.isRegistered": "isRegistered(address)", "agora.collectionKey": "collectionKey(address)", "agora.homeKey": "homeKey(uint256)",
+    "agora.persona": "persona(address,uint256)", "collection.totalSupply": "totalSupply()", "collection.room": "room()",
+    "seaport.getCounter": "getCounter(address)", "seaport.getOrderHash": `getOrderHash(${PAR})`, "seaport.getOrderStatus": "getOrderStatus(bytes32)",
+    "seaport.validate": `validate((${PAR},bytes)[])`, "seaport.fulfillOrder": `fulfillOrder((${PAR},bytes),bytes32)`, "seaport.cancel": `cancel(${PAR}[])`,
+    "erc721.ownerOf": "ownerOf(uint256)", "erc721.tokenURI": "tokenURI(uint256)", "erc721.getApproved": "getApproved(uint256)",
+    "erc721.isApprovedForAll": "isApprovedForAll(address,address)", "erc721.setApprovalForAll": "setApprovalForAll(address,bool)", "erc721.approve": "approve(address,uint256)"
+  };
+  const off = Object.entries(L5).filter(([k, sig]) => S.sel[k] !== selOf(sig));
+  ok(`the ${Object.keys(L5).length} rows the lanes asked for are served under their words: the Keepsake's ownerOf and tokenURI, Agora's seven reads, a collection's totalSupply and room, the six Seaport calls the Gallery makes and any ERC-721's six`,
+     off.length === 0, off.map(([k]) => `${k} ${S.sel[k]}`).join(", "));
+  eq("sel['seaport.fulfillOrder'] — s, the venue's own letter", S.sel["seaport.fulfillOrder"], selOf(`fulfillOrder((${PAR},bytes),bytes32)`));
+  eq("sel['erc721.setApprovalForAll'] — e, beside E's any ERC-20", S.sel["erc721.setApprovalForAll"], selOf("setApprovalForAll(address,bool)"));
+}
 ok("no row for what the MVB struck: Parley steward tools, revokeEncryptionKey, guardNFT/unguardNFT",
    !("parley.evict" in S.sel) && !("parley.setCooldown" in S.sel) && !("parley.hide" in S.sel) &&
    !("keys.revokeEncryptionKey" in S.sel) && !("reach.guardNFT" in S.sel) && !("reach.unguardNFT" in S.sel));
@@ -309,6 +328,14 @@ ok("the hub rows carry the hub's address, the coin rows carry none",
 ok("the V2 rows carry their contracts' addresses by letter, and a collection's carry none, as a coin's",
    ["keepsake", "journal", "bazaar", "bridges", "studio", "agora"].every((k) => SV.services.find((r) => r.on === k).contract.toLowerCase() === S[k].toLowerCase()) &&
    SV.services.find((r) => r.on === "collection").contract === ZERO);
+ok("the seaport rows carry the venue's address, the world's seaport, which is zero on a band with no Bazaar, and an erc721's carry none, as an erc20's",
+   SV.services.filter((r) => r.on === "seaport").length === 6 && SV.services.filter((r) => r.on === "seaport").every((r) => r.contract.toLowerCase() === S.seaport.toLowerCase()) &&
+   S.seaport === ZERO && SV.services.filter((r) => r.on === "erc721").length === 6 && SV.services.filter((r) => r.on === "erc721").every((r) => r.contract === ZERO),
+   SV.services.filter((r) => r.on === "seaport" || r.on === "erc721").map((r) => `${r.on}.${r.name} ${r.contract}`).join(", "));
+ok("a Seaport row's order is one argument, as the ABI sees it, and fulfillOrder is payable",
+   SV.services.find((r) => r.on === "seaport" && r.name === "validate").args.length === 1 &&
+   SV.services.find((r) => r.on === "seaport" && r.name === "fulfillOrder").args.length === 2 &&
+   SV.services.find((r) => r.on === "seaport" && r.name === "fulfillOrder").kind === "payable");
 
 /*  The tables are hand-written text in Catalog.sol and the ABIs are what
     the compiler produced: this is where they are held equal. A row whose
@@ -328,7 +355,10 @@ head("the catalog cannot drift from the ABIs");
                market: "IMarket", roles: "IRoles", agentCard: "IAgentCard", nameplate: "Nameplate", custodian: "LPCustodian",
                /* V2 (wave 2, W6): held to the contracts, which carry the frozen interfaces and the units' recorded additions */
                keepsake: "Keepsake", journal: "Journal", bazaar: "Bazaar", bridges: "Bridges", studio: "Studio",
-               collection: "Collection", agora: "Agora" };
+               collection: "Collection", agora: "Agora",
+               /* the integration (W15): Seaport is a venue held to the interface it is called through (src/interfaces/ISeaport.sol,
+                  Seaport 1.6's own shapes), and any ERC-721 to the standard's metadata interface, as E is held to a mock ERC-20 */
+               seaport: "ISeaport", erc721: "IERC721Metadata" };
   const fns = {};
   for (const [on, name] of Object.entries(ON)) fns[on] = new Set(find(name).abi.filter((f) => f.type === "function").map(sigOf));
   const unserved = SV.services.filter((r) => !fns[r.on] || !fns[r.on].has(r.sig));

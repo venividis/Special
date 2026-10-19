@@ -141,7 +141,7 @@ abstract contract SiteFixture is IntactFixture {
         byLetter[14] = address(engine); byLetter[15] = pCatalog;
         rowsC = new CatalogRows(byLetter);
         postC = new CatalogRowsPost(byLetter);
-        address[7] memory v2Letters;                              // VJBbZcF: no V2 contract on this world
+        address[9] memory v2Letters;                              // VJBbZcFse: no V2 contract and no Seaport on this world
         v2C = new CatalogRowsV2(v2Letters);
         text = new CatalogText(rowsC, postC, v2C);
         stateC = new CatalogState(text);

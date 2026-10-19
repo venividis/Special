@@ -886,7 +886,7 @@ export async function deployIntact(ad, opts = {}) {
   await create3("catalogRows", "src/Catalog.sol", "CatalogRows", encodeParams("address[21]", [byLetter]));
   await create3("catalogRowsPost", "src/Catalog.sol", "CatalogRowsPost", encodeParams("address[21]", [byLetter]));
   await create3("catalogRowsV2", "src/Catalog.sol", "CatalogRowsV2",
-    encodeParams("address[7]", [[T.keepsake, T.journal, T.bazaar, T.bridges, T.studio, ZERO, T.agora]]));          // VJBbZcF
+    encodeParams("address[9]", [[T.keepsake, T.journal, T.bazaar, T.bridges, T.studio, ZERO, T.agora, venues?.seaport || ZERO, ZERO]]));   // VJBbZcFse
   await create3("catalogText", "src/Catalog.sol", "CatalogText", encodeParams("address,address,address", [got.catalogRows, got.catalogRowsPost, got.catalogRowsV2]),
     [code("catalogRows"), code("catalogRowsPost"), code("catalogRowsV2")]);
   await create3("catalogState", "src/Catalog.sol", "CatalogState", encodeParams("address", [got.catalogText]), [code("catalogText")]);

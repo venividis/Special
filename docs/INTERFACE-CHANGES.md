@@ -305,3 +305,34 @@ Outside `src/interfaces/`, recorded because a deployer and a reader meet them:
   what it cost; `CatalogText` joins the three `sel` maps once, at
   construction, and `services()` no longer copies the rows into a joined
   buffer first. The documents' bytes are unchanged by both.
+
+## V2 integration — W15: `panelCount` is `view`, and the Catalog's third table grows (2026-10-19)
+
+docs/v2/INTEGRATION.md rows L5 and L8 and W6's open requests; the unit's
+report is docs/v2/W15-deploy.md. One declaration in `src/interfaces/`
+changes its mutability, and nothing is renamed or removed.
+
+| File | Change | Why | Where it came from |
+|---|---|---|---|
+| `Site.sol` (`IEngine`) | `function panelCount() external view returns (uint256);` was `pure`; its comment names the loaded prefix ("six in V1, seven with V2's Gallery, at most the Engine's PANELS (8)") instead of `// 6` | the Engine counts the slots it holds, which reads its storage: the declaration was wrong since the Gallery made the count a prefix. The selector is the same, every caller already made the call with STATICCALL from a `view`, and the Engine does not inherit `IEngine`. Measured (W15's compile, against cd5ef1f's): the three contracts that call it through the interface, CatalogState, Premises and Renderer, compile to the same runtime bytes as before | L8 (W8 report §8, request 1) |
+| `Site.sol` (`TokenState`) | the `reported` bit comment runs to 262144: "8192 keepsake, 16384 journal, 32768 bazaar, 65536 studio, 131072 agora, 262144 bridges" | the six V2 bits W6 added; the field is `uint32` and holds them. A comment only | W6 report §7, request 4 |
+
+Outside `src/interfaces/`, recorded because a deployer and a reader meet them:
+
+- **`CatalogRowsV2(address[9])`**, was `address[7]`: the letters are
+  `VJBbZcFse` — `s` Seaport, whose rows carry the venue table's address (the
+  Catalog's `SEAPORT`, zero where the table names none), and `e` any
+  ERC-721, zero as `E` is. The table gains 23 rows (48 → 71): the
+  Keepsake's `ownerOf` and `tokenURI`; Agora's `followerCount`,
+  `followingCount`, `follows`, `isRegistered`, `collectionKey`, `homeKey`
+  and `persona`; a collection's `totalSupply` and `room`; Seaport's
+  `getCounter`, `getOrderHash`, `getOrderStatus`, `validate`,
+  `fulfillOrder` and `cancel`; and an ERC-721's `ownerOf`, `tokenURI`,
+  `getApproved`, `isApprovedForAll`, `approve` and `setApprovalForAll`.
+  `tools/verify.mjs`'s drift gate holds the `seaport` rows to `ISeaport` and
+  the `erc721` rows to `IERC721Metadata`.
+- **`Catalog.stateOf`** asks the agent card its `HUB()` (an immutable, through
+  a local `IAgentCardProbe` beside `INameplateProbe`) instead of
+  `manifestHash(id)`, which rendered the card's whole registration to say it
+  answers. Bit 4096 means what it meant; the state block carries no card
+  datum either way.
