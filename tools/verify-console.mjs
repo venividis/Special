@@ -63,8 +63,8 @@
   shim's. Errors cross back as {message, code, data} and are rebuilt
   page-side, because a thrown binding error would lose its fields.
 
-  Groups: boot, viewer, session, swap, social, identity, vault, launch,
-  journey. Each prints its own count and time; the last line is
+  Groups: boot, viewer, session, agent, swap, social, identity, vault,
+  launch, journey. Each prints its own count and time; the last line is
   "  N passed, M failed" and the exit code follows it. The BUILD-PLAN §U11
   sentences end their blocks verbatim as t.ok(..., "<sentence>").
 
@@ -91,7 +91,7 @@ import { walletFor, nap } from "./dom-shim.mjs";
 
 const ARGV = process.argv.slice(2);
 const arg = (f) => { const i = ARGV.indexOf(f); return i < 0 ? null : ARGV[i + 1]; };
-export const GROUPS = ["boot", "viewer", "session", "swap", "social", "identity", "vault", "launch", "journey"];
+export const GROUPS = ["boot", "viewer", "session", "agent", "swap", "social", "identity", "vault", "launch", "journey"];
 const MIN_ASSERTIONS = 110;
 const WAD = 10n ** 18n;
 
@@ -845,6 +845,138 @@ async function groupSession(t, ctx) {
   }
 }
 
+/*──────────────── agent ────────────────*/
+/*  U17's report §9, six sentences, on a chain of this group's own with the card at its pin
+    (deployAgentCard: true; the runner's chain keeps the codeless placeholder the boot group
+    reads): the card read from the chain, the key's one act in the console, the refusal before
+    any wallet, the /k door followed by Chromium, the door's refusal of another wallet, and
+    receiving a token granting nothing. The cast is tools/verify-site/agent.mjs's: #1 to me,
+    WETH/ETH at 30 bps, 100 WETH / 10 ETH; the Reach funded with 2 ETH; agentW keyed on the
+    Pool's swapExactIn and Parley's speak for 100 days with a 1 ETH native cap; trader on speak. */
+async function groupAgent(t, ctx0) {
+  const ctx = await ctx0.fresh({ deployAgentCard: true });
+  try { await agentGroup(t, ctx); } finally { await ctx.close(); }
+}
+async function agentGroup(t, ctx) {
+  const { c, site, actors, GET, weth } = ctx;
+  const { me, trader, stranger, agentW } = actors;
+  const ME = me.from.toString(), AGENT = agentW.from.toString(), TRADER = trader.from.toString(), STRANGER = stranger.from.toString();
+  const hub = site.hub, pool = site.pool, parley = site.parley, card = site.agentCard;
+  const GRANT = "grantSession(address,uint64,uint128,(address,uint128)[],address[],bytes4[],uint32,uint32)";
+  const SWAP_IN = "swapExactIn(uint256,bool,uint256,uint256,address,uint64)", SPEAK = "speak(uint256,uint256,uint8,uint64,uint64,bytes)", EAS = "executeAsSession(address,uint256,bytes)";
+  await mint(c, site, ME);
+  const reach1 = decAddr(await c.read(hub, "account(uint256)", [1])), grip1 = decAddr(await c.read(hub, "grip(uint256)", [1]));
+  await c.exec(weth, "mint(address,uint256)", [ME, 1000n * WAD]);
+  await c.exec(weth, "approve(address,uint256)", [pool, 200n * WAD]);
+  await c.exec(pool, "openMarket(uint256,address,address,uint16,uint24,uint16,uint32)", [1, weth, ZERO, 30, 0, 0, 0], { label: "openMarket" });
+  await c.exec(pool, "deposit(uint256,uint256,uint256)", [1, 100n * WAD, 10n * WAD], { value: 10n * WAD, label: "deposit" });
+  await c.send({ to: reach1, value: 2n * WAD });
+  await c.exec(reach1, GRANT, [AGENT, ctx.now() + 100n * 86400n, WAD, [], [pool, parley], [sel(SWAP_IN), sel(SPEAK)], 0, 0], { label: "grantSession" });
+  await c.exec(reach1, GRANT, [TRADER, ctx.now() + 86400n, 0n, [], [parley], [sel(SPEAK)], 0, 0], { label: "grantSession" });
+  const T = (pg, id) => pg.text("#lane-agent #" + id);
+  const since = (W, mark) => W.calls.slice(mark);
+  const isCall = (s4, to) => (x) => x.method === "eth_call" && lower(String(x.params[0].data)).startsWith(lower(sel(s4))) && (!to || lower(x.params[0].to) === lower(to));
+  const waitVerdict = (pg) => pg.until(() => /allowed|not allowed|not reported|would revert/.test(__t("#lane-agent #agent-verdict")), null, 15000);
+  const typeRow = async (pg, row, args, value) => {
+    await pg.fill("#lane-agent #agent-composer input[name=row]", row);
+    await pg.until((n) => __n("#lane-agent #agent-args input") === n, args.length, 8000);
+    for (let i = 0; i < args.length; i++) await pg.fill(`#lane-agent #agent-args input[name=arg${i}]`, String(args[i]));
+    if (value != null) await pg.fill("#lane-agent #agent-composer input[name=value]", value);
+  };
+  const mHash = async (id) => lower((await c.read(card, "manifestHash(uint256)", [id])).slice(0, 66));
+  const rightsOf = async (who) => decUint(await c.read(hub, "rightsOf(uint256,address)", [1, who]), 0);
+  const keysOf = (pg) => pg.evaluate(() => [...document.querySelectorAll("#lane-agent #agent-sessions .row")].map((r) => r.dataset.key.toLowerCase()).sort().join());
+
+  t.head("A · the card, read from the chain by the lane");
+  {
+    const pg = await ctx.open({ wallet: ctx.wallet(me) });
+    await pg.lane("agent");
+    await pg.until(() => /^parses as/.test(__t("#lane-agent #agent-face2")) && /^0x[0-9a-f]{64}$/.test(__t("#lane-agent #agent-hash-baked")) && /bytes served|moved|not reported/.test(__t("#lane-agent #agent-hash-live")), null, 15000);
+    /* the route serves face 2 as the tokenURIAt string, a data: URI; the bytes are its base64 payload */
+    const face = (await GET(["token", "1", "face", "2"])).bodyBytes.toString("utf8"), PRE = "data:application/json;base64,";
+    const served = face.startsWith(PRE) ? kec(Buffer.from(face.slice(PRE.length), "base64")) : "not a data: URI", want = await mHash(1);
+    t.ok(await T(pg, "agent-face2") === "parses as registration-v1 · agentId 1 == #1" && await T(pg, "agent-hash-baked") === want && served === want && /equal to the bytes served$/.test(await T(pg, "agent-hash-live")) && pg.clean(),
+      "the agent lane shows the card read from the chain: face 2 parses as registration-v1 with agentId 1, and the keccak of the bytes served equals manifestHash(1)",
+      `face2 "${await T(pg, "agent-face2")}" baked ${await T(pg, "agent-hash-baked")} served ${served} chain ${want} live "${await T(pg, "agent-hash-live")}" ${pg.problems()}`);
+    await pg.close();
+  }
+
+  t.head("B · the key's wallet in the console: one act, the refusal before any wallet, the swap landed");
+  {
+    const W = ctx.wallet(agentW);
+    const pg = await ctx.open({ wallet: W });
+    await pg.lane("agent");
+    await pg.until(() => __e("#lane-agent [data-act=executeAsSession]") && /SESSION right yes/.test(__t("#lane-agent #agent-key-facts")), null, 15000);
+    const one = (await pg.body()).rights === "128" && await pg.count("#lane-agent [data-act]") === 1 && await pg.ds("#lane-agent [data-act]", "act") === "executeAsSession";
+    /* the refusal first: a row the grant does not open is read as not allowed, and nothing reaches the wallet */
+    await typeRow(pg, "pool.withdraw", ["1", "1", "1", AGENT]);
+    const e0 = W.count("eth_estimateGas"), p0 = W.prompts().length;
+    await pg.click("#lane-agent [data-act=executeAsSession]"); await waitVerdict(pg); await pg.settle(150);
+    t.ok(!(await pg.slabOpen()) && /^not allowed by the grant/.test(await T(pg, "agent-verdict")) && /not allowed by the grant; nothing reaches the wallet/.test(await pg.tick()) && W.count("eth_estimateGas") === e0 && W.prompts().length === p0 && W.sent() === 0,
+      "a disallowed call never reaches the wallet", `slab ${await pg.slabOpen()} verdict "${await T(pg, "agent-verdict")}" tick "${await pg.tick()}" estimates +${W.count("eth_estimateGas") - e0}`);
+    /* the swap: the Reach's 0.1 ETH into WETH through the grant, the deadline from the chain's clock */
+    const deadline = ctx.now() + 600n;
+    await typeRow(pg, "pool.swapExactIn", ["1", "false", String(WAD / 10n), "0", reach1, String(deadline)], "0.1");
+    const m1 = W.calls.length;
+    await pg.click("#lane-agent #agent-propose"); await waitVerdict(pg);
+    const seq = since(W, m1), iAllows = seq.findIndex(isCall("sessionAllows(address,address,bytes4)", reach1)), iSim = seq.findIndex((x) => isCall(EAS, reach1)(x) && lower(x.params[0].from || "") === lower(AGENT));
+    const proposed = /^allowed by the grant · simulates: executeAsSession would land$/.test(await T(pg, "agent-verdict")) && iAllows >= 0 && iSim > iAllows && W.sent() === 0;
+    const gas = await pg.press("#lane-agent [data-act=executeAsSession]");
+    const cd = await pg.slabCd(), slab = await pg.fn() === EAS && lower(await pg.text("#cslab [data-to]")) === lower(reach1) && lower(addrWord(cd, 0)) === lower(pool) && word(cd, 1) === WAD / 10n && /^\d+ units$/.test(gas) && !(await pg.exists("#cslab [data-value]"));
+    const wethBefore = decUint(await c.read(weth, "balanceOf(address)", [reach1]));
+    await pg.sign(W, 1);
+    const wethAfter = decUint(await c.read(weth, "balanceOf(address)", [reach1]));
+    const acted = c.getLogs({ address: reach1, topics: [kec(Buffer.from("SessionActed(address,address,uint256,bytes4)"))] });
+    t.ok(one && proposed && slab && W.sent() === 1 && [...W.receipts.values()][0].status === "0x1" && wethAfter > wethBefore && acted.length === 1 && lower("0x" + acted[0].topics[1].slice(26)) === lower(AGENT) && pg.clean(),
+      "the key's wallet in the console is offered exactly one act: propose reads sessionAllows and the simulation, the slab is executeAsSession to the Reach, and Sign lands the swap",
+      `one ${one} proposed ${proposed} (allows@${iAllows} sim@${iSim}) slab ${slab} sent ${W.sent()} weth ${wethBefore} → ${wethAfter} acted ${acted.length} ${pg.problems()}`);
+    await pg.close();
+  }
+
+  t.head("C · the door, followed by Chromium: the envelope, the doors, no write, and the refusal");
+  {
+    const W = ctx.wallet(agentW);
+    const pg = await ctx.open({ wallet: W, path: "/k/1/" + AGENT });
+    const url = pg.page.url();
+    await pg.lane("agent");
+    await pg.until(() => /SESSION right yes/.test(__t("#lane-agent #agent-key-facts")), null, 15000);
+    const kf = await T(pg, "agent-key-facts");
+    await pg.click("#lane-agent #agent-doors");
+    await pg.until(() => /doors open for key/.test(__t("#lane-agent #agent-allowed")), null, 30000);
+    const doors = await pg.evaluate(() => [...document.querySelectorAll("#lane-agent #agent-allowed .row")].map((r) => r.dataset.row).sort().join());
+    t.ok(new RegExp("/token/1/live\\?as=" + lower(AGENT) + "$").test(url) && (await pg.body()).mode === "session" && /^allowlist · expires/.test(kf) && /granted at epoch 1 \(the token is at epoch 1\)/.test(kf) && /native cap 1 ETH/.test(kf) &&
+      doors === "parley.speak,pool.swapExactIn" && await pg.count("[data-act]") === 0 && await pg.count("[data-go]") === 0 && /this page reads only: the act is offered in the console/.test(await pg.text("#lane-agent")) && W.prompts().length === 0 && W.sent() === 0 && pg.clean(),
+      "the /k/<id>/<key> door, followed by Chromium, prints the key's envelope and the doors its grant opens, and offers no write",
+      `url ${url} doors ${doors} acts ${await pg.count("[data-act]")} facts "${kf.slice(0, 160)}" ${pg.problems()}`);
+    await pg.close();
+    const p2 = await ctx.open({ wallet: ctx.wallet(me), path: "/k/1/" + AGENT });
+    await p2.lane("agent");
+    await p2.until(() => /connect the key's wallet$/.test(__t("#lane-agent #agent-refusal")), null, 15000);
+    const ref = await T(p2, "agent-refusal");
+    t.ok(new RegExp("^this page acts as key " + AGENT + "; the connected wallet is " + ME + " — connect the key's wallet$", "i").test(ref) && /connected wallet is 0x/.test(await p2.text("#session")) && (await p2.body()).rights === "" && await p2.count("[data-act]") === 0 && p2.clean(),
+      "the door refuses a wallet that is not the key", `"${ref}" rights "${(await p2.body()).rights}"`);
+    await p2.close();
+  }
+
+  t.head("D · receiving a token grants nothing: the stranger's NFT and ether, through the lane");
+  {
+    const before = await rightsOf(STRANGER);
+    const nft = await c.deploy(ctx.A("test/mocks/MockERC721.sol", "MockERC721").bytecode, "", "MockERC721");
+    await stranger.exec(nft, "mint(address,uint256)", [STRANGER, 1n]);
+    await stranger.exec(nft, "transferFrom(address,address,uint256)", [STRANGER, reach1, 1n]);
+    await stranger.send({ to: grip1, value: WAD });
+    const W = ctx.wallet(stranger);
+    const pg = await ctx.open({ wallet: W });
+    await pg.lane("agent");
+    await pg.until(() => __n("#lane-agent #agent-sessions .row") === 2 && /SESSION right no/.test(__t("#lane-agent #agent-key-facts")), null, 15000);
+    t.ok(before === 0n && await rightsOf(STRANGER) === 0n && lower(decAddr(await c.read(nft, "ownerOf(uint256)", [1n]))) === lower(reach1) && await c.balanceOf(grip1) === WAD &&
+      (await pg.body()).rights === "0" && await keysOf(pg) === [lower(AGENT), lower(TRADER)].sort().join() && await pg.count("#lane-agent [data-act]") === 0 && /revoked or never granted/.test(await T(pg, "agent-key-facts")) && pg.clean(),
+      "a stranger's NFT in the Reach and ether in the Grip change nothing the lane reads: rights 0, the same keys, no new session",
+      `rights ${before} → ${await rightsOf(STRANGER)} body ${(await pg.body()).rights} keys ${await keysOf(pg)} facts "${(await T(pg, "agent-key-facts")).slice(0, 120)}"`);
+    await pg.close();
+  }
+}
+
 /*──────────────── swap ────────────────*/
 async function groupSwap(t, ctx) {
   const { c, site, actors, weth, GET } = ctx;
@@ -1232,6 +1364,40 @@ async function groupIdentity(t, ctx) {
     await pg.close();
   }
   t.ok(D7, "an unknown 7702 delegate hides spend buttons");
+
+  t.head("M · the Market in Chromium: list with the Reach sealed, buy at the exact price, the token moves");
+  {
+    /* a chain of its own with the Market at its pin; the listing's calldata is laid by hand in the panel */
+    const F = await ctx.fresh({ deployMarket: true });
+    try {
+      const fme = F.actors.me, FME = fme.from.toString(), fb = F.actors.buyer, FB = fb.from.toString(), fh = F.site.hub, MK = F.site.market, PRICE = WAD / 4n;
+      await mint(F.c, F.site, FME);
+      const reach = decAddr(await F.c.read(fh, "account(uint256)", [1]));
+      await F.c.exec(reach, "seal(uint64)", [F.now() + 30n * 86400n]);
+      const W = F.wallet(fme);
+      const pg = await F.open({ wallet: W });
+      await pg.lane("identity");
+      await pg.until(() => __t("#lane-identity #identity-offer") === "not listed" && __e("#lane-identity [data-act=list]"), null, 15000);
+      await pg.fill("#lane-identity input[name=price]", "0.25");
+      const gas = await pg.press("#lane-identity [data-act=list]");
+      const cd = await pg.slabCd(), listed = await pg.fn() === "list(uint256,uint256,uint64,bytes32,(address,uint256)[])" && word(cd, 0) === 1n && word(cd, 1) === PRICE && word(cd, 4) === 160n && word(cd, 5) === 0n && /^\d+ units$/.test(gas);
+      await pg.sign(W, 1);
+      await pg.until(() => /^0\.25 ETH until /.test(__t("#lane-identity #identity-offer")), null, 15000);
+      await pg.close();
+      const WB = F.wallet(fb);
+      const pb = await F.open({ wallet: WB });
+      await pb.lane("identity");
+      await pb.until(() => __e("#lane-identity [data-act=buy]"), null, 15000);
+      await pb.press("#lane-identity [data-act=buy]");
+      const wei = await pb.ds("#cslab [data-value]", "wei");
+      await pb.sign(WB, 1);
+      const owner = lower(decAddr(await F.c.read(fh, "ownerOf(uint256)", [1]))), owed = decUint(await F.c.read(MK, "owed(address)", [FME]));
+      t.ok(listed && wei === String(PRICE) && owner === lower(FB) && owed === PRICE && decUint(await F.c.read(fh, "custodyEpoch(uint256)", [1])) === 2n && pb.clean(),
+        "in Chromium the holder lists through the hand-laid list(…, floors) and a stranger buys at exactly the price: the token is the buyer's at the next epoch and the seller's ledger holds the price",
+        `listed ${listed} value ${wei} owner ${owner} owed ${owed} ${pb.problems()}`);
+      await pb.close();
+    } finally { await F.close(); }
+  }
 }
 
 /*──────────────── vault ────────────────*/
@@ -1620,7 +1786,7 @@ async function groupJourney(t, ctx) {
   await journey(t, { open: ctx.open, c, site, W, WB, ME: me.from.toString(), BUYER: buyer.from.toString(), AGENT: agentW.from.toString(), mockERC20: ctx.A("test/mocks/MockERC20.sol", "MockERC20").bytecode, now: async () => ctx.now(), chainId: 1 });
 }
 
-const RUNNERS = { boot: groupBoot, viewer: groupViewer, session: groupSession, swap: groupSwap, social: groupSocial, identity: groupIdentity, vault: groupVault, launch: groupLaunch, journey: groupJourney };
+const RUNNERS = { boot: groupBoot, viewer: groupViewer, session: groupSession, agent: groupAgent, swap: groupSwap, social: groupSocial, identity: groupIdentity, vault: groupVault, launch: groupLaunch, journey: groupJourney };
 
 /*═══════════════════ the runner ═══════════════════*/
 

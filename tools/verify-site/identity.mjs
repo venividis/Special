@@ -18,7 +18,13 @@
   only); D the 7702 delegate on #3 (M5: known by name, read live; unknown,
   the spending controls hidden until #ack-delegate); E the gates (the
   viewer, rights that could not be read, reads that will not answer, the
-  collection page). No BUILD-PLAN §U9 sentence is owned here (CONSOLE §15
+  collection page); F the Market and the Roles (the console round: one chip
+  each on this chain, which has neither; then, on a chain of the block's
+  own deployed with deployMarket and deployRoles, the listing refused while
+  the Reach is unsealed, the hand-laid list slab, the buy at the exact
+  price with the re-read at Sign caught moving, the seller's claim, the
+  USER role live and expired, and a listing made stale by its holder's
+  panic cleared by a stranger). No BUILD-PLAN §U9 sentence is owned here (CONSOLE §15
   names identity.mjs beside the eleven); M1's rule is asserted verbatim.
 
   Dropped from H §7.6: nothing. M3 is asserted on `data-right` and
@@ -47,7 +53,10 @@
   [data-act=setTrait|setStatus|pause|setGuardian|setUser|proposeAgentWallet|
   acceptAgentWallet|setFeesToGrip|pinTokenURI|unpinTokenURI|sealTransfer|
   setApprovalForAllUntil|setApprovalForAll|approve|revokeAllApprovals|
-  setEncryptionKey|bindKey], [data-spend]. From the shell: the slab (#cbox.on,
+  setEncryptionKey|bindKey|list|delist|buy|claim], [data-spend],
+  #identity-listing (.chip, #identity-offer, #identity-seals,
+  #identity-pinned, #identity-owed, input[name=price|listDays]),
+  #identity-roles (.chip, #identity-role-count, #identity-role-user). From the shell: the slab (#cbox.on,
   #cslab, [data-go], [data-no], [data-function], [data-calldata], [data-gas],
   [data-sentence]), #tick, body[data-rights], body[data-mode].
 ───────────────────────────────────────────────────────────────────────────*/
@@ -544,5 +553,161 @@ export async function run(t, ctx) {
     t.ok(loaded && laneText(page) === "a token's identity: open one to see its status, rights, keys and hashes" && acts(page).length === 0 && W.count("eth_call") === n0,
       "on the collection page the lane says a token's identity is a token's, and reads nothing", `"${laneText(page)}" calls +${W.count("eth_call") - n0}`);
     page.close();
+  }
+  /*═══════════ F · the Market and the Roles: a chip where they are absent, the listing and the role facts where they are not ═══════════*/
+  t.head("F · the Market and the Roles");
+  {
+    /* this chain has neither: each section is one chip by CONSOLE §6.3, no control, and nothing is asked of the codeless pins */
+    const W = walletFor(c, me);
+    const { page, S } = await bootToken(1, { wallet: W });
+    await lane(page, "identity");
+    await page.until(() => !!L(page, "#identity-listing .chip") && !!L(page, "#identity-roles .chip") && /^(Active|Paused)$/.test(T(page, "identity-status")), 60);
+    const mc = L(page, "#identity-listing .chip"), rc = L(page, "#identity-roles .chip");
+    t.ok(mc.textContent === "market: not deployed on this chain" && mc.dataset.state === "absent" && rc.textContent === "roles: not deployed on this chain" && rc.dataset.state === "absent" &&
+      L(page, "#identity-offer") === null && L(page, "#identity-role-count") === null && !acts(page).some((a) => /^(list|delist|buy|claim)$/.test(a)) &&
+      W.callsTo(S.market).length === 0 && W.callsTo(S.roles).length === 0,
+      "where the Market and the Roles are not deployed each section is one chip, not deployed on this chain, with no control and no read sent to the codeless pin",
+      `market "${mc.textContent}" ${mc.dataset.state} roles "${rc.textContent}" ${rc.dataset.state} acts ${acts(page).join(",")}`);
+    page.close();
+  }
+  const F = await ctx.fresh({ deployMarket: true, deployRoles: true });
+  {
+    const c2 = F.c, s2 = F.site, A2 = F.actors, hub2 = s2.hub, MK = s2.market, RO = s2.roles;
+    const ME2 = A2.me.from.toString(), BUY2 = A2.buyer.from.toString(), RENT2 = A2.renter.from.toString();
+    const LIST = "list(uint256,uint256,uint64,bytes32,(address,uint256)[])", PRICE = WAD / 4n;
+    const now2 = () => F.EVM.BLOCK.header.timestamp;
+    const fp = async (id) => lower(await c2.read(hub2, "getStateFingerprint(uint256)", [id])).slice(0, 66);
+    const listingOf = async (id) => c2.read(MK, "listingOf(uint256)", [id]);
+    const owedTo = async (a) => decUint(await c2.read(MK, "owed(address)", [a]));
+    const epochOf = async (id) => decUint(await c2.read(hub2, "custodyEpoch(uint256)", [id]));
+    const lockOf = async (id) => decUint(await c2.read(hub2, "coreOf(uint256)", [id]), 2);
+    const reachOf = async (id) => decAddr(await c2.read(hub2, "account(uint256)", [id]));
+    for (let i = 0; i < 3; i++) await F.mint(c2, s2, ME2);
+    const W = F.walletFor(c2, A2.me);
+    const { page, ctx: vctx, S } = await F.bootToken(1, { wallet: W });
+    const U = vctx.INTACT.ui;
+    await F.lane(page, "identity");
+    await page.until(() => T(page, "identity-offer") === "not listed" && !!L(page, "[data-act=list]") && T(page, "identity-role-count") === "0", 80);
+    t.ok((S.reported & S.bits.market) && (S.reported & S.bits.roles) && L(page, "#identity-listing .chip") === null && L(page, "#identity-roles .chip") === null &&
+      T(page, "identity-seals") === "the Reach unsealed · the owned market closed" && T(page, "identity-role-user") === "none" &&
+      /a role holder reads what the role's data says; the page grants nothing on it/.test(page.text("#lane-identity #identity-roles")) && !!field(page, "price") && field(page, "listDays").value === "7" &&
+      L(page, "[data-act=delist]") === null && L(page, "[data-act=buy]") === null,
+      "where both are deployed the holder reads not listed, the two seals, no live role and no USER role, and is offered the listing form",
+      `offer "${T(page, "identity-offer")}" seals "${T(page, "identity-seals")}" role "${T(page, "identity-role-user")}" acts ${acts(page).join(",")}`);
+    /* both seals or no listing: an unsealed Reach is a sentence at the press, and nothing is estimated */
+    page.type(field(page, "price"), "0.25");
+    const est0 = W.count("eth_estimateGas");
+    page.click(L(page, "[data-act=list]")); await page.settle(); await page.settle();
+    t.ok(!slabOpen(page) && W.count("eth_estimateGas") === est0 && /^a listing until \d{4}-\d\d-\d\d \d\d:\d\d UTC needs the Reach sealed until then \(Vault\)$/.test(tick(page)),
+      "a listing the Reach's seal does not cover is refused at the press, naming the seal it needs, before any estimate", tick(page));
+    page.type(field(page, "price"), "0");
+    page.click(L(page, "[data-act=list]")); await page.settle(); await page.settle();
+    t.ok(!slabOpen(page) && tick(page) === "the price: more than 0 ETH, in decimal", "a price of nothing is a sentence, never a free listing", tick(page));
+    await c2.exec(await reachOf(1), "seal(uint64)", [now2() + 30n * 86400n]);
+    await repaint(page, vctx);
+    await page.until(() => /^the Reach sealed until .* · the owned market closed$/.test(T(page, "identity-seals")) && !!field(page, "price"), 60);
+    page.type(field(page, "price"), "0.25");
+    await press(page, L(page, "[data-act=list]"));
+    const lcd = slabCd(page), live1 = await fp(1), until = word(lcd, 2);
+    t.ok(fn(page) === LIST && lower(page.text("#cslab [data-to]")) === lower(MK) && lcd.slice(0, 10) === sel(LIST) && (lcd.length - 2) / 2 === 4 + 6 * 32 &&
+      word(lcd, 0) === 1n && word(lcd, 1) === PRICE && until > now2() + 7n * 86400n - 60n && until <= now2() + 7n * 86400n + 60n && "0x" + lcd.slice(10 + 192, 10 + 256) === live1 &&
+      word(lcd, 4) === 160n && word(lcd, 5) === 0n && /^\d+ units$/.test(gasRow(page)) && line(page, "Price") === "0.25 ETH, exactly" && /^none: /.test(line(page, "Floors")) &&
+      /^lists #1 on the Market at 0\.25 ETH until .*: it stays locked to the listing/.test(page.text("#cslab [data-sentence]")),
+      "with the Reach sealed the listing slab is list(id, price, expiresAt, fingerprint, floors) laid by hand: the live fingerprint, an expiry on the chain's clock, the floors' offset and an empty array, and it estimates",
+      `fn ${fn(page)} cd ${lcd.slice(0, 74)}… w2 ${until} gas "${gasRow(page)}"`);
+    await sign(page, W, 1);
+    await page.until(() => /^0\.25 ETH until /.test(T(page, "identity-offer")) && !!L(page, "[data-act=delist]"), 80);
+    const l1 = await listingOf(1), pin1 = "0x" + l1.slice(2 + 64 * 5, 2 + 64 * 6);
+    t.ok(lower(decAddr(l1, 1)) === lower(ME2) && decUint(l1, 2) === PRICE && decUint(l1, 3) === until && await lockOf(1) === 1n && pin1 === await fp(1) &&
+      T(page, "identity-offer") === "0.25 ETH until " + date(until) + " · by " + U.checksum(ME2) + " · epoch 1" && T(page, "identity-pinned") === pin1 + " — as live" &&
+      L(page, "[data-act=list]") === null && L(page, "[data-act=buy]") === null && L(page, "[data-act=delist]").textContent === "take the listing down",
+      "Sign → listingOf(1) holds the seller, the price and the expiry, the token is locked once, and the holder reads the offer and its pinned fingerprint as live, offered only the delisting",
+      `offer "${T(page, "identity-offer")}" pinned "${T(page, "identity-pinned")}" lock ${await lockOf(1)} acts ${acts(page).join(",")}`);
+    page.close();
+
+    /* the buyer: exact value, and the listing, the fingerprint and the epoch re-read at Sign */
+    const WB = F.walletFor(c2, A2.buyer);
+    const b = await F.bootToken(1, { wallet: WB });
+    await F.lane(b.page, "identity");
+    await b.page.until(() => /^0\.25 ETH until /.test(T(b.page, "identity-offer")) && !!L(b.page, "[data-act=buy]"), 80);
+    t.ok(acts(b.page).join(",") === "buy" && L(b.page, "[data-act=buy]").textContent === "buy #1 for 0.25 ETH", "a stranger to the token is offered the buy alone, at the listed price", acts(b.page).join(","));
+    await press(b.page, L(b.page, "[data-act=buy]"));
+    const bcd = slabCd(b.page);
+    t.ok(fn(b.page) === "buy(uint256,uint256,bytes32)" && b.page.$("#cslab [data-value]").dataset.wei === String(PRICE) && word(bcd, 0) === 1n && word(bcd, 1) === PRICE && "0x" + bcd.slice(10 + 128, 10 + 192) === pin1 &&
+      /^\d+ units$/.test(gasRow(b.page)) && /^0\.25 ETH, the listed price exactly$/.test(line(b.page, "Pays")),
+      "the buy slab sends exactly the price as value, agrees to that price and names the pinned fingerprint, and it estimates", `value ${b.page.$("#cslab [data-value]") && b.page.$("#cslab [data-value]").dataset.wei} cd ${bcd.slice(0, 74)}…`);
+    WB.answer(hub2, sel("getStateFingerprint(uint256)"), () => "0x" + "ab".repeat(32));
+    await b.page.until(() => !b.page.$("#cslab [data-go]").disabled, 40);
+    b.page.click(b.page.$("#cslab [data-go]"));
+    await b.page.until(() => !slabOpen(b.page) && /review again/.test(tick(b.page)), 60);
+    t.ok(WB.sent() === 0 && tick(b.page) === "the listing or the token moved since it was read — review again" && lower(decAddr(await c2.read(hub2, "ownerOf(uint256)", [1]))) === lower(ME2),
+      "a fingerprint that moves between the estimate and Sign is caught by the re-read: nothing is sent and the slab closes", tick(b.page));
+    WB.answer(hub2, sel("getStateFingerprint(uint256)"), null);
+    const owedBefore = await owedTo(ME2);
+    await press(b.page, L(b.page, "[data-act=buy]"));
+    await sign(b.page, WB, 1);
+    const [rcv, roy] = [decAddr(await c2.read(hub2, "royaltyInfo(uint256,uint256)", [1, PRICE]), 0), decUint(await c2.read(hub2, "royaltyInfo(uint256,uint256)", [1, PRICE]), 1)];
+    /* the royalty comes out of the price first; were the receiver the seller itself, its ledger would hold both */
+    const cut = /^0x0{40}$/i.test(rcv) ? 0n : roy, owed = await owedTo(ME2), want = PRICE - cut + (lower(rcv) === lower(ME2) ? cut : 0n);
+    t.ok(lower(decAddr(await c2.read(hub2, "ownerOf(uint256)", [1]))) === lower(BUY2) && await epochOf(1) === 2n && /^0x0{40}$/.test(lower(decAddr(await listingOf(1), 1))) && await lockOf(1) === 0n &&
+      owed - owedBefore === want,
+      "Sign → the token is the buyer's at custody epoch 2, the listing is gone with its lock, and the seller's ledger holds the price less the royalty", `owner ${decAddr(await c2.read(hub2, "ownerOf(uint256)", [1]))} epoch ${await epochOf(1)} owed ${owed} royalty ${cut}`);
+    b.page.close();
+
+    /* the seller's claim is the wallet's, from the ledger */
+    const W3 = F.walletFor(c2, A2.me);
+    const s3 = await F.bootToken(1, { wallet: W3 });
+    await F.lane(s3.page, "identity");
+    await s3.page.until(() => !!L(s3.page, "[data-act=claim]") && T(s3.page, "identity-offer") === "not listed", 80);
+    t.ok(T(s3.page, "identity-owed") === U.fmt(owed) + " ETH, from every sale it made" && acts(s3.page).join(",") === "claim",
+      "the seller, no longer the holder, reads what the Market owes this wallet and is offered the claim alone", `owed "${T(s3.page, "identity-owed")}" acts ${acts(s3.page).join(",")}`);
+    await press(s3.page, L(s3.page, "[data-act=claim]"));
+    t.ok(fn(s3.page) === "claim()" && line(s3.page, "Pays") === U.fmt(owed) + " ETH to " + U.checksum(ME2) && /^\d+ units$/.test(gasRow(s3.page)), "the claim slab names the amount and the wallet it pays", line(s3.page, "Pays"));
+    const bal0 = await c2.balanceOf(ME2);
+    await sign(s3.page, W3, 1);
+    t.ok(await owedTo(ME2) === 0n && (await c2.balanceOf(ME2)) > bal0 && L(s3.page, "[data-act=claim]") === null && T(s3.page, "identity-owed") === "",
+      "Sign → the ledger owes the wallet nothing and the claim is no longer offered", `owed ${await owedTo(ME2)}`);
+    s3.page.close();
+
+    /* the USER role on #3, live: read here, granted nowhere on this page */
+    const USER = kec(Buffer.from("USER", "utf8")), rexp = now2() + 5n * 86400n;
+    await c2.exec(RO, "grantRole((bytes32,address,uint256,address,uint64,bool,bytes))", [[USER, hub2, 3, RENT2, rexp, true, "0x1234"]]);
+    /* #2 is listed for a day, then panicked by its holder: the epoch moves under the listing */
+    await c2.exec(await reachOf(2), "seal(uint64)", [now2() + 30n * 86400n]);
+    await c2.exec(MK, LIST, [2, PRICE, now2() + 86400n, await fp(2), []]);
+    const r3 = await F.bootToken(3, { wallet: F.walletFor(c2, A2.me) });
+    await F.lane(r3.page, "identity");
+    await r3.page.until(() => T(r3.page, "identity-role-count") === "1" && /until/.test(T(r3.page, "identity-role-user")), 80);
+    r3.page.type(L(r3.page, "#identity-rights-input"), RENT2);
+    await r3.page.until(() => Object.keys(chips(r3.page)).length === 8 && chips(r3.page).ROLE === "on", 60);
+    t.ok(T(r3.page, "identity-role-user") === U.checksum(RENT2) + " until " + date(rexp) + " · granted at epoch 1 · data 2 bytes" && chips(r3.page).ROLE === "on" &&
+      !acts(r3.page).some((a) => /role/i.test(a)),
+      "a live USER role reads its recipient, its expiry on the chain's clock, the epoch it was stamped with and its data's length; the recipient's ROLE chip is on, and no control grants or revokes",
+      `role "${T(r3.page, "identity-role-user")}" chips ${JSON.stringify(chips(r3.page))}`);
+    r3.page.close();
+
+    await c2.exec(hub2, "panic(uint256)", [2]);
+    const WS = F.walletFor(c2, A2.stranger);
+    const d2 = await F.bootToken(2, { wallet: WS });
+    await F.lane(d2.page, "identity");
+    await d2.page.until(() => /nothing can buy it$/.test(T(d2.page, "identity-offer")) && !!L(d2.page, "[data-act=delist]"), 80);
+    t.ok(/ · epoch 1 · stale: the custody epoch moved; nothing can buy it$/.test(T(d2.page, "identity-offer")) && acts(d2.page).join(",") === "delist" &&
+      L(d2.page, "[data-act=delist]").textContent === "clear the dead listing" && await epochOf(2) === 2n,
+      "a listing whose custody epoch moved under it (the holder's panic) reads stale and is anyone's to clear: the stranger is offered the clearing alone, never the buy",
+      `offer "${T(d2.page, "identity-offer")}" acts ${acts(d2.page).join(",")}`);
+    await press(d2.page, L(d2.page, "[data-act=delist]"));
+    t.ok(fn(d2.page) === "delist(uint256)" && line(d2.page, "Listing") === "stale: the custody epoch moved" && /^\d+ units$/.test(gasRow(d2.page)), "the clearing slab names the dead listing's state and estimates", line(d2.page, "Listing"));
+    await sign(d2.page, WS, 1);
+    t.ok(/^0x0{40}$/.test(lower(decAddr(await listingOf(2), 1))) && await lockOf(2) === 0n, "Sign → the stale listing and the lock it held are gone", `lock ${await lockOf(2)}`);
+    d2.page.close();
+
+    /* the role, past its expiry: recipientOf answers nobody, roleEpoch still holds the stamp */
+    F.warpBy(6n * 86400n);
+    const e3 = await F.bootToken(3, { wallet: F.walletFor(c2, A2.me) });
+    await F.lane(e3.page, "identity");
+    await e3.page.until(() => T(e3.page, "identity-role-count") === "0" && /^none live/.test(T(e3.page, "identity-role-user")), 80);
+    t.ok(T(e3.page, "identity-role-user") === "none live: the grant stamped at epoch 1 expired" && decUint(await c2.read(RO, "roleEpoch(uint256,bytes32)", [3, USER])) === 1n,
+      "past its expiry the USER role reads none live, the grant stamped at epoch 1 expired: none and a dead grant are two facts", T(e3.page, "identity-role-user"));
+    e3.page.close();
   }
 }
