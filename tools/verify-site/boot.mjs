@@ -6,7 +6,9 @@
   C the loader's refusal ("a tampered panel is refused"), N discovery and
   the chain gate, R the collection page and the mint-from-the-page flow,
   Z session mode, Q the QR, V the self-hash footer, E′ the chips, O the
-  shell's half of escaping, P the loader, G′ the slab's generic rules. The
+  shell's half of escaping, P the loader, W the shim's own waits (W13: a
+  wait that times out throws by name, its soft form answers false), G′ the
+  slab's generic rules. The
   two BUILD-PLAN sentences this file owns end their blocks as `t.ok(...,
   "<sentence>")`, verbatim, so INVARIANTS can quote them.
 
@@ -825,6 +827,22 @@ export async function run(t, ctx) {
     pb.close();
   }
 
+  /*═══════════ W · the shim's own waits (W13) ═══════════*/
+  t.head("W · the shim's waits: one that times out throws, by name; the soft form answers false");
+  {
+    const { page } = await bootToken(1, { opaque: true });
+    const never = () => page.text("#viewer-note") === "a sentence no page prints";
+    let threw = null;
+    try { await page.until(never, 3); } catch (e) { threw = e; }
+    const msg = threw ? String(threw.message) : "";
+    t.ok(!!threw && threw.name === "UntilTimeout" && /^until timed out after 3 settles in group boot, waiting at tools\/verify-site\/boot\.mjs:\d+ ← tools\/verify-site\.mjs:\d+: /.test(msg) &&
+      msg.includes(': () => page.text("#viewer-note") === "a sentence no page prints"'),
+      "a wait that times out throws, naming its settles, its group, the lines that waited and its condition", msg || "it returned instead");
+    const soft = await page.until(never, 3, { soft: true }), met = await page.until(() => page.$("body").dataset.mode === "viewer", 3);
+    t.ok(soft === false && met === true, "the soft form answers false where the wait would throw, and a wait that is met answers true", `soft ${soft} met ${met}`);
+    page.close();
+  }
+
   /*═══════════ G′ · the slab's generic rules ═══════════*/
   t.head("G′ · the slab's generic rules, through the harness");
   {
@@ -850,7 +868,9 @@ export async function run(t, ctx) {
       let rejected = false;
       await ui.propose({ to: "nope", key: "erc20.approve", args: [site.pool, 1n], lines: [["Lets", "STALE"]], sentence: "x" }).catch(() => { rejected = true; }); await page.settle();
       const clean = !rejected && !slabOpen() && page.$("#cslab").childNodes.length === 0 && /a panel bug/.test(tick());
-      await Promise.race([ui.propose({ to: weth, key: "erc20.approve", args: [site.pool, 1n], sentence: "x" }), page.until(() => slabOpen(), 50)]);
+      /* soft (W13): raced against the propose, this wait may lose the race and must not throw after it; the line
+         below reads slabOpen() itself, and the sentence says whether a slab came */
+      await Promise.race([ui.propose({ to: weth, key: "erc20.approve", args: [site.pool, 1n], sentence: "x" }), page.until(() => slabOpen(), 50, { soft: true })]);
       const firstRow = page.$("#cslab .kv .k");
       const own = slabOpen() && firstRow && firstRow.textContent === "To" && !/STALE/.test(page.text("#cslab"));
       /* the belt on Sign: a disabled button is inert in the shim (a browser fires nothing) and in the shell

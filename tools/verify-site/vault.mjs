@@ -150,10 +150,13 @@ export async function run(t, ctx) {
   const press = async (page, el) => { page.click(el); await page.until(() => slabOpen(page) && gasRow(page) !== "estimating…", 120); if (!slabOpen(page)) throw new Error("no slab after the press; the ticker reads: " + tick(page)); };
   const ready = (page) => page.until(() => !page.$("#cslab [data-go]").disabled, 40);
   const dismiss = async (page) => { page.click(page.$("#cslab [data-no]")); await page.settle(); };
-  const sign = async (page, W, n) => {
+  /* a receipt that itself moves the custody epoch or this wallet's rights (a panic) ends, as CONSOLE §4.7 says, on
+     the sentence after the landing; such a call passes `moved`, and its wait names that sentence (W13: the landing
+     wait timed out there, in silence, until the shim's waits threw) */
+  const sign = async (page, W, n, moved = false) => {
     const before = tick(page);
     page.click(page.$("#cslab [data-go]"));
-    await page.until(() => W.sent() === n && tick(page) !== before && /landed in block|reverted in block/.test(tick(page)), 160);
+    await page.until(() => W.sent() === n && tick(page) !== before && (moved ? tick(page) === "ownership or epoch changed — review again" : /landed in block|reverted in block/.test(tick(page))), 160);
     for (let k = 0; k < 4; k++) await page.settle();
   };
   const repaint = async (page, vctx) => { vctx.dispatchEvent(new vctx.CustomEvent("intact:lane", { detail: { name: "vault" } })); await page.settle(); await page.settle(); };
@@ -465,7 +468,7 @@ export async function run(t, ctx) {
     l(fn(page) === "panic(uint256)" && word(slabCd(page), 0) === 1n && lower(page.text("#cslab [data-to]")) === lower(hub) && W.sent() === s0 && /^\d+ units$/.test(gasRow(page)), "L5 the second press proposes panic(uint256), nothing sent until Sign", fn(page));
     await ready(page);
     const T0 = now();
-    await sign(page, W, 1); sentH = W.sent();
+    await sign(page, W, 1, true); sentH = W.sent();   // the panic moves #1's epoch
     const ok6 = decUint(await c.read(hub, "custodyEpoch(uint256)", [1])) === 2n && decUint(await c.read(hub, "approvalEpoch(address)", [ME])) === 1n && decUint(await c.read(hub, "statusOf(uint256)", [1])) === 1n &&
       decUint(await c.read(reach1, "sealedUntil()")) === T0 + 365n * 86400n && await allows(AGENT, pool, sel(SWAP_IN)) === false && decUint(await c.read(parley, "keyOf(uint256)", [1]), 1) === 0n &&
       decUint(await c.read(postage, "inboxOf(uint256)", [1]), 1) === 0n && await wouldPass() === 1n && decBool(await c.read(pad, "firstLaunchApproved(uint256)", [1])) === false &&
@@ -518,7 +521,7 @@ export async function run(t, ctx) {
     l(fn(page) === "panic(uint256)" && word(slabCd(page), 0) === 1n && /the epoch moves/.test(page.text("#cslab [data-sentence]")) && /seals/.test(page.text("#cslab [data-sentence]")) && /^\d+ units$/.test(gasRow(page)),
       "L8 the guardian's slab is panic(uint256), its sentence naming the epoch and the seal; the hold is in the list above it", page.text("#cslab [data-sentence]"));
     await ready(page);
-    await sign(page, W, 1); sentG = W.sent();
+    await sign(page, W, 1, true); sentG = W.sent();   // the guardian's panic moves #1's epoch
     await page.until(() => page.text("#facts [data-fact=locked]") === "yes" && /locked: yes/.test(laneText(page)), 60);
     l(decBool(await c.read(hub, "locked(uint256)", [1])) && decUint(await c.read(hub, "custodyEpoch(uint256)", [1])) === 3n && page.text("#facts [data-fact=locked]") === "yes" && /locked: yes/.test(laneText(page)) && /only the holder in person/.test(laneText(page)) && !L(page, "[data-act=release]") && W.sent() === 1,
       "L9 under the hold Home's locked fact reads yes, the vault repeats locked: yes, and the guardian is offered no release", `locked ${page.text("#facts [data-fact=locked]")} lane ${laneText(page).match(/locked: [^\n]{0,80}/)}`);
@@ -558,7 +561,9 @@ export async function run(t, ctx) {
     const { page } = await bootToken(1, { opaque: true, wallet: W });
     await lane(page, "vault");
     await page.until(() => page.text("#lane-vault #vault-steward-status") !== "reading…" && LL(page, "#vault-holdings .row").length >= 1, 80);
-    t.ok(page.$("body").dataset.mode === "viewer" && LL(page, "[data-act]").length === 0 && LL(page, "input").length === 1 && (laneText(page).match(/nothing here can sign/g) || []).length === 1 && W.prompts().length === 0 && !!L(page, "#vault-grip svg[role=img]"),
+    /* W13: "reads the vault" — the holdings and the plan — was the wait's alone; the sentence now checks them */
+    t.ok(page.$("body").dataset.mode === "viewer" && LL(page, "#vault-holdings .row").length >= 1 && page.text("#lane-vault #vault-steward-status") !== "reading…" &&
+      LL(page, "[data-act]").length === 0 && LL(page, "input").length === 1 && (laneText(page).match(/nothing here can sign/g) || []).length === 1 && W.prompts().length === 0 && !!L(page, "#vault-grip svg[role=img]"),
       "the viewer reads the vault and offers no control, with the one sentence; the key field is a read", `acts ${LL(page, "[data-act]").length} inputs ${LL(page, "input").length}`);
     t.ok(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML and no script threw on the viewer's page", page.errors.map((e) => e.message).join("; "));
     page.close();
@@ -828,7 +833,9 @@ async function keepsakes(t, v, h) {
     const { page: pv } = await bootToken(1, { opaque: true, wallet: WV });
     await lane(pv, "vault");
     await pv.until(() => !!card(pv, 3) && LL(pv, "#vault-keepsakes-list .claimable").length === 1, 80);
-    ok(pv.$("body").dataset.mode === "viewer" && LL(pv, "[data-act]").length === 0 && !L(pv, "#vault-make") && LL(pv, "#vault-keepsakes details").length === 0 && WV.prompts().length === 0 && pv.errors.length === 0,
+    /* W13: "reads the keepsakes" — the Reach's card and what it pays — was the wait's alone; the sentence now checks them */
+    ok(pv.$("body").dataset.mode === "viewer" && !!card(pv, 3) && LL(pv, "#vault-keepsakes-list .claimable").length === 1 &&
+      LL(pv, "[data-act]").length === 0 && !L(pv, "#vault-make") && LL(pv, "#vault-keepsakes details").length === 0 && WV.prompts().length === 0 && pv.errors.length === 0,
       "the viewer reads the keepsakes and offers no control: no form, no claim, no change", `acts ${LL(pv, "[data-act]").length}`);
     pv.close();
   }
