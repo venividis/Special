@@ -1003,7 +1003,7 @@ async function groupSwap(t, ctx) {
     const pg = await ctx.open({ wallet: W, path: "/token/2/live" });
     await pg.lane("swap");
     const tab = await pg.evaluate(() => { const e = document.querySelector("#lane-swap [data-tab=elsewhere]"); return e ? !!e.closest("[hidden]") : "absent"; });
-    t.ok(S2.router === ZERO && (tab === "absent" || tab === true) && await pg.count(L("[data-act=swapElsewhere]")) === 0 && /not deployed on this chain/.test(await pg.text("#lane-swap")) && await pg.text("#chips .chip[data-bit=router]") === "router: not deployed on this chain",
+    t.ok(S2.router === ZERO && (tab === "absent" || tab === true) && await pg.count(L("[data-act=swapElsewhere]")) === 0 && /router: not deployed on this chain/.test(await pg.text("#lane-swap")) && await pg.text("#chips .chip[data-bit=router]") === "router: not deployed on this chain",
       "an absent Router hides the Elsewhere tab and sets the chip to not deployed on this chain", `tab ${tab} chip "${await pg.text("#chips .chip[data-bit=router]")}"`);
     await pg.close();
   }
@@ -1135,6 +1135,77 @@ async function groupSwap(t, ctx) {
   }
   t.ok(G, "a non-holder never reaches a wallet prompt");
   t.ok(EP, "the console re-reads the epoch after every receipt and discards stale slabs");
+
+  /*  V2 (W9, the Trade lane): lock what I receive and write a memory, clicked through as a person clicks,
+      on a chain of its own whose site carries the Keepsake and the Journal (deploySite's v2: true) — the
+      holder of #2 pays 0.5 ETH, locks the WETH 30 days then frees it over 30, sells it slowly never below
+      a floor, and writes a memory; on the way, one refusal in words (a drip asked for a gift). */
+  t.head("V · lock what I receive, then a memory of the trade (V2: the Keepsake and the Journal on chain)");
+  let V = true;
+  const vv = (cond, name, d) => { t.ok(cond, name, d); V = V && !!cond; };
+  const SAW = "swapAndWrap((uint256,bool,uint256,uint256,uint64,(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))";
+  const INSCRIBE = "inscribe(address,uint256,uint8,bytes,bytes32)", MEMO = "locked 30 days: not selling the top this time";
+  const x2 = await fresh({ v2: true });
+  try {
+    const c2 = x2.c, s2 = x2.site, w2 = x2.weth, ME2 = x2.actors.me.from.toString();
+    await mint(c2, s2, ME2); await mint(c2, s2, ME2);
+    await c2.exec(w2, "mint(address,uint256)", [ME2, 1000n * WAD]);
+    await c2.exec(w2, "approve(address,uint256)", [s2.pool, 200n * WAD]);
+    await c2.exec(s2.pool, OPEN, [2, w2, ZERO, 30, 0, 0, 0], { label: "openMarket" });
+    await c2.exec(s2.pool, DEPOSIT, [2, 100n * WAD, 10n * WAD], { value: 10n * WAD, label: "deposit" });
+    const W = x2.wallet(x2.actors.me);
+    const pg = await x2.open({ wallet: W, path: "/token/2/live" });
+    await pg.lane("swap");
+    await pg.click(L("#swap-flip")); await pg.settle(50);
+    await quote(pg, "0.5");
+    await pg.click(L("#swap-lock-on"));
+    await pg.until(() => __e("#lane-swap input[name=lockDays]"), null, 5000);
+    await pg.fill(L("input[name=lockDays]"), "30"); await pg.fill(L("input[name=freeDays]"), "30");
+    await pg.click(L("#swap-drip-on"));
+    await pg.until(() => __e("#lane-swap input[name=floor]"), null, 5000);
+    await pg.fill(L("input[name=floor]"), "0.09");
+    await pg.fill(L("textarea[name=memory]"), MEMO);
+    const q = decUint(await c2.read(s2.pool, "quote(uint256,bool,uint256)", [2, false, WAD / 2n])), lim = q - q * 50n / 10000n;
+    const say = "You pay 0.5 ETH and receive at least " + full(lim) + " WETH, locked for 30 days, then freed slowly over 30 days; it sells itself slowly, never below 0.09 ETH per WETH.";
+    await pg.until((s) => __t("#lane-swap #swap-say") === s, say, 5000);
+    vv(await pg.text(L("#swap-say")) === say && await pg.attr(L("#swap-lock-on"), "aria-checked") === "true" && await pg.text(L("#swap-go")) === "Swap and lock" && await pg.visible(L("#swap-lock-dates")),
+      "the lock is a switch a person turns on; its days, its floor and the memory are typed, and the card says in one breath what the slab will", await pg.text(L("#swap-say")));
+    /* the refusal: a gift with the drip on is refused in words, under the switch and at the press, before any wallet */
+    const why = "a drip is only for a keepsake you keep: a giver never sells a recipient's gift";
+    await pg.click(L("#swap-gift-on"));
+    await pg.until(() => __e("#lane-swap input[name=giftTo]"), null, 5000);
+    await pg.fill(L("input[name=giftTo]"), x2.actors.buyer.from.toString());
+    await pg.until((s) => __t("#lane-swap #swap-lock-why") === s, why, 5000);
+    const est0 = W.count("eth_estimateGas");
+    await pg.click(L("#swap-go")); await pg.settle(300);
+    vv(await pg.tick() === why && !(await pg.slabOpen()) && W.count("eth_estimateGas") === est0 && W.prompts().length === 0 && await pg.visible(L("#swap-lock-why")),
+      "a drip asked for a gift is refused in words in Chromium: under the switch and in the ticker, no slab, no estimate, no prompt", await pg.tick());
+    await pg.click(L("#swap-gift-on"));
+    await pg.until((s) => __t("#lane-swap #swap-say") === s, say, 5000);
+    /* the lock: one slab, the ether as its value, the card's breath as its sentence */
+    const gas = await pg.press(L("#swap-go"));
+    const scd = await pg.slabCd();
+    vv(await pg.fn() === SAW && lower(await pg.text("#cslab [data-to]")) === lower(s2.keepsake) && await pg.text("#cslab [data-sentence]") === say && await pg.ds("#cslab [data-value]", "wei") === String(WAD / 2n) &&
+      await pg.count("#cslab [data-arg]") === 0 && /^\d+ units$/.test(gas) && /never below 0\.09 ETH per WETH/.test(await pg.line("Sells") || ""),
+      "pressed, the lock is one Keepsake.swapAndWrap slab: the ether as its value, the one breath as its sentence, every field a line", `${await pg.fn()} | ${gas}`);
+    await pg.sign(W, 1);
+    const swap = [...W.receipts.values()].pop(), WRAPPED = kec("Wrapped(uint256,address,address,uint64,uint64,uint64,uint256,string)");
+    const wl = swap.logs.find((l) => lower(l.address) === lower(s2.keepsake) && l.topics[0] === WRAPPED), id = wl ? BigInt(wl.topics[1]) : 0n;
+    const offered = await pg.until((f) => __on("#cbox") && __t("#cslab [data-function]") === f && __t("#cslab [data-gas]") !== "estimating…", INSCRIBE, 15000);
+    vv(swap.status === "0x1" && id > 0n && await pg.ds(L("#swap-kept .keepsake"), "id") === String(id) && offered && /public/.test(await pg.text("#cslab [data-sentence]")) &&
+      lower((await pg.slabCd()).slice(10 + 4 * 64, 10 + 5 * 64)) === lower(swap.transactionHash.slice(2)) && W.callsTo(s2.keepsake).length === 0,
+      "the receipt lands: the keepsake's id from its Wrapped log, and a second slab offers the memory with the swap's transaction as its ref", `id ${id} offered ${offered}`);
+    await pg.sign(W, 2);
+    await pg.until(() => /memory #1 is in #2's journal/.test(__t("#lane-swap #swap-kept")), null, 15000);
+    const ins = c2.getLogs({ address: s2.journal, topics: [kec("Inscribed(address,uint256,uint256,uint8,address,uint64,bytes32,bytes32,bytes)")] }).pop();
+    const d = ins ? ins.data.slice(2) : "";
+    vv(!!ins && BigInt(ins.topics[2]) === 2n && lower("0x" + d.slice(3 * 64, 4 * 64)) === lower(swap.transactionHash) && Buffer.from(d.slice(7 * 64, 7 * 64 + MEMO.length * 2), "hex").toString("utf8") === MEMO &&
+      /memory #1 is in #2's journal/.test(await pg.text(L("#swap-kept"))) && word(scd, 0) === 32n,
+      "signed, the memory lands in #2's journal: the Inscribed log carries the words and the swap's transaction", ins ? ins.transactionHash : "no log");
+    vv(pg.clean(), "nothing threw on the lock's page", pg.problems());
+    await pg.close();
+  } finally { await x2.close(); }
+  t.ok(V, "lock what I receive and write a memory of the trade, clicked through in Chromium: one slab locks, the id comes from the Wrapped log, the memory follows the receipt");
 }
 
 /*──────────────── social ────────────────*/

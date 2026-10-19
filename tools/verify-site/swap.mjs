@@ -58,6 +58,37 @@
   [data-selector], [data-arg], [data-calldata], [data-digest], [data-engine],
   [data-gas]), #tick, #chips .chip[data-bit=router], #facts [data-fact=market],
   body[data-rights].
+
+  V2 (W9, the Trade lane; docs/V2.md §3.1, §3.2), in `lockAndMemory`, run last:
+  V0 the chip rule on two bands without the Keepsake and the Journal (the
+  runner's chain, and one whose two pins hold code that will not answer); then,
+  on a chain of its own deployed with `deploySite(…, { v2: true })`, V1 swap and
+  lock in ether with a drip whose floor crosses decimals (a 6-decimal USD) and
+  the memory slab after the receipt, V2 swap and lock an ERC-20 with its exact
+  approval to the Keepsake, V3 a gift, V4 the refusals in words (a drip asked
+  for a gift, no days, past ten years, a long message or memory, a gift to
+  oneself, a mixed-case address that is not its own checksum, exact out, a flip
+  that would misread a floor; and, in the chain's own words, the Keepsake as its
+  own recipient and a schedule the chain's clock puts in the past), V5 a plain
+  swap's memory dismissed and offered again. Its block
+  sentences, verbatim: "a V2 part appears only where its contract reports:
+  elsewhere its chip stands in its place, and no read is sent to the address",
+  "lock what I receive: one slab swaps and wraps, the keepsake's id from the
+  Wrapped log, then the memory", "a drip floor stated in human terms is the raw
+  floor in the calldata, read back from keepsakeOf", "an ERC-20 locked through
+  the Keepsake is approved to it exactly, as the button's current step, and
+  pulled to zero", "a gift names its recipient in the sentence and in the
+  calldata, and the keepsake is theirs with its message", "a refusal is said in
+  words: a drip asked for a gift, no days, past ten years, a long message or
+  memory, exact out, and a schedule in the past", "the memory slab follows the
+  swap's receipt, its ref the swap's transaction, read back from the Inscribed
+  log, and Not now never loses it". It reads, scoped to #lane-swap: #swap-say,
+  #swap-lock (.chip[data-state], #swap-lock-on[role=switch][aria-checked],
+  inputs name=lockDays|freeDays|floor|most|giftTo, textarea name=giftNote,
+  #swap-lock-dates, #swap-drip-on, #swap-drip-now, #swap-gift-on,
+  #swap-lock-why), #swap-memory (.chip, textarea name=memory,
+  #swap-memory-count), #swap-kept (.keepsake[data-id], [data-act=inscribe]),
+  #swap-sniper, #swap-facts.
 ───────────────────────────────────────────────────────────────────────────*/
 import { createAddressFromString, Account } from "@ethereumjs/util";
 
@@ -156,7 +187,8 @@ export async function run(t, ctx) {
     e(S.router === ZERO && (S.reported & S.bits.router) === 0 && (S.absent & S.bits.router) !== 0, "the state says absent, not zero");
     const tab = L(page, "[data-tab=elsewhere]");
     e(tab === null || tab.hidden === true, "the Elsewhere tab is hidden", tab && tab.hidden);
-    e(/not deployed on this chain/.test(laneText(page)), "the hidden tab says which spelling: not deployed on this chain", laneText(page).slice(0, 160));
+    /* held to the router's own chip: since V2 the lane may also carry the keepsake's "not deployed" chip (W9) */
+    e(/router: not deployed on this chain/.test(laneText(page)), "the hidden tab says which spelling: not deployed on this chain", laneText(page).slice(0, 160));
     const chip = page.$("#chips .chip[data-bit=router]");
     e(!!chip && chip.textContent === "router: not deployed on this chain" && chip.dataset.state === "absent", "the router chip on Home reads not deployed", chip && chip.textContent);
     e(LL(page, "#swap-elsewhere").length === 0 && LL(page, "[data-act=swapElsewhere]").length === 0 && LL(page, "#swap-quote-elsewhere").length === 0, "no Elsewhere section, control or quote exists without a Router");
@@ -177,7 +209,7 @@ export async function run(t, ctx) {
     const { page, S } = await c2.bootToken(1, { wallet: walletFor(c2.c, c2.c) });
     await c2.lane(page, "swap");
     const tab = L(page, "[data-tab=elsewhere]"), chip = page.$("#chips .chip[data-bit=router]");
-    e(lower(S.router) === ROUTER_PIN && (S.reported & S.bits.router) === 0 && (S.absent & S.bits.router) === 0 && (tab === null || tab.hidden === true) && /could not be read at block/.test(laneText(page)) &&
+    e(lower(S.router) === ROUTER_PIN && (S.reported & S.bits.router) === 0 && (S.absent & S.bits.router) === 0 && (tab === null || tab.hidden === true) && /router: could not be read at block/.test(laneText(page)) &&
       !!chip && chip.textContent === "router: could not be read at block " + S.block && chip.dataset.state === "unread",
       "code that would not answer reads could not be read, and the tab is still hidden", `router ${S.router} reported ${S.reported} absent ${S.absent} chip "${chip && chip.textContent}"`);
     page.close();
@@ -713,4 +745,400 @@ export async function run(t, ctx) {
     t.ok(receipt.status === "0x1" && (await c.balanceOf(sink)) - b0 === owedQ && /landed in block/.test(tick(page)), "collecting pays exactly what the row said to #1's feeSink", `delta ${(await c.balanceOf(sink)) - b0} owed ${owedQ}`);
     page.close();
   }
+
+  await lockAndMemory(t, ctx);
+}
+
+/*═══════════ V · lock what I receive, and a memory of the trade (V2, W9) ═══════════*/
+/*  docs/V2.md §3.1, §3.2: the Trade lane's two V2 parts, each where its contract reports and
+    nowhere else. V0 runs on bands without them (the runner's own chain, and one whose pins hold
+    code that will not answer); V1–V6 on a chain of their own whose site carries the V2
+    satellites (deploySite's v2: true). The cast there: #1 and #2 to `me`; #1's market a 6-decimal
+    USD against ETH, 100,000 / 50, at 30 bps with a sniper fee of 500 bps over 5,880 s (so the
+    drip's floor crosses decimals and the countdown has minutes in it); #2's WETH against ETH,
+    100 / 10, at 30 bps; WETH to the trader. Every id literal below refers to that chain.     */
+const SAW = "swapAndWrap((uint256,bool,uint256,uint256,uint64,(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))";
+const INSCRIBE = "inscribe(address,uint256,uint8,bytes,bytes32)";
+const DAY = 86400n;
+/// swapAndWrap's one tuple: w0 its offset, then fourteen head words (market, baseIn, amountIn, minOut, deadline,
+/// start, cliff, end, to, →message, the drip's asset, market, floor, most) and the message's tail
+const sawOf = (data) => {
+  const h = data.slice(10), at = (i) => BigInt("0x" + h.slice(64 + i * 64, 128 + i * 64));
+  const mo = 64 + Number(at(9)) * 2, len = Number(BigInt("0x" + h.slice(mo, mo + 64)));
+  return { w0: BigInt("0x" + h.slice(0, 64)), market: at(0), baseIn: at(1), amountIn: at(2), minOut: at(3), deadline: at(4), start: at(5), cliff: at(6), end: at(7),
+           to: "0x" + h.slice(64 + 8 * 64 + 24, 64 + 9 * 64), message: Buffer.from(h.slice(mo + 64, mo + 64 + len * 2), "hex").toString("utf8"),
+           drip: { asset: at(10), market: at(11), floor: at(12), most: at(13) } };
+};
+/// KeepsakeView, read back from the chain: holder, creator, createdAt, the schedule, assets, paid, sold, proceeds, message, drip, lastDripBlock
+const viewOf = (ret) => {
+  const h = ret.replace(/^0x/, ""), base = Number(BigInt("0x" + h.slice(0, 64))) * 2, w = (i) => BigInt("0x" + h.slice(base + i * 64, base + i * 64 + 64));
+  const arr = (i) => { const p = base + Number(w(i)) * 2, n = Number(BigInt("0x" + h.slice(p, p + 64))); return Array.from({ length: n }, (_, k) => ({ token: "0x" + h.slice(p + 64 + k * 128 + 24, p + 128 + k * 128), amount: BigInt("0x" + h.slice(p + 128 + k * 128, p + 192 + k * 128)) })); };
+  const mp = base + Number(w(10)) * 2, ml = Number(BigInt("0x" + h.slice(mp, mp + 64)));
+  return { holder: "0x" + h.slice(base + 24, base + 64), creator: "0x" + h.slice(base + 88, base + 128), start: w(3), cliff: w(4), end: w(5), assets: arr(6),
+           message: Buffer.from(h.slice(mp + 64, mp + 64 + ml * 2), "hex").toString("utf8"), drip: { asset: w(11), market: w(12), floor: w(13), most: w(14) } };
+};
+/// a detail line that may carry BigInts
+const js = (o) => JSON.stringify(o, (k, v) => typeof v === "bigint" ? String(v) : v);
+/// the Journal's Inscribed log: topics (collection, id, n); data (kind, author, epoch, ref, root, body)
+const inscribedOf = (l) => {
+  const d = l.data.slice(2), w = (i) => d.slice(i * 64, i * 64 + 64), off = Number(BigInt("0x" + w(5))) * 2, len = Number(BigInt("0x" + d.slice(off, off + 64)));
+  return { collection: "0x" + l.topics[1].slice(26), id: BigInt(l.topics[2]), n: BigInt(l.topics[3]), kind: BigInt("0x" + w(0)), author: "0x" + w(1).slice(24), ref: "0x" + w(3),
+           body: Buffer.from(d.slice(off + 64, off + 64 + len * 2), "hex").toString("utf8"), tx: l.transactionHash };
+};
+
+export async function lockAndMemory(t, ctx) {
+  const { walletFor, mint, encodeParams, decUint, kec, sel, ZERO, A } = ctx;
+  const L = (pg, s) => pg.$("#lane-swap " + s), LL = (pg, s) => pg.$$("#lane-swap " + s);
+  const open = (pg) => pg.$("#cbox").classList.contains("on");
+  const cdOf = (pg) => pg.text("#cslab [data-calldata]"), gasOf = (pg) => pg.text("#cslab [data-gas]"), tickOf = (pg) => pg.text("#tick");
+  const quote = async (pg, v) => {
+    pg.type(L(pg, "#swap-in"), v);
+    await pg.until(() => L(pg, "#swap-out").textContent !== "" || /not a number|an amount of/.test(pg.text("#lane-swap #swap-details")), 80);
+    await pg.settle(); await pg.settle();
+  };
+  const press = async (pg, el) => { pg.click(el); await pg.until(() => open(pg) && gasOf(pg) !== "estimating…", 120); };
+  const sign = async (pg, W, n) => { pg.click(pg.$("#cslab [data-go]")); await pg.until(() => W.sent() === n, 120); await pg.settle(); await pg.settle(); await pg.settle(); };
+  const put = (pg, name, v) => pg.type(L(pg, `[name=${name}]`), v);
+  const flipOn = async (pg, id) => { pg.click(L(pg, "#" + id)); await pg.settle(); };
+  const cks = (a) => checksum(a, kec);
+  const date = (s) => new Date(Number(s) * 1e3).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+  const topic = (s) => kec(Buffer.from(s, "utf8"));
+  const WRAPPED = topic("Wrapped(uint256,address,address,uint64,uint64,uint64,uint256,string)");
+  const INSCRIBED = topic("Inscribed(address,uint256,uint256,uint8,address,uint64,bytes32,bytes32,bytes)");
+
+  /*─────── V0 · the chip rule: a part appears only where its contract reports ───────*/
+  t.head("V0 · on a band without the Keepsake and the Journal, their chips stand where the parts would");
+  let V0 = true;
+  const v0 = (cond, name, d) => { t.ok(cond, name, d); V0 = V0 && !!cond; };
+  {
+    /* the runner's chain: V1 only, the two pins codeless placeholders; #3 is still me's, its market open */
+    const { trader } = ctx.actors;
+    const Wt = walletFor(ctx.c, trader);
+    const { page, S } = await ctx.bootToken(3, { wallet: Wt });
+    await ctx.lane(page, "swap");
+    const chip = L(page, "#swap-lock .chip");
+    v0((S.absent & S.bits.keepsake) !== 0 && !!chip && chip.textContent === "keepsake: not deployed on this chain" && chip.dataset.state === "absent" && !L(page, "#swap-lock-on") && !L(page, "#swap-memory"),
+      "without a Keepsake the lock is its chip, not deployed on this chain — and a trader is offered no memory at all", chip && chip.textContent);
+    page.close();
+    const W = walletFor(ctx.c, ctx.actors.me);
+    const { page: p2, S: S2 } = await ctx.bootToken(3, { wallet: W });
+    await ctx.lane(p2, "swap");
+    const jc = L(p2, "#swap-memory .chip");
+    v0(!!jc && jc.textContent === "journal: not deployed on this chain" && jc.dataset.state === "absent" && !L(p2, "#swap-memory textarea"),
+      "and to the holder the memory is the journal's chip, not deployed on this chain", jc && jc.textContent);
+    const sent = [...Wt.calls, ...W.calls].filter((x) => ["eth_call", "eth_estimateGas"].includes(x.method) && [S.keepsake, S2.journal, S.journal, S2.keepsake].map(lower).includes(lower(x.params[0].to)));
+    v0(sent.length === 0, "no read is sent to either codeless address", sent.map((x) => x.method + " " + x.params[0].to).join(", "));
+    p2.close();
+  }
+  {
+    /* a band whose two pins hold code that will not answer: the other spelling, could not be read */
+    const u = await ctx.fresh();
+    const brk = await u.c.deploy(A("test/mocks/Breakable.sol", "Breakable").bytecode, "", "Breakable");
+    for (const at of [u.site.keepsake, u.site.journal]) {
+      const a = createAddressFromString(at);
+      if (!(await u.c.vm.stateManager.getAccount(a))) await u.c.vm.stateManager.putAccount(a, new Account());
+      await u.c.vm.stateManager.putCode(a, await u.c.vm.stateManager.getCode(createAddressFromString(brk)));
+    }
+    await mint(u.c, u.site, u.c.from.toString());
+    await u.c.exec(u.weth, "mint(address,uint256)", [u.c.from.toString(), 100n * WAD]);
+    await u.c.exec(u.weth, "approve(address,uint256)", [u.site.pool, 100n * WAD]);
+    await u.c.exec(u.site.pool, OPEN, [1, u.weth, ZERO, 30, 0, 0, 0], { label: "openMarket" });
+    await u.c.exec(u.site.pool, DEPOSIT, [1, 10n * WAD, WAD], { value: WAD, label: "deposit" });
+    const W = walletFor(u.c, u.c);
+    const { page, S } = await u.bootToken(1, { wallet: W });
+    await u.lane(page, "swap");
+    const kc = L(page, "#swap-lock .chip"), jc = L(page, "#swap-memory .chip");
+    const sent = W.calls.filter((x) => ["eth_call", "eth_estimateGas"].includes(x.method) && [S.keepsake, S.journal].map(lower).includes(lower(x.params[0].to)));
+    v0((S.reported & S.bits.keepsake) === 0 && (S.absent & S.bits.keepsake) === 0 && !!kc && kc.textContent === "keepsake: could not be read at block " + S.block && kc.dataset.state === "unread" &&
+      !!jc && jc.textContent === "journal: could not be read at block " + S.block && jc.dataset.state === "unread" && sent.length === 0 && !L(page, "#swap-lock-on"),
+      "pins whose code will not answer read could not be read at block N, and nothing is asked of them", `${kc && kc.textContent} | ${jc && jc.textContent} | sent ${sent.length}`);
+    page.close();
+  }
+  t.ok(V0, "a V2 part appears only where its contract reports: elsewhere its chip stands in its place, and no read is sent to the address");
+
+  /*─────── the V2 chain ───────*/
+  const v = await ctx.fresh({ v2: true });
+  const c = v.c, site = v.site, weth = v.weth, { me, trader, buyer } = v.actors;
+  const ME = me.from.toString(), TRADER = trader.from.toString(), BUYER = buyer.from.toString(), ks = site.keepsake, jr = site.journal, pool = site.pool, hub = site.hub;
+  const now = () => v.BLOCK().timestamp;
+  await mint(c, site, ME); await mint(c, site, ME);
+  const usd = await c.deploy(A("test/mocks/MockERC20.sol", "MockERC20").bytecode, encodeParams("string,string,uint8,uint256,bool", ["US Dollar", "USD", 6, 0, false]), "USD");
+  await c.exec(usd, "mint(address,uint256)", [ME, 10n ** 12n]);
+  await c.exec(usd, "approve(address,uint256)", [pool, 10n ** 12n]);
+  await c.exec(pool, OPEN, [1, usd, ZERO, 30, 0, 500, 5880], { label: "openMarket" });
+  await c.exec(pool, DEPOSIT, [1, 100_000n * 10n ** 6n, 50n * WAD], { value: 50n * WAD, label: "deposit" });
+  await c.exec(weth, "mint(address,uint256)", [ME, 1000n * WAD]);
+  await c.exec(weth, "approve(address,uint256)", [pool, 200n * WAD]);
+  await c.exec(pool, OPEN, [2, weth, ZERO, 30, 0, 0, 0], { label: "openMarket" });
+  await c.exec(pool, DEPOSIT, [2, 100n * WAD, 10n * WAD], { value: 10n * WAD, label: "deposit" });
+  await c.exec(weth, "mint(address,uint256)", [TRADER, 10n * WAD]);
+  const poolQuote = async (id, baseIn, a) => decUint(await c.read(pool, "quote(uint256,bool,uint256)", [id, baseIn, a]));
+  const view = async (id) => viewOf(await c.read(ks, "keepsakeOf(uint256)", [id]));
+  const journalLogs = () => c.getLogs({ address: jr, topics: [INSCRIBED] }).map(inscribedOf);
+
+  /*─────── V1 · swap and lock in ether, sold slowly above a floor, and a memory of it ───────*/
+  t.head("V1 · ETH into #1's USD market, locked 30 days and freed over 30, sold slowly never below 0.0005 ETH per USD, with a memory");
+  let V1 = true, FL = true, MEM = true;
+  const v1 = (cond, name, d) => { t.ok(cond, name, d); V1 = V1 && !!cond; };
+  const fl = (cond, name, d) => { t.ok(cond, name, d); FL = FL && !!cond; };
+  const mm = (cond, name, d) => { t.ok(cond, name, d); MEM = MEM && !!cond; };
+  let keptId = 0n;
+  {
+    const W = walletFor(c, me);
+    const { page, S } = await v.bootToken(1, { wallet: W });
+    await v.lane(page, "swap");
+    const lockOn = L(page, "#swap-lock-on");
+    v1((S.reported & S.bits.keepsake) !== 0 && (S.reported & S.bits.journal) !== 0 && !!lockOn && lockOn.getAttribute("role") === "switch" && lockOn.getAttribute("aria-checked") === "false" &&
+      !!L(page, "#swap-memory textarea[name=memory]") && L(page, "#swap-memory textarea[name=memory]").getAttribute("aria-label") && LL(page, ".chip[data-state]").filter((x) => /keepsake|journal/.test(x.textContent)).length === 0,
+      "where the Keepsake and the Journal report, the lock is a switch and the holder is offered a memory, each labelled, with no chip", `lock ${!!lockOn} memory ${!!L(page, "#swap-memory textarea")}`);
+    /* friendlier: the fee in percent beside its bps, the sniper countdown in minutes and seconds, the rate both ways */
+    page.click(L(page, "#swap-flip")); await page.settle();
+    await quote(page, "0.5");
+    const q = await poolQuote(1, false, WAD / 2n), lim = q - q * 50n / 10000n;
+    const det = page.text("#lane-swap #swap-details"), sn = L(page, "#swap-sniper");
+    v1(!!sn && /^sniper fee500 bps at open, falling to nothing — \d+ min \d+ s left$/.test(sn.textContent) && /fee0\.3 % \(30 bps\)/.test(page.text("#lane-swap #swap-facts")) &&
+      /rate1 ETH ≈ [\d.]+ USD · 1 USD ≈ 0\.000[\d]+ ETH/.test(det) && /0\.3 % \(30 bps\) to whoever holds #1, plus the sniper fee while it runs/.test(det),
+      "the card is friendlier where it can be: the fee in percent beside its bps, the sniper countdown in minutes and seconds, the rate both ways", `${sn && sn.textContent} | ${det.slice(0, 220)}`);
+    v1(page.text("#lane-swap #swap-say") === "You pay 0.5 ETH and receive at least " + full(lim, 6) + " USD, or nothing moves.",
+      "the card says in one breath what the swap will do, the floor in it", page.text("#lane-swap #swap-say"));
+    /* the lock: on, its two day counts, its dates on the chain's clock — moved first, so only a read of the chain can follow */
+    const ts = v.BLOCK().timestamp;
+    W.override("eth_getBlockByNumber", () => ({ number: hexN(v.BLOCK().number), timestamp: hexN(ts + 7777n), hash: "0x" + "11".repeat(32) }));
+    await flipOn(page, "swap-lock-on"); await page.settle();
+    v1(L(page, "#swap-lock-on").getAttribute("aria-checked") === "true" && L(page, "[name=lockDays]").value === "30" && L(page, "[name=freeDays]").value === "30" &&
+      page.text("#lane-swap #swap-lock-dates") === "locked until " + date(ts + 7777n + 30n * DAY) + ", all free by " + date(ts + 7777n + 60n * DAY) && L(page, "#swap-go").textContent === "Swap and lock",
+      "turned on, the lock asks two day counts and says its dates on the chain's clock; the button is Swap and lock", `${page.text("#lane-swap #swap-lock-dates")} | ${L(page, "#swap-go").textContent}`);
+    await flipOn(page, "swap-drip-on");
+    put(page, "floor", "0.0005"); await page.settle();
+    const MEMO = "locked 30 days: not selling the top this time";
+    put(page, "memory", "  " + MEMO + "  "); await page.settle();
+    const say = "You pay 0.5 ETH and receive at least " + full(lim, 6) + " USD, locked for 30 days, then freed slowly over 30 days; it sells itself slowly, never below 0.0005 ETH per USD.";
+    v1(page.text("#lane-swap #swap-say") === say && /^now 1 USD fetches ≈ 0\.000\d+ ETH$/.test(page.text("#lane-swap #swap-drip-now")) && page.text("#lane-swap #swap-memory-count").startsWith(Buffer.byteLength(MEMO) + " of 1,024 bytes · public"),
+      "the one breath grows with the lock and the slow sale, the drip says what one USD fetches now, and the memory counts its bytes as the chain will", `${page.text("#lane-swap #swap-say")} | ${page.text("#lane-swap #swap-drip-now")} | ${page.text("#lane-swap #swap-memory-count")}`);
+    const est0 = W.count("eth_estimateGas");
+    await press(page, L(page, "#swap-go"));
+    W.override("eth_getBlockByNumber", null);
+    const cd = cdOf(page), x = sawOf(cd), slab = page.text("#cslab");
+    v1(page.text("#cslab [data-function]") === SAW && lower(page.text("#cslab [data-to]")) === lower(ks) && page.$("#cslab [data-value]").dataset.wei === String(WAD / 2n) &&
+      page.$$("#cslab [data-arg]").length === 0 && page.text("#cslab [data-sentence]") === say && W.count("eth_estimateGas") === est0 + 1 && /^\d+ units$/.test(gasOf(page)),
+      "the lock is one slab: Keepsake.swapAndWrap, the ether as its value, the card's one breath as its sentence, and the estimate passes", `${page.text("#cslab [data-function]")} | ${page.text("#cslab [data-sentence]")} | ${gasOf(page)}`);
+    v1(x.w0 === 32n && x.market === 1n && x.baseIn === 0n && x.amountIn === WAD / 2n && x.minOut === lim && x.deadline === ts + 7777n + 900n &&
+      x.start === ts + 7777n + 30n * DAY && x.cliff === 0n && x.end === ts + 7777n + 60n * DAY && lower(x.to) === lower(ME) && x.message === "",
+      "in the calldata: the market, the ether in, the floor, a deadline fifteen minutes on the chain's clock, and a schedule locked 30 days then freed over 30 from that clock", js(x).slice(0, 400));
+    /* the floor: P × 10^decPaid × 1e18 / 10^decReceived — 0.0005 ETH per USD is 5e14 ETH-wei per 1e6 USD-units, so 5e26 per 1e18 */
+    const FLOOR = 5n * 10n ** 26n;
+    fl(x.drip.asset === 0n && x.drip.market === 1n && x.drip.floor === FLOOR && x.drip.most === q / 10n &&
+      /Sells\s*slowly as it frees: never below 0\.0005 ETH per USD, at most [\d.]+ USD a sale, through #1's market/.test(slab) && /No less than\s*[\d.]+ USD — or nothing moves/.test(slab) && /Dies\s*in fifteen minutes/.test(slab),
+      "the drip's floor is stated in words as 0.0005 ETH per USD and found raw in the calldata as 5e26, with at most a tenth of what arrives a sale", `floor ${x.drip.floor} most ${x.drip.most} vs ${q / 10n}`);
+    const b0 = await c.balanceOf(ME);
+    await sign(page, W, 1);
+    const swap = [...W.receipts.values()].pop(), rcpt = W.lastIndex("eth_getTransactionReceipt");
+    const wl = swap.logs.find((l) => lower(l.address) === lower(ks) && l.topics[0] === WRAPPED);
+    keptId = wl ? BigInt(wl.topics[1]) : 0n;
+    await page.until(() => open(page) && page.text("#cslab [data-function]") === INSCRIBE && gasOf(page) !== "estimating…", 120);
+    const kept = L(page, "#swap-kept .keepsake");
+    const reads = W.calls.filter((y, i) => i > rcpt && y.method === "eth_call" && lower(y.params[0].to) === lower(ks));
+    v1(swap.status === "0x1" && keptId > 0n && !!kept && kept.dataset.id === String(keptId) && new RegExp("^keepsake #" + keptId + " holds what arrived; it is yours").test(kept.textContent) &&
+      reads.length === 0 && W.callsTo(ks).length === 0 && b0 - (await c.balanceOf(ME)) >= WAD / 2n,
+      "the keepsake's id is read from the receipt's Wrapped log, and nothing is asked of the Keepsake after the write", `id ${keptId} kept "${kept && kept.textContent}" reads ${reads.length}`);
+    const ks1 = await view(keptId);
+    fl(lower(ks1.holder) === lower(ME) && lower(ks1.creator) === lower(ME) && ks1.start === x.start && ks1.cliff === x.start && ks1.end === x.end && ks1.assets.length === 1 && lower(ks1.assets[0].token) === lower(usd) && ks1.assets[0].amount >= lim &&
+      ks1.drip.asset === 0n && ks1.drip.market === 1n && ks1.drip.floor === FLOOR && ks1.drip.most === q / 10n,
+      "and keepsakeOf reads it back: the holder, the schedule, what arrived, and the drip with the very floor the words named", `holder ${ks1.holder} floor ${ks1.drip.floor} amount ${ks1.assets[0] && ks1.assets[0].amount}`);
+    /* the memory, the second slab, offered after the receipt */
+    const mcd = cdOf(page), ref = swap.transactionHash;
+    mm(lower(page.text("#cslab [data-to]")) === lower(jr) && page.text('#cslab [data-arg="0"]') === cks(hub) && page.text('#cslab [data-arg="1"]') === "1" && page.text('#cslab [data-arg="2"]') === "1" &&
+      lower(mcd.slice(10 + 4 * 64, 10 + 5 * 64)) === lower(ref.slice(2)) && /public/.test(page.text("#cslab [data-sentence]")) && /fingerprint/.test(page.text("#cslab [data-sentence]")) &&
+      page.text("#cslab").includes("Memory" + MEMO) && /^\d+ units$/.test(gasOf(page)),
+      "after the receipt a second slab offers the memory: Journal.inscribe(hub, #1, TRADE, the words, the swap's transaction), its sentence saying it is public and enters the fingerprint", `${page.text("#cslab [data-sentence]")} | ref ${ref}`);
+    await sign(page, W, 2);
+    await page.until(() => /memory #1 is in #1's journal/.test(page.text("#lane-swap #swap-kept")), 80);
+    const logs = journalLogs(), m1 = logs[logs.length - 1];
+    mm(logs.length === 1 && m1.n === 1n && lower(m1.collection) === lower(hub) && m1.id === 1n && m1.kind === 1n && lower(m1.author) === lower(ME) && lower(m1.ref) === lower(ref) &&
+      m1.body === MEMO && lower(m1.tx) !== lower(ref) && /memory #1 is in #1's journal/.test(page.text("#lane-swap #swap-kept")),
+      "the Inscribed log carries it: memory #1 of #1, kind TRADE, by the holder, the body as typed, its ref the swap's own transaction", js(m1));
+    v1(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML and no script threw on the holder's lock", page.errors.map((e) => e.message).join("; "));
+    page.close();
+  }
+  t.ok(V1, "lock what I receive: one slab swaps and wraps, the keepsake's id from the Wrapped log, then the memory");
+  t.ok(FL, "a drip floor stated in human terms is the raw floor in the calldata, read back from keepsakeOf");
+
+  /*─────── V2 · swap and lock an ERC-20: the exact approval to the Keepsake is the button's current step ───────*/
+  t.head("V2 · the trader locks WETH's proceeds from #2: an exact approval to the Keepsake first");
+  let V2 = true;
+  const v2 = (cond, name, d) => { t.ok(cond, name, d); V2 = V2 && !!cond; };
+  {
+    const W = walletFor(c, trader);
+    const { page } = await v.bootToken(2, { wallet: W });
+    await v.lane(page, "swap");
+    v2(!!L(page, "#swap-lock-on") && !L(page, "#swap-memory"), "a trader may lock like anyone, and is offered no memory: only the holder writes a token's journal");
+    await quote(page, "1");
+    await flipOn(page, "swap-lock-on");
+    await page.until(() => /^Approve\b/.test(page.text("#lane-swap #swap-go")), 40);
+    v2(/^Approve 1 WETH — the current step$/.test(L(page, "#swap-go").textContent), "locked, the button's current step is an exact approval to the Keepsake", L(page, "#swap-go").textContent);
+    await press(page, L(page, "#swap-go"));
+    const acd = cdOf(page);
+    v2(page.text("#cslab [data-function]") === APPROVE && lower(page.text("#cslab [data-to]")) === lower(weth) && lower(addrWord(acd, 0)) === lower(ks) && word(acd, 1) === WAD && /Never\s*unlimited/.test(page.text("#cslab")) && W.sent() === 0,
+      "the approve slab names the Keepsake as the spender of exactly the amount typed", acd);
+    await sign(page, W, 1);
+    await page.until(() => L(page, "#swap-go") && L(page, "#swap-go").textContent === "Swap and lock" && !L(page, "#swap-go").disabled, 40);
+    v2(L(page, "#swap-in").value === "1" && L(page, "#swap-lock-on").getAttribute("aria-checked") === "true" && L(page, "#swap-go").textContent === "Swap and lock",
+      "after the approve lands the same button is Swap and lock, the amount and the lock still as typed", L(page, "#swap-go").textContent);
+    const q = await poolQuote(2, true, WAD), lim = q - q * 50n / 10000n;
+    await press(page, L(page, "#swap-go"));
+    const x = sawOf(cdOf(page));
+    v2(page.text("#cslab [data-function]") === SAW && !page.$("#cslab [data-value]") && x.market === 2n && x.baseIn === 1n && x.amountIn === WAD && x.minOut === lim && lower(x.to) === lower(TRADER) &&
+      x.drip.floor === 0n && x.drip.market === 0n && x.message === "" && /You pay\s*exactly 1 WETH, pulled exactly by the Keepsake/.test(page.text("#cslab")),
+      "the swapAndWrap slab sends no ether for an ERC-20 input and pulls exactly what was approved", js(x).slice(0, 300));
+    await sign(page, W, 2);
+    const r = [...W.receipts.values()].pop(), wl = r.logs.find((l) => lower(l.address) === lower(ks) && l.topics[0] === WRAPPED), id = wl ? BigInt(wl.topics[1]) : 0n;
+    await page.until(() => !!L(page, "#swap-kept .keepsake"), 60);
+    const kv1 = await view(id), al = decUint(await c.read(weth, "allowance(address,address)", [TRADER, ks]));
+    v2(r.status === "0x1" && id === keptId + 1n && al === 0n && lower(kv1.holder) === lower(TRADER) && kv1.assets.length === 1 && lower(kv1.assets[0].token) === ZERO && kv1.assets[0].amount >= lim && L(page, "#swap-kept .keepsake").dataset.id === String(id),
+      "the approval is spent to zero, and the keepsake holds the ether that arrived, for the trader", `allowance ${al} holder ${kv1.holder} amount ${kv1.assets[0] && kv1.assets[0].amount}`);
+    page.close();
+  }
+  t.ok(V2, "an ERC-20 locked through the Keepsake is approved to it exactly, as the button's current step, and pulled to zero");
+
+  /*─────── V3 · a gift ───────*/
+  t.head("V3 · a gift: the trader locks ether's WETH for the buyer, with a message");
+  let V3 = true;
+  const v3 = (cond, name, d) => { t.ok(cond, name, d); V3 = V3 && !!cond; };
+  {
+    const W = walletFor(c, trader);
+    const { page } = await v.bootToken(2, { wallet: W });
+    await v.lane(page, "swap");
+    page.click(L(page, "#swap-flip")); await page.settle();
+    await quote(page, "0.2");
+    await flipOn(page, "swap-lock-on");
+    put(page, "lockDays", "7"); put(page, "freeDays", "90");
+    await flipOn(page, "swap-gift-on");
+    put(page, "giftTo", BUYER.toLowerCase()); put(page, "giftNote", "for the long road — it frees slowly, like everything good"); await page.settle();
+    const q = await poolQuote(2, false, WAD / 5n), lim = q - q * 50n / 10000n;
+    const say = "You pay 0.2 ETH and give at least " + full(lim) + " WETH to " + cks(BUYER) + ", locked for 7 days, then freed slowly over 90 days.";
+    v3(page.text("#lane-swap #swap-say") === say && L(page, "#swap-go").textContent === "Swap and give", "a gift's one breath names its recipient, checksummed, and the button says Swap and give", page.text("#lane-swap #swap-say"));
+    await press(page, L(page, "#swap-go"));
+    const x = sawOf(cdOf(page)), slab = page.text("#cslab");
+    v3(page.text("#cslab [data-sentence]") === say && lower(x.to) === lower(BUYER) && x.message === "for the long road — it frees slowly, like everything good" && x.drip.floor === 0n &&
+      x.end - x.start === 90n * DAY && new RegExp("A gift to\\s*" + cks(BUYER)).test(slab) && /Message\s*for the long road/.test(slab) && page.$("#cslab [data-value]").dataset.wei === String(WAD / 5n),
+      "the slab names the recipient in its sentence, its lines and its calldata, with the message", `to ${x.to} message "${x.message}"`);
+    await sign(page, W, 1);
+    const r = [...W.receipts.values()].pop(), wl = r.logs.find((l) => lower(l.address) === lower(ks) && l.topics[0] === WRAPPED), id = wl ? BigInt(wl.topics[1]) : 0n;
+    await page.until(() => !!L(page, "#swap-kept .keepsake"), 60);
+    const kv1 = await view(id);
+    v3(r.status === "0x1" && lower(wl.topics[3].slice(26)) === lower(BUYER.slice(2)) && lower(kv1.holder) === lower(BUYER) && lower(kv1.creator) === lower(TRADER) && kv1.message === x.message &&
+      new RegExp("^keepsake #" + id + " holds what arrived and is now " + cks(BUYER) + "'s").test(page.text("#lane-swap #swap-kept")),
+      "the keepsake is the buyer's, given by the trader, with the message on its card; the lane says whose it now is", `${kv1.holder} ${kv1.creator} "${kv1.message}"`);
+    page.close();
+  }
+  t.ok(V3, "a gift names its recipient in the sentence and in the calldata, and the keepsake is theirs with its message");
+
+  /*─────── V4 · refusals in words ───────*/
+  t.head("V4 · what the lock refuses, it says in words before any wallet");
+  let V4 = true;
+  const v4 = (cond, name, d) => { t.ok(cond, name, d); V4 = V4 && !!cond; };
+  {
+    const W = walletFor(c, me);
+    const { page, ctx: vc } = await v.bootToken(2, { wallet: W });
+    await v.lane(page, "swap");
+    page.click(L(page, "#swap-flip")); await page.settle();
+    await quote(page, "0.1");
+    await flipOn(page, "swap-lock-on");
+    const refused = async (why) => {
+      const est = W.count("eth_estimateGas"), sent = W.sent();
+      page.click(L(page, "#swap-go")); await page.settle(); await page.settle();
+      return !open(page) && tickOf(page) === why && W.count("eth_estimateGas") === est && W.sent() === sent;
+    };
+    /* a floor and a per-sale amount are in the pair's units: turning the pair round clears them */
+    await flipOn(page, "swap-drip-on"); put(page, "floor", "0.05"); put(page, "most", "0.01"); await page.settle();
+    page.click(L(page, "#swap-flip")); await page.settle();
+    v4(L(page, "[name=floor]").value === "" && L(page, "[name=most]").value === "" && /never below this price, in WETH per ETH/.test(page.text("#lane-swap #swap-lock")) && /at most this much ETH per sale/.test(page.text("#lane-swap #swap-lock")),
+      "a flip clears the floor and the per-sale amount, and their labels follow the pair: never read the other way round", page.text("#lane-swap #swap-lock").slice(0, 200));
+    page.click(L(page, "#swap-flip")); await page.settle();
+    await quote(page, "0.1");
+    await flipOn(page, "swap-drip-on");
+    await flipOn(page, "swap-gift-on"); put(page, "giftTo", BUYER); await flipOn(page, "swap-drip-on"); put(page, "floor", "9"); await page.settle();
+    const why = "a drip is only for a keepsake you keep: a giver never sells a recipient's gift";
+    v4(page.text("#lane-swap #swap-lock-why") === why && !L(page, "#swap-lock-why").hidden && await refused(why), "a drip asked for a gift is refused in words under the switch and at the press: no slab, no estimate", tickOf(page));
+    /* the chain says the same: the same tuple proposed by hand estimates to the Keepsake's own refusal */
+    const dl = now() + 900n;
+    const p = vc.INTACT.ui.propose({ to: ks, key: "keepsake.swapAndWrap", value: WAD / 10n, need: 0, lines: [["Drip", "for a gift"]], sentence: "locks a gift with a drip",
+      args: [[2n, false, WAD / 10n, 0n, dl, [0n, 0n, now() + 30n * DAY], BUYER, "", [0n, 2n, 10n ** 17n, 10n ** 17n]]] });
+    await page.until(() => open(page) && gasOf(page) !== "estimating…", 60);
+    v4(gasOf(page) === "would revert: BadDrip()" && page.$("#cslab [data-go]").disabled === true, "and the chain agrees: the same gift with a drip estimates to would revert: BadDrip(), Sign disabled", gasOf(page));
+    page.click(page.$("#cslab [data-no]")); await p; await page.settle();
+    await flipOn(page, "swap-drip-on"); await flipOn(page, "swap-gift-on");
+    put(page, "lockDays", "0"); put(page, "freeDays", "0"); await page.settle();
+    v4(await refused("a lock of no days is no lock: name at least one day"), "a lock of no days is refused in words", tickOf(page));
+    put(page, "lockDays", "3000"); put(page, "freeDays", "651"); await page.settle();
+    v4(await refused("a keepsake frees within ten years: 3,650 days at most"), "a lock past ten years is refused in words", tickOf(page));
+    put(page, "lockDays", "1"); put(page, "freeDays", "5"); await flipOn(page, "swap-gift-on"); put(page, "giftTo", BUYER); put(page, "giftNote", "x".repeat(281)); await page.settle();
+    v4(await refused("the message is 281 bytes; a gift's card holds 280"), "a gift's message over 280 bytes is refused in words, counted as bytes", tickOf(page));
+    put(page, "giftNote", "é".repeat(141)); await page.settle();
+    v4(await refused("the message is 282 bytes; a gift's card holds 280"), "and the count is bytes, not letters: 141 é are 282 bytes", tickOf(page));
+    put(page, "giftTo", ME); put(page, "giftNote", ""); await page.settle();
+    v4(await refused("that is your own address: a keepsake you keep is no gift"), "a gift to your own address is refused in words", tickOf(page));
+    /* one letter's case turned: still an address to isAddr, no longer its own EIP-55 checksum — a typo a gift cannot take back */
+    const typo = cks(BUYER).replace(/[a-f]/, (ch) => ch.toUpperCase());
+    put(page, "giftTo", typo); await page.settle();
+    v4(typo !== cks(BUYER) && await refused("that address's mixed case is not its checksum: check every character"), "a mixed-case address that is not its own checksum is refused in words: a gift cannot be taken back", typo);
+    /* the Keepsake as its own recipient is the chain's refusal by name, before any wallet */
+    put(page, "giftTo", ks); await page.settle();
+    await press(page, L(page, "#swap-go"));
+    v4(gasOf(page) === "would revert: ZeroRecipient()" && page.$("#cslab [data-go]").disabled === true && W.prompts().length === 0, "a gift to the Keepsake itself is its own refusal in words: would revert: ZeroRecipient(), Sign disabled", gasOf(page));
+    page.click(page.$("#cslab [data-no]")); await page.settle();
+    await flipOn(page, "swap-gift-on");
+    put(page, "memory", "m".repeat(1025)); await page.settle();
+    v4(await refused("the memory is 1025 bytes; a journal entry holds 1,024") && L(page, "#swap-memory-count").classList.contains("bad"), "a memory over 1,024 bytes is refused in words, and its count turns red", tickOf(page));
+    put(page, "memory", ""); await page.settle();
+    page.click(L(page, "#swap-exact")); await page.settle();
+    await quote(page, "0.01");
+    v4(await refused("a lock names what you pay: switch to exact in"), "in exact-out mode the lock is refused in words: a lock names what you pay", tickOf(page));
+    page.click(L(page, "#swap-exact")); await page.settle();
+    await quote(page, "0.1");
+    /* a schedule the chain puts in the past: the wallet's clock answers three days behind the block, so a start one day after
+       it is two days gone when the transaction runs — the panel builds what the clock said, and the estimate says no */
+    const ts = v.BLOCK().timestamp;
+    W.override("eth_getBlockByNumber", () => ({ number: hexN(v.BLOCK().number), timestamp: hexN(ts - 3n * DAY), hash: "0x" + "11".repeat(32) }));
+    await press(page, L(page, "#swap-go"));
+    W.override("eth_getBlockByNumber", null);
+    v4(sawOf(cdOf(page)).start === ts - 2n * DAY && gasOf(page) === "would revert: BadSchedule()" && page.$("#cslab [data-go]").disabled === true && W.prompts().length === 0,
+      "a schedule in the past is the chain's own refusal in words: would revert: BadSchedule(), Sign disabled, no prompt", gasOf(page));
+    page.click(page.$("#cslab [data-no]")); await page.settle();
+    v4(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML and no script threw on the refusals' page", page.errors.map((e) => e.message).join("; "));
+    page.close();
+  }
+  t.ok(V4, "a refusal is said in words: a drip asked for a gift, no days, past ten years, a long message or memory, exact out, and a schedule in the past");
+
+  /*─────── V5 · a memory after a plain swap: offered, dismissed, offered again ───────*/
+  t.head("V5 · a plain swap with a memory: Not now leaves it as a button, and it lands with the swap's transaction");
+  {
+    const W = walletFor(c, me);
+    const { page } = await v.bootToken(2, { wallet: W });
+    await v.lane(page, "swap");
+    page.click(L(page, "#swap-flip")); await page.settle();
+    await quote(page, "0.1");
+    put(page, "memory", "a plain trade, remembered"); await page.settle();
+    await press(page, L(page, "#swap-go"));
+    mm(page.text("#cslab [data-function]") === SWAP_IN && page.text("#cslab [data-sentence]") === page.text("#lane-swap #swap-say").replace(/\.$/, "") + "; it goes through #2's market and dies in fifteen minutes.",
+      "a plain swap's sentence is the card's one breath, through the market, with its deadline", page.text("#cslab [data-sentence]"));
+    await sign(page, W, 1);
+    const swap = [...W.receipts.values()].pop();
+    const offered = await page.until(() => open(page) && page.text("#cslab [data-function]") === INSCRIBE, 120);
+    mm(offered && swap.status === "0x1", "after a plain swap's receipt the memory's slab is offered", page.text("#cslab [data-function]") || "no slab");
+    if (offered) { page.click(page.$("#cslab [data-no]")); await page.settle(); }
+    await page.until(() => LL(page, "#swap-kept [data-act=inscribe]").length === 1, 40);
+    const sent = W.sent();
+    mm(!open(page) && LL(page, "#swap-kept [data-act=inscribe]").length === 1 && sent === 1 && L(page, "#swap-in").value === "" && L(page, "[name=memory]").value === "",
+      "Not now writes nothing and leaves the memory as a button; the card is fresh for the next trade", `sent ${sent} acts ${LL(page, "#swap-kept [data-act=inscribe]").length}`);
+    const again = L(page, "#swap-kept [data-act=inscribe]");
+    if (again) { await press(page, again); await sign(page, W, 2); }
+    await page.until(() => /memory #1 is in #2's journal/.test(page.text("#lane-swap #swap-kept")), 80);
+    const m = journalLogs().pop();
+    mm(m.id === 2n && m.n === 1n && m.kind === 1n && lower(m.ref) === lower(swap.transactionHash) && m.body === "a plain trade, remembered" && LL(page, "#swap-kept [data-act=inscribe]").length === 0,
+      "pressed again, it lands: #2's first memory, its ref the plain swap's transaction", js(m));
+    mm(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML and no script threw on the memory's page", page.errors.map((e) => e.message).join("; "));
+    page.close();
+  }
+  t.ok(MEM, "the memory slab follows the swap's receipt, its ref the swap's transaction, read back from the Inscribed log, and Not now never loses it");
 }
