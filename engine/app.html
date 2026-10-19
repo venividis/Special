@@ -196,7 +196,12 @@ const short   = a => a ? a.slice(0, 6) + " … " + a.slice(-4) : "—";
 /*── ABI ────────────────────────────────────────────────────────────────*/
 const pad  = h => String(h).replace(/^0x/, "").padStart(64, "0");
 const padR = h => String(h).replace(/^0x/, "").padEnd(64, "0");
-const isDyn = t => t === "bytes" || t === "string" || /\[\]$/.test(t);
+/* types are read as the decoder reads them: tuples, nested and fixed arrays */
+const tsplit = s => { const o = []; let d = 0, c = ""; for (const ch of s) { if (ch === "(") d++; if (ch === ")") d--; if (ch === "," && !d) { o.push(c); c = ""; } else c += ch; } if (c) o.push(c); return o; };
+const tarr = t => t.match(/^(.*)\[(\d*)\]$/);
+const tinner = t => tsplit(t.slice(1, t.lastIndexOf(")")));
+const isDyn = t => { const m = tarr(t); return m ? !m[2] || isDyn(m[1]) : t === "bytes" || t === "string" || (t[0] === "(" && tinner(t).some(isDyn)); };
+const tsize = t => { const m = tarr(t); return m ? m[2] * tsize(m[1]) : t[0] === "(" ? tinner(t).reduce((n, x) => n + tsize(x), 0) : 32; };
 
 function encWord(type, v){
   if(type === "address"){
@@ -213,28 +218,42 @@ function encWord(type, v){
   if(/^bytes([1-9]|[12]\d|3[0-2])$/.test(type)) return padR(String(v));
   throw new Error("unsupported type: " + type);
 }
-function encDyn(type, v){
-  if(type === "string" || type === "bytes"){
-    const b = type === "string" ? utf8(String(v)) : fromHex(v);
-    let body = "";
-    for(let i = 0; i < b.length; i += 32){
-      body += Array.from(b.subarray(i, i + 32), x => x.toString(16).padStart(2, "0"))
-                   .join("").padEnd(64, "0");
-    }
-    return pad(b.length.toString(16)) + body;
+function encDyn(type, v){                               // string or bytes: the length word and the padded body
+  const b = type === "string" ? utf8(String(v)) : fromHex(v);
+  let body = "";
+  for(let i = 0; i < b.length; i += 32){
+    body += Array.from(b.subarray(i, i + 32), x => x.toString(16).padStart(2, "0"))
+                 .join("").padEnd(64, "0");
   }
-  const base = type.slice(0, -2);
-  const arr  = Array.isArray(v) ? v : String(v).split(",").map(s => s.trim()).filter(Boolean);
-  return pad(arr.length.toString(16)) + arr.map(x => encWord(base, x)).join("");
+  return pad(b.length.toString(16)) + body;
+}
+/* one value of any type: an array (its length word unless fixed) or a tuple is a sequence
+   laid by the same head/tail rule as the arguments themselves; a static-base array may be
+   written as "a, b, c" */
+function encVal(t, v){
+  const m = tarr(t);
+  if(m){
+    const a = Array.isArray(v) ? v : String(v).split(",").map(s => s.trim()).filter(Boolean);
+    if(m[2] && a.length !== +m[2]) throw new Error(t + " takes " + m[2] + " values");
+    const body = encodeParams(Array(a.length).fill(m[1]), a);
+    return m[2] ? body : pad(a.length.toString(16)) + body;
+  }
+  if(t[0] === "("){
+    const ts = tinner(t);
+    if(!Array.isArray(v) || v.length !== ts.length) throw new Error(t + " takes " + ts.length + " fields");
+    return encodeParams(ts, v);
+  }
+  return t === "string" || t === "bytes" ? encDyn(t, v) : encWord(t, v);
 }
 function encodeParams(types, values){
   let head = "", tail = "";
-  const headLen = types.length * 32;
+  const headLen = types.reduce((n, t) => n + (isDyn(t) ? 32 : tsize(t)), 0);
   for(let i = 0; i < types.length; i++){
+    const e = encVal(types[i], values[i]);
     if(isDyn(types[i])){
       head += pad((headLen + tail.length / 2).toString(16));
-      tail += encDyn(types[i], values[i]);
-    } else head += encWord(types[i], values[i]);
+      tail += e;
+    } else head += e;
   }
   return head + tail;
 }
@@ -242,7 +261,7 @@ function encodeParams(types, values){
 function encodeCall(sig, args){
   const m = String(sig).trim().match(/^([A-Za-z_$][\w$]*)\((.*)\)$/);
   if(!m) throw new Error("a signature looks like transfer(address,uint256)");
-  const types = m[2].trim() ? m[2].split(",").map(s => s.trim()) : [];
+  const types = m[2].trim() ? tsplit(m[2]).map(s => s.replace(/\s+/g, "")) : [];
   const canonical = m[1] + "(" + types.join(",") + ")";
   if(types.length !== args.length)
     throw new Error(types.length + " argument" + (types.length === 1 ? "" : "s") + " expected, " + args.length + " given");
