@@ -70,6 +70,14 @@
   stripped module no longer parses. The placeholder fixtures carry no
   marker and are left alone.
 
+  A third (W15, W12-8): engine/sitepage.mjs, the Studio's default site,
+  replaces the one-line `@inline engine/sitepage.mjs` block comment
+  (SITEPAGE_MARKER) in a panel the same way. It is optional in every
+  panel, and where it appears it is a hard error when the module is
+  absent, when the marker appears twice, when it sits at the panel's top
+  level rather than inside its IIFE, or when the panel no longer parses
+  with the module in it.
+
   Three more refusals and one option landed with the shell (U9, the shell
   agent; this is U7's file and the edits are additive):
 
@@ -236,6 +244,36 @@ export function inlineWhispers(js, name, { fixture, modPath = path.join(ROOT, "e
   return js.replace(WHISPERS_MARKER, () => stripped);
 }
 
+export const SITEPAGE_MARKER = "/*@inline engine/sitepage.mjs*/";
+
+/// `engine/sitepage.mjs`, the Studio's default site (W12-8, W15), into a
+/// panel at its marker line, `export ` stripped, so the page the launch lane
+/// offers and the page tools/verify-studio.mjs launches are one source. The
+/// marker is optional in every panel. Where it appears it is refused loudly:
+/// when the module is missing, when the marker appears twice, when it sits
+/// at the panel's top level instead of inside its IIFE (the function would
+/// become a top-level declaration, which a panel may not make — the loader
+/// trap), and when the panel no longer parses with the module in it.
+export async function inlineSitePage(js, name, { modPath = path.join(ROOT, "engine/sitepage.mjs") } = {}) {
+  const n = js.split(SITEPAGE_MARKER).length - 1;
+  if (n === 0) return js;
+  if (n > 1) throw new Error(`panel ${name} carries the sitepage marker ${n} times; exactly one`);
+  if (!fs.existsSync(modPath)) throw new Error(`panel ${name} asks for sitepage.mjs and ${path.relative(ROOT, modPath)} does not exist`);
+  /* where the marker sits: a sentinel declaration in its place must not be one of the panel's top-level statements */
+  const SENTINEL = "__intactSitePageMarker__";
+  const probe = await minify(js.replace(SITEPAGE_MARKER, () => `function ${SENTINEL}(){}`), { compress: false, mangle: false, format: { ast: true } });
+  if (probe.error) throw probe.error;
+  if (probe.ast.body.some((s) => s.TYPE === "Defun" && s.name && s.name.name === SENTINEL)) {
+    throw new Error(`panel ${name} carries the sitepage marker at its top level; it goes inside the panel's IIFE`);
+  }
+  const stripped = fs.readFileSync(modPath, "utf8").replace(/^(\s*)export\s+/gm, "$1");
+  if (/^\s*export\s/m.test(stripped)) throw new Error("sitepage.mjs still has an export statement after stripping — an inline form the build does not handle");
+  const out = js.replace(SITEPAGE_MARKER, () => stripped);
+  try { new vm.Script(out, { filename: `${name}.sitepage-inlined.js` }); }
+  catch (e) { throw new Error(`panel ${name} does not parse once sitepage.mjs is inlined: ${e.message}`); }
+  return out;
+}
+
 /*──────────────── minification ────────────────*/
 
 async function shrinkShell(html) {
@@ -330,7 +368,7 @@ export async function build() {
 
   const builtPanels = [];
   for (const p of panels) {
-    const js = inlineWhispers(fs.readFileSync(p.path, "utf8"), p.name, { fixture: p.path.includes("fixtures") });
+    const js = await inlineSitePage(inlineWhispers(fs.readFileSync(p.path, "utf8"), p.name, { fixture: p.path.includes("fixtures") }), p.name);
     refuse(js, `panel ${p.name}`);
     if (!/window\.INTACT/.test(js)) throw new Error(`panel ${p.name} never reads window.INTACT`);
     await checkPanelTopLevel(js, p.name);
