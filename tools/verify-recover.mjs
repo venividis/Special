@@ -33,13 +33,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { spawnSync } from "node:child_process";
 import { Chain, warp, BLOCK, encodeParams, enc, decAddr, decUint, decBool } from "./evm.mjs";
 import { compile, shipRule, artifact } from "./compile.mjs";
 import { ROOT, adapt, deployIntact, predictCreate3, saltOf, SALTED, PLACEHOLDERS, RECORD_KEYS, PINS, DEPLOY_ORDER,
          PROXY_INITCODE_HASH, bandOf, assertTiles, BANDS, COLLECTION, kec, parseArgs, readDist, atomicWrite, CLI_OPTIONS, decWords,
-         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite, V2_SALTED, RECORD_SCHEMA, VENUES, SEAPORT_KEYS } from "./deploy.mjs";
+         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite, V2_SALTED, RECORD_SCHEMA, VENUES, SEAPORT_KEYS,
+         V2_ORDER, CLI_FLAGS, seaportRow } from "./deploy.mjs";
 import { recover } from "./recover-record.mjs";
-import { predictCreate, PANELS } from "./site.mjs";
+import { predictCreate, PANELS, seaportFixture } from "./site.mjs";
 
 let pass = 0, fail = 0;
 const ok = (name, cond, detail) => {
@@ -429,6 +431,9 @@ const present = SATELLITE_ORDER.filter((k) => hasArtifact(SATELLITES[k].file, SA
 if (!present.length) note("no satellite contract is compiled in this tree; the sentences below run once one lands (U14–U18)");
 let follow = rec;
 const stranger1 = adapt(await c1.as("0x" + "66".repeat(32)));
+/// where a V2 satellite is pinned (W15): the hub pins the Keepsake and the Journal, the Catalog the rest, the Keepsake its art
+const WHERE = { keepsakeArt: "where the record predicted it, for the Keepsake to pin", bazaar: "where the Catalog pinned it",
+                bridges: "where the Catalog pinned it", studio: "where the Catalog pinned it", agora: "where the Catalog pinned it" };
 for (const key of present) {
   const at = low(follow.placeholders[key]);
   const sq = await throwsWith(() => stranger1.exec(follow.contracts.timelock, "queue(address,uint256,bytes,bytes32)", [follow.factory, 0, "0x", saltOf(key)], { label: "strangerQueue" }), /revert/);
@@ -436,7 +441,7 @@ for (const key of present) {
   const q = await deploySatellite({ ...ad1, warp: undefined }, follow, key, { out });
   ok(`${key}: the burner queues it on the Timelock, and nothing lands before the delay`, q.queued === true && (await ad1.codeAt(at)) === "0x", JSON.stringify(q.satellite));
   const landed = await deploySatellite(stranger1, q.record, key, { out, recordPath });
-  eq(`${key}: a week later a stranger lands it where the hub pinned it`, landed.contracts[key], at);
+  eq(`${key}: a week later a stranger lands it ${WHERE[key] || "where the hub pinned it"}`, landed.contracts[key], at);
   ok(`${key}: the record lists it under contracts, codehashes, reproducible and satellites`,
      landed.codehashes[key] && key in landed.reproducible && landed.satellites[key].executed && landed.satellites[key].queued, JSON.stringify(landed.satellites[key]));
   eq(`${key}: its via is the Timelock`, landed.satellites[key].via, "timelock");
@@ -467,6 +472,138 @@ if (present.length) {
   ok("an unknown satellite is refused by name", rk && !rk.startsWith("wrong"), rk);
   const holder = { market: ["hub", "MARKET()"], roles: ["hub", "ROLES()"], agentCard: ["premises", "AGENTCARD()"] }[k0];
   if (holder) eq(`the ${holder[0]}'s ${holder[1]} is the landed ${k0}`, low(decAddr(await ad1.read(follow.contracts[holder[0]], holder[1]))), follow.contracts[k0]);
+}
+
+/*──────────────── V2: whole, by the burner, or one at a time through the Timelock (W15) ────────────────*/
+head("V2 lands whole by the burner in a fresh deployment (--v2), or one satellite at a time through the Timelock, and the record recovers either way");
+{
+  /*  The Seaport half of Base Sepolia's probed row is the venue a Bazaar
+      zones; in-process its two runtimes (tools/fixtures/seaport-1.6, held
+      to the probe's codehashes) are put at their canonical addresses
+      first, as deploySite does. A row that names only Seaport is a venue
+      table for the Bazaar and none for the Router.                      */
+  const fx = seaportFixture();
+  const SEA = seaportRow(VENUES[84532]);
+  const withSeaport = async () => {
+    const ad = adapt(await Chain.open({ chainId: 31337 }));
+    await ad.setCode(SEA.seaport, fx.seaport);
+    await ad.setCode(SEA.conduitController, fx.controller);
+    return ad;
+  };
+  ok("V2 lands in one declared order — the Keepsake's art, the Keepsake, the Journal, the Bazaar, Bridges, the Studio, Agora — each a satellite row salted under intact.v2, the art a placeholder like the six",
+     V2_ORDER.join(",") === "keepsakeArt,keepsake,journal,bazaar,bridges,studio,agora" && V2_ORDER.every((k) => SATELLITES[k] && SATELLITE_ORDER.includes(k) &&
+       saltOf(k) === kec(Buffer.from("intact.v2." + k, "utf8")) && PLACEHOLDERS.includes(k)) && rec.placeholders.keepsakeArt === predictCreate3(rec.factory, saltOf("keepsakeArt")));
+  {
+    /* the CLI itself, which refuses both before it reads a file, opens a socket or touches a key */
+    const cli = (...a) => spawnSync(process.execPath, [path.join(ROOT, "tools/deploy.mjs"), "--chain", "31337", "--confirm", "DEPLOY_INTACT_LOCAL", ...a], { encoding: "utf8", timeout: 120_000 });
+    const valued = cli("--v2", "yes"), both = cli("--v2", "--satellite", "keepsake");
+    ok("--v2 is the deployer's one switch: it takes no value, beside the seven options that do",
+       CLI_FLAGS.join(",") === "v2" && !CLI_OPTIONS.includes("v2") && valued.status === 2 && /--v2 is a switch and takes no value/.test(valued.stderr || ""),
+       `exit ${valued.status}: ${(valued.stderr || "").trim()}`);
+    ok("and --v2 beside --satellite is refused: one lands V2 in a fresh deployment, the other through the Timelock for a recorded one",
+       both.status === 2 && /one or the other/.test(both.stderr || ""), `exit ${both.status}: ${(both.stderr || "").trim()}`);
+  }
+
+  /* the whole band, V2 and all, from the burner in one run */
+  const adV = await withSeaport();
+  const jV = path.join(scratch, "v2.journal.json");
+  t0 = Date.now();
+  const recV = await deployIntact(adV, { out, journalPath: jV, recordPath: null, venues: SEA, v2: true });
+  note(`deployed with --v2 in ${((Date.now() - t0) / 1000).toFixed(1)}s, ${(Number(recV.gasTotal) / 1e6).toFixed(2)}M gas, ${Object.keys(recV.contracts).length} contracts; ` +
+       V2_ORDER.map((k) => `${k} ${recV.gas[k]}`).join(", "));
+  const jj = JSON.parse(fs.readFileSync(jV, "utf8"));
+  const steps = Object.keys(jj.steps);
+  ok("a fresh deployment with --v2 lands V2's seven by the burner right after the Premises, in that order, and the journal holds them in DESIGN §12's declared order",
+     steps.slice(steps.indexOf("premises") + 1).join(",") === V2_ORDER.join(",") && steps.join(",") === DEPLOY_ORDER.filter((k) => jj.steps[k]).join(","), steps.slice(-9).join(","));
+  ok("each at its intact.v2 placeholder, with code there, and no Router on a row that names only Seaport",
+     V2_ORDER.every((k) => low(recV.contracts[k]) === low(predictCreate3(recV.factory, saltOf(k))) && low(recV.placeholders[k]) === low(recV.contracts[k])) &&
+     (await Promise.all(V2_ORDER.map((k) => adV.codeAt(recV.contracts[k])))).every((c) => c !== "0x") && !recV.contracts.router);
+  ok("the record lists each under contracts, codehashes and satellites, via the burner: the transaction that landed it, its block and gas, and no queue",
+     V2_ORDER.every((k) => recV.satellites[k]?.via === "burner" && recV.satellites[k].op === null && recV.satellites[k].queued === null &&
+       /^0x[0-9a-f]{64}$/.test(recV.satellites[k].executed?.tx || "") && low(recV.satellites[k].executed.by) === low(recV.deployer) &&
+       /^0x[0-9a-f]{64}$/.test(recV.codehashes[k]) && recV.gas[k] === recV.satellites[k].executed.gas), JSON.stringify(recV.satellites.keepsake));
+  const rV = await recover(adV, recV, { out });
+  eq("a V2 band deployed whole recovers with 0 disagreeing", rV.disagreements.length + (rV.disagreements.length ? " " + JSON.stringify(rV.disagreements.slice(0, 3)) : ""), "0");
+  ok(`and nothing a complete record needs is missing, while the walk checked more than the MVB's: ${rV.checked} fields against ${r1.checked}, V2's own pins and each Deployed event among them`,
+     rV.missing.length === 0 && rV.checked > r1.checked, `${rV.checked} vs ${r1.checked}; missing ${rV.missing.join(",")}`);
+  ok("the record's deployment recovered in-run with the same count before it was returned", recV.recovered.checked === rV.checked && recV.recovered.disagreeing === 0);
+  const rA = async (at, sig) => low(decAddr(await adV.read(at, sig)));
+  const K = recV.contracts;
+  ok("the Keepsake pins the art that landed before it, the hub and the Pool",
+     (await rA(K.keepsake, "ART()")) === low(K.keepsakeArt) && (await rA(K.keepsake, "HUB()")) === low(K.hub) && (await rA(K.keepsake, "POOL()")) === low(K.pool) &&
+     Number(jj.steps.keepsakeArt.block) <= Number(jj.steps.keepsake.block));
+  ok("the Studio and Agora each pin the other, as predicted before either existed, and the Studio the Journal",
+     (await rA(K.studio, "AGORA()")) === low(K.agora) && (await rA(K.agora, "STUDIO()")) === low(K.studio) && (await rA(K.studio, "JOURNAL()")) === low(K.journal) &&
+     (await rA(K.agora, "KEYS()")) === low(K.keys));
+  ok("Bridges answer to the band's Timelock, and the Journal to its hub",
+     (await rA(K.bridges, "TIMELOCK()")) === low(K.timelock) && (await rA(K.journal, "HUB()")) === low(K.hub));
+  /* services() returns one `bytes`: its offset word, its length word, then the document */
+  const svcHex = String(await adV.read(K.catalog, "services()")).replace(/^0x/, "");
+  const SVC = JSON.parse(Buffer.from(svcHex.slice(128, 128 + Number(BigInt("0x" + svcHex.slice(64, 128))) * 2), "hex").toString("utf8"));
+  const seaRows = SVC.services.filter((r) => r.on === "seaport");
+  ok("the Bazaar zones the venue row's Seaport, which the Catalog's world names, and the third table's six seaport rows carry the same address",
+     (await rA(K.bazaar, "SEAPORT()")) === low(SEA.seaport) && (await rA(K.catalog, "SEAPORT()")) === low(SEA.seaport) &&
+     seaRows.length === 6 && seaRows.every((r) => low(r.contract) === low(SEA.seaport)), seaRows.map((r) => r.contract).join(","));
+  {
+    const m = await adV.exec(K.hub, "mint(address)", [adV.from], { value: BigInt(recV.price), label: "mint" });
+    void m;
+    const st = await adV.read(K.catalog, "stateOf(uint256)", [1]);
+    const BITS = 8192n | 16384n | 32768n | 65536n | 131072n | 262144n;
+    ok("on that band Catalog.stateOf reports all six V2 satellites, bits 8192 to 262144, and marks none of them absent",
+       (decUint(st, 13) & BITS) === BITS && (decUint(st, 14) & BITS) === 0n, `reported ${decUint(st, 13)} absent ${decUint(st, 14)}`);
+  }
+  for (const [label, mutate, re] of [
+    ["a burner-landed V2 satellite recorded at a block where the factory deployed nothing is caught by name", (t) => { t.satellites.studio.executed.block = "1"; }, /satellites\.studio\.executed\.block/],
+    ["and one claimed with no evidence at all", (t) => { delete t.satellites.agora; }, /^satellites\.agora$/],
+    ["and one whose landing transaction is not recorded, though its address holds the code, is caught by name", (t) => { delete t.satellites.journal.executed; }, /^satellites\.journal\.executed\.block$/],
+    ["and a V2 satellite's pin that is not the record's is caught: Agora's STUDIO against the record's Studio", (t) => { t.contracts.studio = t.contracts.journal; }, /agora\.STUDIO|contracts\.studio/]
+  ]) {
+    const t = clone(recV); mutate(t);
+    const r = await recover(adV, t, { out });
+    ok(label, !!r.disagreements.find((d) => re.test(d.field)), r.disagreements.map((d) => d.field).slice(0, 5).join(", ") || "0 disagreeing");
+  }
+  const againV = await deployIntact(adV, { out, journalPath: jV, recordPath: null, venues: SEA });
+  eq("a resumed run of the same journal is a --v2 run whether or not it says so: it sends nothing and keeps V2", `${againV.gasThisRun} ${V2_ORDER.every((k) => againV.contracts[k] === K[k])}`, "0 true");
+
+  /* no Seaport in the row: the Bazaar is skipped by name, the other six land */
+  const ad5 = adapt(await Chain.open({ chainId: 31337 }));
+  const said = [];
+  const rec5 = await deployIntact(ad5, { out, journalPath: null, recordPath: null, v2: true, log: (s) => said.push(s) });
+  ok("on a chain whose row names no Seaport, --v2 skips the Bazaar by name and leaves its placeholder codeless, while the other six land",
+     said.some((s) => /bazaar\s+skipped — the venue row names no Seaport/.test(s)) && !rec5.contracts.bazaar && (await ad5.codeAt(rec5.placeholders.bazaar)) === "0x" &&
+     V2_ORDER.filter((k) => k !== "bazaar").every((k) => rec5.contracts[k] && rec5.satellites[k]?.via === "burner"), said.filter((s) => /bazaar/.test(s)).join(" / "));
+  const r5 = await recover(ad5, rec5, { out });
+  eq("and that record recovers with 0 disagreeing", r5.disagreements.length, 0);
+
+  /* the Timelock's path for the venue's zone, and the art before the Keepsake */
+  const adB = await withSeaport();
+  const recB = await deployIntact(adB, { out, journalPath: null, recordPath: null, venues: SEA });
+  ok("without --v2 the same band leaves all seven V2 contracts codeless placeholders", V2_ORDER.every((k) => !recB.contracts[k]) &&
+     (await Promise.all(V2_ORDER.map((k) => adB.codeAt(recB.placeholders[k])))).every((c) => c === "0x"));
+  const qB = await deploySatellite({ ...adB, warp: undefined }, recB, "bazaar", { out });
+  ok("the Bazaar is queued on the Timelock and nothing lands before the delay", qB.queued === true && (await adB.codeAt(recB.placeholders.bazaar)) === "0x");
+  const recB2 = await deploySatellite(adB, qB.record, "bazaar", { out });
+  ok("a week later it lands where the Catalog pinned it, zoning the record's Seaport, via the Timelock",
+     low(recB2.contracts.bazaar) === low(recB.placeholders.bazaar) && recB2.satellites.bazaar.via === "timelock" &&
+     low(decAddr(await adB.read(recB2.contracts.bazaar, "SEAPORT()"))) === low(SEA.seaport) && low(decAddr(await adB.read(recB2.contracts.bazaar, "HUB()"))) === low(recB.contracts.hub));
+  const rB = await recover(adB, recB2, { out });
+  eq("a V2 satellite queued and landed through the Timelock recovers with 0 disagreeing", rB.disagreements.length, 0);
+  const qK = await deploySatellite({ ...adB, warp: undefined }, recB2, "keepsake", { out });
+  const early = await throwsWith(() => deploySatellite(adB, qK.record, "keepsake", { out }), /pins the keepsakeArt at .* which has no code yet: land keepsakeArt first .* stays queued/);
+  ok("a queued Keepsake refuses to land before the art it pins, by name, and stays queued", early && !early.startsWith("wrong") && (await adB.codeAt(recB.placeholders.keepsake)) === "0x" &&
+     decUint(await adB.read(recB.contracts.timelock, "eta(bytes32)", [qK.op])) !== 0n, early);
+  const recArt = await deploySatellite(adB, qK.record, "keepsakeArt", { out });
+  const recK = await deploySatellite(adB, recArt, "keepsake", { out });
+  ok("once the art has landed through its own queue, the Keepsake lands and pins it", low(decAddr(await adB.read(recK.contracts.keepsake, "ART()"))) === low(recArt.contracts.keepsakeArt) &&
+     recK.satellites.keepsake.via === "timelock" && recK.satellites.keepsakeArt.via === "timelock");
+  eq("and the record recovers with 0 disagreeing", (await recover(adB, recK, { out })).disagreements.length, 0);
+
+  /* who may take V2 at all */
+  const why2 = admitsSatellite("keepsake", { ...rec, schema: "intact.deployment/2" });
+  ok("a record written before V2, schema 2 or 1, admits no V2 satellite: its hub pins no Keepsake and its Catalog names no V2 contract", /written before V2/.test(why2 || "") &&
+     V2_ORDER.every((k) => admitsSatellite(k, { ...rec, schema: "intact.deployment/1" })), why2);
+  ok("and a record whose venue row names no Seaport admits no Bazaar, while it admits the other six", /names no Seaport venue/.test(admitsSatellite("bazaar", rec) || "") &&
+     V2_ORDER.filter((k) => k !== "bazaar").every((k) => !admitsSatellite(k, rec)));
 }
 
 fs.rmSync(scratch, { recursive: true, force: true });
