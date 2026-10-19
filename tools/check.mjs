@@ -95,7 +95,7 @@ export const STEPS = [
   { name: "verify:bazaar", file: "tools/verify-bazaar.mjs", args: [], shape: "passedFailed", what: "Seaport orders published and filled; the INTACT zone before and after the transfers; Bridges through the Timelock" },
   { name: "verify:studio", file: "tools/verify-studio.mjs", args: [], shape: "passedFailed", what: "collections launched from tokens: referrals, payees, the website a tokenURI builds" },
   { name: "verify:agora", file: "tools/verify-agora.mjs", args: [], shape: "passedFailed", what: "the social layer on personas: rooms, seats, keys, tips, follows" },
-  { name: "fuzz", file: "tools/fuzz.mjs", args: [], shape: "propertiesHeld", what: "the seeded, shrinking market properties" },
+  { name: "fuzz", file: "tools/fuzz.mjs", args: [], shape: "propertiesHeld", what: "the seeded, shrinking market properties and the keepsake's drip" },
   { name: "verify:findings", file: "tools/verify-findings.mjs", args: [], shape: "passedFailed", what: "every historical finding replayed: refuted on HEAD, reproduced on a variant" },
   { name: "agents", file: "tools/agents.mjs", args: [], shape: "passedFailed", what: "seven motives for 220 ticks with the invariants checked after every tick" },
   { name: "static-audit", file: "tools/static-audit.mjs", args: [], shape: "staticAudit", what: "the patterns this codebase refuses, by grep; N rules" },
