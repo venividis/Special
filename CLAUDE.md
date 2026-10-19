@@ -103,7 +103,8 @@ after wave 0: a change is additive only and goes in
 - `tools/build-app.mjs` fails on a loader that declares a global, on
   `src="https://`, on any host string (`https?://…\.(org|com|io|xyz|net)`,
   `wss?://`) in `dist/` — the SVG namespace literal is the one exception —
-  and on a shell over 15,000 B gzip or a panel over 8,192 B.
+  and on a shell over 24,000 B gzip or a panel over 12,288 B (V2's budgets,
+  docs/V2.md §2; V1 shipped at 15,000 and 8,192).
 - Amounts are `BigInt` end to end; the console never builds an approval of
   2^255 or more, in an outer call or inside `execute`/`executeBatch`/
   `executeTyped`; chain strings reach the DOM through `textContent` only;
@@ -180,10 +181,27 @@ after wave 0: a change is additive only and goes in
   `sel` map and one `services` array, and the drift gate in
   `tools/verify.mjs` holds a row to its contract's interface until the
   contract lands, then to both.
-- **The shell is 45 B under its gzip ceiling** (14,955 of 15,000), the
-  vault panel 26 B under its own and the identity panel 7 B (8,185, the
-  listing, the roles and the ENS row); any fix to any of them pays in cuts
-  first.
+- **The shell is 2,051 B under its gzip ceiling** (21,949 of 24,000, the
+  living-light shell, docs/v2/W7-shell.md); the largest panel is 8,187 of
+  12,288. The ceiling follows the gas caps: at a padded 24,000 B,
+  `/token/1/hash` reads 2.333 M of its 2.5 M (29.4 gas per gzip byte,
+  INVARIANTS F2), so the hash route is the first cap a bigger shell meets.
+- **The soul runs in the battery.** The battery's Chromium has WebGL
+  through SwiftShader, so the shader starts on every page. Naming the
+  software rasteriser is what keeps the battery's CPU flat: one still at
+  0.25×, no timed frame, no `html.alive`. Time any shader change on a real
+  GPU as well.
+- **Nothing loops without `html.alive`.** An endless CSS animation keeps
+  this Chromium's compositor at about 80 % of a core for as long as a page
+  is open (measured, docs/v2/W7-shell.md decision 9). Any animation in the
+  shell or a panel that never ends is paused unless `html.alive` is set,
+  and `html.alive` is set only while the sky animates.
+- **Home is outside `#lanes`.** Nothing added to the dock may be an
+  `a[data-lane]` inside `#lanes` unless it is a lane; both suites count
+  them.
+- **The bars are fixed over the page.** html's `scroll-padding` keeps the
+  body's clearance; if the crest bar or the dock grows, both numbers move
+  together, or focus lands under them again (WCAG 2.2 2.4.11).
 - **The monolith is over EIP-170** (25,402 B); the diamond ships. Both
   builds are compiled and tested on every run; the harness deploys with the
   size limit lifted, so the gate is `compile.mjs`, not the test runner.

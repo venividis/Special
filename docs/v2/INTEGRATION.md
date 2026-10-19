@@ -61,6 +61,19 @@ The hub, the Catalog and the deployment (W6):
 | H5 | The Seaport venue row for 84532 and its `checkVenues` claims, from the probe in `tools/fixtures/seaport-1.6/probe.json` | W3 | yes | open |
 | H6 | The Engine's six-panel constant becomes an array, so the Gallery lane fits | V2 §2, W7 | yes, with the lanes | open |
 
+The shell (W7, merged d2838bd):
+
+| # | Request | From | Decision | State |
+|---|---|---|---|---|
+| W7-1 | `CONSOLE.md`: the new shell ids, the dock, the slab's order, the landing sentence, the footer, the numbers | W7 | yes | done: §18 |
+| W7-2 | `CLAUDE.md`: ceilings 24,000 / 12,288; the soul in the battery; nothing loops without `html.alive`; Home outside `#lanes`; `scroll-padding` | W7 | yes | done |
+| W7-3 | INVARIANTS F2 rewritten from W7's derivation; six rows for the light | W7 | yes | done: F2 live with the new figures; F9–F14 pending (W7) |
+| W7-4 | DESIGN §5.5: the ceilings | W7 | yes | done |
+| W7-5 | A seventh panel (the Engine's `PANELS = 6`, Premises' and the Catalog's loops, the panel lists in build-app, site and gas) | W7 | yes, with the Gallery lane | open |
+| W7-6 | `verify-console.mjs` B′: `textContent()` without a timeout waits 30 s after a sheet's ✕ closes it | W7 | yes | open |
+| W7-7 | `vault.js`: the Grip's copy button throws in a `data:` frame (no `navigator.clipboard`) | W7 | yes, with the Vault lane | open |
+| W7-8 | Lanes: an endless animation waits for `html.alive` | W7 | yes: in every lane's brief | open |
+
 The battery:
 
 | # | Request | From | Decision | State |

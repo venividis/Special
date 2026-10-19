@@ -861,3 +861,41 @@ would be a promise nobody keeps. `tools/check.mjs` runs it as the
 real wire: `npx hardhat node` (chain 31337, cancun), `tools/deploy.mjs`'s
 CREATE3 run, `tools/gateway.mjs` serving the bytes, and a wallet whose Node
 side signs with a dev key and sends `eth_sendRawTransaction` to the node.
+
+## 18. The living-light shell (V2 W7)
+
+V2's shell (docs/V2.md §2; docs/v2/W7-shell.md has every decision) keeps
+§1–§17 whole: every id above is still the contract, and both batteries
+pass unchanged but for the ceiling's number. What it adds:
+
+| Element | Meaning |
+|---|---|
+| `#stage`, `#frame`, `#art`, `#badge` | Home's stage: the crest (`svg[role=img]`) in an iridescent frame that tilts with the pointer or the gyroscope, and the status badge on it |
+| `#intro` | Home's title card (`#ident` inside it) |
+| `#room` with `#room-t`, `#room-s`, `#room-x` | the open room's heading, its one-line summary and its close button |
+| `#dock`, `#home`, `#lit` | the dock of rooms at the bottom: `#home` is Home's anchor and sits OUTSIDE `#lanes`; `#lit` is the sliding light under the room in use |
+| `#lanes` | inside `#dock`. Links are labelled Trade, Vault, Social, Studio, Identity and Agent, each with a mark. The order is swap, vault, social, launch, then identity and agent. An aria-disabled link also carries `tabindex=-1`, and the link of the room in use carries `aria-current=true` |
+| `#scrim` | the veil behind an open sheet |
+| `#soul` | the sky: a canvas, created only where WebGL exists and only after `ready`; its palette is the crest's hues and its flow is seeded by the token's fingerprint |
+| `#spark` | the celebration's canvas, created at the first landing |
+| `body[data-room=home\|room\|sheet]` | which surface is in front |
+| `html.alive` | set exactly while the sky's loop runs; never on a software rasteriser, under reduced motion or in a hidden tab. Nothing loops without it (CLAUDE.md) |
+| `html.landed` | set during a celebration |
+| `#facts details` | "the proof": `id chain reach grip fingerprint engine catalog block` sit inside it; the glance above it keeps holder, epoch, status, locked, seal, market and name |
+
+**The slab as a sheet (§4).** `#cslab` is a dialog that takes focus. Its
+order is the `h3`, `[data-sentence]` (large, first), the lines, `Value`,
+then a `details` "the facts it signs" holding To, Function, Selector, the
+`[data-arg]` rows, `[data-calldata]`, Digest and Engine; then Gas, the
+note, `[data-go]` and `[data-no]`. A landing celebrates (the sky blooms,
+particles, a haptic tick where the device has one) and the ticker reads
+*landed in block <n> — <the slab's sentence>*; a revert does not
+celebrate.
+
+**The footer (§8).** `#verified` sits at the end of the page flow.
+
+**Measured (W7's run on its final build).** The shell 21,949 B gzip of
+24,000; the largest panel 8,187 of 12,288; `tokenURI` 4.45 M,
+`/token/1/live` 1.47 M, `/token/1/hash` 2.27 M cold; `verify-site` 604
+passed and `verify-console` 174 passed, 0 failed; an idle page at 0.3–0.9 %
+of a core.
