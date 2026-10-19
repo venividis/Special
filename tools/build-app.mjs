@@ -18,8 +18,8 @@
   The build refuses what the site refuses (DESIGN §5.5): an external
   `src="https://`, `eval(`, `new Function`, the `(1n<<256n)-1n` mask, an
   `innerHTML` assignment, `window.INTACT=` baked into the head, a loader
-  (src/Renderer.sol INFLATE) that declares a global, a shell over 15,000
-  bytes of gzip, a panel over 8,192.
+  (src/Renderer.sol INFLATE) that declares a global, a shell over 24,000
+  bytes of gzip, a panel over 12,288 (V2; 15,000 and 8,192 in V1 — below).
 
   The shell ceiling was 18,000 (DESIGN §5.5) and is 15,000 since U9 (D16),
   because the gas sweep measured the slope: `tokenURI` ≈ 3.44 M + 262 gas
@@ -35,6 +35,24 @@
   first cap and is the gate. The earlier "budget ≤ 14,000 B" line was a
   target, not a gate, and is retired; the measured number is recorded in
   docs/INVARIANTS.md F2 and printed by this file and by verify-site.
+
+  V2 (W7, 2026-10-19) raises the two ceilings to the budgets of
+  docs/V2.md §2 — the shell to 24,000 B, for the living light (the soul
+  shader, the crest in its frame, the dock, the slab as a sheet, the
+  celebration), and every panel to 12,288 B, for the lanes V2 rebuilds —
+  and the gas no longer binds first. The wave-4 Base64 rewrite (DESIGN §15,
+  decision 39) cut the slopes: measured on this tree, cold, padding the
+  14,955 B shell's gzip body with incompressible bytes in an in-memory plan
+  deployed as tools/gas.mjs deploys it (the card, the Roles, the Market),
+  tokenURI rises ≈ 118 gas per gzip byte (3.64 M → 4.71 M at 24,000 B, the
+  8 M cap at ≈ 51,800 B), /token/1/hash ≈ 28 (2.08 M → 2.33 M, the 2.5 M
+  cap at ≈ 29,900 B) and /token/1/live ≈ 26 (1.29 M → 1.52 M); from the
+  real V2 shell, 21,949 B, to 24,000 B the same probes read 123.1, 29.4
+  and 26.3 (docs/v2/W7-shell.md §2). At the ceiling every view stays under
+  its cap with /hash the closest, 2.333 M of 2.5 M (93 %, ≈ 5,700 B of
+  gzip to spare); so 24,000 is the gate and the gas sweep still measures
+  what it costs on every run. A panel is served by /panel/<name>.js at ≈ 0.05 M,
+  so its ceiling is about the lane's bytes, not the gas.
 
   Two inlinings happen before the minifier and before the refusals (U9,
   D18), so the checks see what ships:
@@ -103,8 +121,8 @@ const arg = (f, d) => { const i = ARGV.indexOf(f); return i < 0 ? d : ARGV[i + 1
 const MINIFY = !has("--no-min");
 const CHUNK = Number(arg("--chunk", 24000));
 const MAX_SHARD = 24575;                       // EIP-170 minus the STOP prefix
-export const SHELL_GZIP_CEILING = 15_000;      // DESIGN §5.5 said 18,000; see the header (U9, D16)
-export const PANEL_GZIP_CEILING = 8_192;       // DESIGN §5.1
+export const SHELL_GZIP_CEILING = 24_000;      // V2 (docs/V2.md §2, W7); 15,000 in V1 (U9, D16) — see the header
+export const PANEL_GZIP_CEILING = 12_288;      // V2 (docs/V2.md §2, W7); 8,192 in V1 (DESIGN §5.1)
 export const PANELS = ["swap", "social", "launch", "vault", "identity", "agent"];
 
 if (CHUNK > MAX_SHARD) throw new Error(`--chunk ${CHUNK} exceeds the EIP-170 ceiling`);

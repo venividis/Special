@@ -1,117 +1,243 @@
 /*═══════════════════════════════════════════════════════════════════════════
-  INTACT · the console's stylesheet
+  INTACT · the console's stylesheet — living light (V2, W7)
 
-  Origin: IPSEITY engine/console.css (B §5), kept where INTACT has the same
-  furniture and cut where it does not: the walk, its rule in the margin
-  (--walk, --own, .rung), the range inputs and the command line are gone;
-  the picker is recoloured into this palette. Inlined by tools/build-app.mjs
-  at the one `<link rel="stylesheet" href="app.css">` marker in app.html
-  (U9, D18) — a `<link>` would be a fetch, and the CSP has no path for one.
-  The build strips every comment, so the rules of the language stay here as
-  prose and cost nothing on chain.
+  Inlined by tools/build-app.mjs at the one `<link rel="stylesheet"
+  href="app.css">` marker in app.html (U9, D18) — a `<link>` would be a
+  fetch, and the CSP has no path for one. The build strips every comment,
+  so the rules of the language live here as prose and cost nothing on chain.
+  Mind the build's minifier: it drops the whitespace around { } : ; , and >,
+  so a descendant combinator is never followed by a bare pseudo-class here,
+  and no generated-content string carries a colon followed by a space.
 
-  The byte budget (H §3) decided what else went: the first version carried
-  the donor's hover states, transitions, the backdrop blur, the phone-sheet
-  slide and the 4 px scrollbars and measured 2,591 B of gzip against a 2,200
-  budget while the whole document stood over the 15,000 ceiling; cut rule 2
-  took the animation and the hover rules first, and the rest followed. What
-  remains is the language: three surfaces, 1px rules, hue as emphasis, four
-  texts, four semantics. --warn is rationed to one meaning: you can do this,
-  but read this first. --bad is failure, a refusal, or a deadline that has
-  passed. --ok is a live connection, a landed transaction, a verified
-  document.
+  V1 was a terminal: monospace, three surfaces, 1px rules (IPSEITY's
+  console cut to the byte budget). V2 is the direction docs/V2.md §2 and
+  design/v2/prototype.html settled: the token's soul as a sky behind
+  everything, its crest in an iridescent frame inside it, frosted glass under
+  every word, a dock of rooms, and the slab as a sheet. The vocabulary V1
+  gave the panels — .k .v .s .blurb .kv .b .b.g .b.red .chip .gate .warn
+  .bad .ok pre.code h3, inputs — is unchanged and only restyled, so every
+  lane wears the new light without a line of a panel changing; .card is
+  there for a lane that wants glass of its own.
 
-  The shell's fix round (U9, review round two) paid for its fixes partly
-  here, cutting only what nothing read: the two palette tokens no rule used
-  (--void-3, --a-dim), the two layout constants (--crest 46px, --col 300px —
-  each now written where it is used), a cursor on anchors that already
-  carry an href, and a background a [disabled] button already had from .b;
-  the slab is styled by its id (#cslab) rather than a class the shell never
-  read. 42 B of gzip in all. The language above is untouched.
+  The rules the light keeps:
+    · text sits on frosted glass, never on the shader: every surface that
+      carries words has --glass under its blur, dark enough that --mute
+      holds 4.5:1 and --ink 7:1 over the brightest band the shader paints;
+    · colour is the token's own: --h and --h2 are the crest's two hues,
+      written by the shell before first paint (src/Crest.sol:
+      keccak("intact.crest", id) mod 360, and a third of the way round);
+    · dark only, because the soul is dark: a light sky would cost a second
+      palette and every contrast pair twice, so there is no light theme;
+    · system fonts only — no file, no host; monospace is kept for what is
+      compared by eye: addresses, hashes, calldata, the proof;
+    · phone first at 390 px with a 16 px gutter and nothing wider than the
+      screen; from 1080 px the frame is held still on the left and the
+      room is on the right;
+    · every control has a visible focus ring, and focus never lands under
+      the bars: html's scroll-padding is the body's own clearance, so a
+      control scrolled into view by the keyboard stops below the crest bar
+      and above the dock and the ticker (WCAG 2.2, 2.4.11; measured by
+      tabbing every room at 390 px: 5 controls were wholly hidden under
+      the dock without it);
+    · under prefers-reduced-motion nothing moves or slides, and only
+      opacity may fade;
+    · nothing moves forever unless the sky does: the frame's spin and the
+      Sign button's flow are paused until the shell sets html.alive, which
+      it does only while the soul's loop runs (a GPU, a fast frame, motion
+      allowed, the tab in view). Any endless animation keeps a software
+      compositor busy: measured in the battery's Chromium, an idle Home
+      took ≈ 80 % of a core with the frame spinning — as a painted
+      custom property or as a compositor transform alike — and 0.3 %
+      without it.
+
+  The z-order, bottom to top: the CSS sky (body::before), the soul canvas,
+  the landing glow (#body::before) and the vignette (body::after); the
+  page; the scrim 25, the crest bar 28, the dock 29 (whose two sheet doors
+  sit in the bar, above it), a sheet 30; the ticker 45; the slab 50; the
+  sparks 55; the picker 60, whose own backdrop must take a click at its
+  corner (verify-console B).
 ═══════════════════════════════════════════════════════════════════════════*/
+@property --ang{syntax:"<angle>";inherits:false;initial-value:0deg}
 :root{
-  /* --h is set by the shell on documentElement before first paint from the
-     token's id ((id * 137) % 360): every token its own colour, the collection hue 0 */
-  --h:34;--a:hsl(var(--h) 92% 66%);--a-ghost:hsl(var(--h) 92% 66% / .1);
-  --void:#04050a;--void-2:#070912;--rule:#151a26;--rule-2:#212838;--rule-3:#2e3648;
-  --dim:#5d6780;--mid:#8b95ad;--txt:#c8d0e2;--lit:#eef2fb;--ok:#5fe3b4;--warn:#ffc95c;--bad:#ff6b63;
-  }
-html,body{background:var(--void);color:var(--txt);margin:0;height:100%;font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;font-variant-numeric:tabular-nums}
-/* the document arrives rather than appearing — an animation, not a class a script could fail to add */
-body{opacity:0;animation:arrive .9s forwards;overflow:hidden}
-@keyframes arrive{to{opacity:1}}
+  color-scheme:dark;
+  --h:146;--h2:266;
+  --ink:#f6f3ff;--mute:#d4cfe6;--dim:#c6c0de;
+  --line:rgba(255,255,255,.1);--line2:rgba(255,255,255,.2);
+  --a:hsl(var(--h2) 92% 82%);
+  --ok:#6ee7b7;--warn:#fcd34d;--bad:#fda4af;
+  --glass:rgba(12,9,24,.75);
+  --iri:hsl(var(--h2) 92% 78%),hsl(var(--h) 82% 72%),#f9a8d4,#fde68a,hsl(var(--h2) 92% 78%);
+  --pale:hsl(var(--h2) 92% 90%),hsl(var(--h) 80% 85%);
+  --ease:cubic-bezier(.2,.8,.2,1);
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --side:max(12px,(100% - 1180px) / 2);
+}
 *{box-sizing:border-box}
-b{color:var(--a);font-weight:400}
-a{color:var(--a);text-decoration:none}
-[hidden]{display:none !important}
-/*──── type: the smaller, the wider the tracking, the dimmer the colour ────*/
-.k{font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
-.v{font-size:12px;color:var(--lit);word-break:break-all}
-.s{font-size:10px;letter-spacing:.08em;color:var(--mid)}
-.blurb{font-size:11px;line-height:1.62;color:var(--mid);margin:0 0 14px}
-.warn{color:var(--warn)}.bad{color:var(--bad)}.ok{color:var(--ok)}
-h1{font-size:13px;color:var(--lit);margin:16px 0 6px;font-weight:400}
-h3{font-size:9px;letter-spacing:.26em;text-transform:uppercase;color:var(--dim);margin:14px 0 8px;font-weight:400}
-/*──── the crest ────*/
-#crest{position:fixed;top:0;left:0;right:0;z-index:7;display:flex;height:46px;background:var(--void);border-bottom:1px solid var(--rule)}
-.cell{display:flex;flex-direction:column;justify-content:center;gap:1px;padding:0 13px;border-right:1px solid var(--rule);min-width:0;overflow:hidden}
-.cell .v{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;word-break:normal}
-#c-wallet{flex-direction:row;align-items:center;gap:7px;margin-left:auto;border-right:0;border-left:1px solid var(--rule)}
-#c-wallet .b{width:auto;margin:0;padding:5px 9px}
-/* the LED: grey nothing, accent read-only, green live, red wrong chain — a glow means live and nothing else */
-.led{width:5px;height:5px;border-radius:50%;background:var(--rule-3);flex:none}
-.led.live{background:var(--ok);box-shadow:0 0 9px var(--ok)}
-.led.ro{background:var(--a)}
-.led.bad{background:var(--bad)}
-@media(max-width:560px){#c-chain{display:none}}
-/*──── the two columns; on a phone the lane is a sheet over the state column ────*/
-#body{position:fixed;left:0;right:0;top:46px;bottom:28px;display:grid;grid-template-columns:300px minmax(0,1fr)}
-#col{overflow-y:auto;overflow-x:hidden;padding:18px 16px 40px}
-#lane{overflow-y:auto;overflow-x:hidden;padding:18px 20px 40px;border-left:1px solid var(--rule);max-width:680px}
-section{display:none}
-section.on{display:block}
-@media(max-width:900px){#body{grid-template-columns:minmax(0,1fr)}#lane{display:none;border:0;position:absolute;inset:0;background:var(--void);max-width:none}#lane.on{display:block}}
-/*──── Home ────*/
-#qr:empty{display:none}
-#facts,#chips{margin:12px 0 0}
-#viewer,#session,#collection{margin:16px 0 0;padding:12px 0 0;border-top:1px solid var(--rule)}
-#qr{width:184px;max-width:100%;margin:12px 0 0;background:#fff}
-#qr svg{display:block;width:100%;height:auto}
-/*──── the verb row ────*/
-#lanes{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 14px}
-#lanes a{display:block;padding:7px 12px;border-bottom:2px solid transparent;font-size:12px;color:var(--txt)}
-#lanes a.on{border-bottom-color:var(--a);color:var(--lit);background:var(--a-ghost)}
-/* a lane that cannot open keeps its word, marked with a middot, not a padlock */
-#lanes a[aria-disabled=true]{color:#3d4457}
-/*──── controls: read paths grey, write paths accent, always ────*/
-.b{display:block;width:100%;margin:10px 0 0;padding:9px;cursor:pointer;background:transparent;border:1px solid var(--a);color:var(--a);font:inherit;font-size:10px;letter-spacing:.24em;text-transform:uppercase}
-.b.g{border-color:var(--rule-3);color:var(--mid)}
-.b.red{border-color:var(--bad);color:var(--bad)}
-.b[disabled]{border-color:var(--rule);color:#3d4457;cursor:default}
-input,textarea,select{width:100%;padding:8px 9px;margin:4px 0 8px;background:var(--void-2);color:var(--lit);border:1px solid var(--rule-2);border-radius:0;font:inherit;font-size:12px}
-.kv{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:6px 0;border-bottom:1px solid var(--rule)}
+[hidden]{display:none!important}
+html{background:#05040a;scroll-padding:calc(env(safe-area-inset-top) + 84px) 0 calc(env(safe-area-inset-bottom) + 170px)}
+body{margin:0;min-height:100vh;padding:calc(env(safe-area-inset-top) + 84px) 16px calc(env(safe-area-inset-bottom) + 170px);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-tap-highlight-color:transparent;overflow-x:clip;animation:arrive .9s both}
+/* the document arrives rather than appearing — an animation, not a class a script could fail to add */
+@keyframes arrive{from{opacity:0}}
+body::before,body::after,#body::before{content:"";position:fixed;inset:0;pointer-events:none}
+/* the sky without WebGL — and under the soul while it wakes: the same two hues, still */
+body::before{z-index:-3;background:radial-gradient(90% 65% at 22% 12%,hsl(var(--h2) 64% 24%),#0000 70%),radial-gradient(80% 70% at 86% 78%,hsl(var(--h) 60% 17%),#0000 70%),#05040a}
+#soul{position:fixed;inset:0;width:100%;height:100%;z-index:-2;opacity:0;transition:opacity 1.8s;pointer-events:none}
+#soul.on{opacity:1}
+/* the landing glow, a fade over the sky (all of the celebration under reduced motion); the vignette above it */
+#body::before{z-index:-1;opacity:0;transition:opacity 1.2s;background:radial-gradient(70% 55% at 50% 72%,hsl(var(--h) 85% 62% / .4),#0000 72%)}
+.landed #body::before{opacity:1}
+body::after{z-index:-1;background:radial-gradient(120% 85% at 50% 0%,#0000 42%,#05040a99)}
+#spark{position:fixed;inset:0;width:100%;height:100%;z-index:55;pointer-events:none}
+/*──── the language ────*/
+a,b{color:var(--a)}
+h1,h2{margin:0;font-weight:750;letter-spacing:-.03em;line-height:1.05;background:linear-gradient(100deg,#fff 10%,hsl(var(--h2) 92% 90%) 40%,hsl(var(--h) 82% 86%) 70%,#ffe0f0);-webkit-background-clip:text;background-clip:text;color:#0000}
+h1{font-size:36px}
+h2{font-size:30px}
+h3{margin:22px 0 8px;font-size:16px;font-weight:650}
+h3::first-letter{text-transform:uppercase}
+.k{font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+.v{font-size:14px;overflow-wrap:anywhere}
+.s{font-size:12px;color:var(--dim)}
+.blurb{margin:0 0 12px;font-size:13.5px;color:var(--mute)}
+.warn,.gate{color:var(--warn)}.bad{color:var(--bad)}.ok{color:var(--ok)}
+.kv{display:flex;align-items:baseline;justify-content:space-between;gap:16px;padding:9px 0;border-bottom:1px solid var(--line)}
 .kv:last-child{border-bottom:0}
-.kv .v{text-align:right}
-pre.code{font-size:10px;line-height:1.55;background:var(--void);color:var(--mid);padding:8px;border:1px solid var(--rule);margin:8px 0;white-space:pre-wrap;word-break:break-all}
+.kv .k{flex:none;max-width:45%}
+.kv .v{text-align:right;min-width:0}
+pre,details .v,[data-fact=holder],#viewer .v{font:12px/1.6 var(--mono)}
+pre{margin:10px 0;padding:12px;border-radius:14px;background:#0006;border:1px solid var(--line);color:var(--mute);white-space:pre-wrap;word-break:break-all}
+/* write paths are light, read paths are glass, the one red button is red — as V1 rationed them */
+.b{display:block;width:100%;margin:12px 0 0;padding:13px 20px;border:0;border-radius:99px;cursor:pointer;font:inherit;font-weight:700;color:#0d0819;background:linear-gradient(120deg,var(--pale),#fbd3ea,hsl(var(--h2) 92% 90%)) 0/250%;transition:transform .2s,background-position .8s}
+.b:hover{background-position:100%}
+.b:active{transform:scale(.98)}
+.b.g{color:var(--ink);background:#ffffff12;border:1px solid var(--line2)}
+.b.red{color:#fff;background:linear-gradient(120deg,#f43f5e,#be123c)}
+.b[disabled]{opacity:.42;cursor:default;transform:none}
+input,textarea{display:block;width:100%;margin:6px 0 10px;padding:12px 14px;border-radius:14px;border:1px solid var(--line2);background:#0000004d;color:var(--ink);font:inherit;font-size:16px}
+input:focus,textarea:focus{outline:0;border-color:var(--a);box-shadow:0 0 0 4px hsl(var(--h2) 92% 72% / .22)}
+:focus-visible{outline:2px solid var(--a);outline-offset:3px}
 /* a clear bit has two spellings and neither is zero (CONSOLE §6.3): the colour says which, the text says why */
-.chip{display:inline-block;padding:4px 8px;margin:0 5px 5px 0;background:transparent;border:1px solid var(--rule-2);color:var(--mid);font:inherit;font-size:10px;letter-spacing:.08em}
+.chip{display:inline-block;margin:0 6px 6px 0;padding:6px 12px;border-radius:99px;border:1px solid var(--line2);background:#ffffff0d;color:var(--mute);font:inherit;font-size:12.5px;font-weight:600}
 button.chip{cursor:pointer}
-.chip.on,.chip[data-state=reported]{border-color:var(--a);color:var(--a);background:var(--a-ghost)}
+.chip.on,.chip[data-state=reported]{color:#0d0819;border-color:#0000;background:linear-gradient(120deg,var(--pale))}
 .chip[data-state=absent]{border-style:dashed;color:var(--dim)}
 .chip[data-state=unread]{border-color:var(--warn);color:var(--warn)}
-.gate{color:var(--warn)}
-/*──── the ticker: one line, fades to .55 after seven seconds, never disappears ────*/
-#tick{position:fixed;left:0;bottom:14px;z-index:6;max-width:min(560px,92vw);margin:0;padding:0 14px;font-size:11px;color:var(--mid);pointer-events:none}
+summary{display:flex;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line);color:var(--a);font-size:13px;font-weight:650;cursor:pointer;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+"}
+details[open]>summary::after{content:"−"}
+/*──── glass: every surface that carries words ────*/
+.card,#facts,#chips,#viewer,#session,#collection>div,#lane>section,#crest,#dock::before,#tick,#cslab,[data-room=sheet] #lane{background:linear-gradient(#ffffff13,#ffffff05),var(--glass);border:1px solid var(--line);-webkit-backdrop-filter:blur(22px) saturate(140%);backdrop-filter:blur(22px) saturate(140%);box-shadow:0 18px 50px #0000005c,inset 0 1px #ffffff14}
+.card,#facts,#chips,#viewer,#session,#collection>div,#lane>section{border-radius:22px;padding:16px 18px}
+/* a card names itself from the stylesheet, so no panel's text and no test's sentence moves */
+#facts::before,#chips::before,#viewer::before,#cslab h3{display:block;margin:0 0 8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+#facts::before{content:"at a glance"}
+#chips::before{content:"what this chain carries"}
+#viewer::before{content:"open it anywhere"}
+/*──── the crest bar ────*/
+#crest{position:fixed;z-index:28;top:calc(env(safe-area-inset-top) + 12px);left:12px;right:12px;max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:12px;min-height:54px;padding:7px 58px 7px 14px;border-radius:22px}
+body:has([data-lane=agent]) #crest{padding-right:102px}
+.brand{display:flex;align-items:center;gap:9px;flex:none}
+.brand b{color:var(--ink);font-size:12px;letter-spacing:.2em}
+.brand i{width:22px;height:22px;border-radius:50%;background:conic-gradient(var(--iri));box-shadow:0 0 18px hsl(var(--h2) 90% 70% / .75)}
+.cell{display:flex;flex-direction:column;min-width:0}
+#c-wallet{flex-direction:row;align-items:center;gap:8px;margin-left:auto;padding:5px 6px 5px 12px;border-radius:16px;background:#ffffff0f;border:1px solid var(--line)}
+#c-wallet-v,#c-chain .v{font-size:13px;font-weight:600;line-height:1.3}
+#c-wallet-v{cursor:pointer}
+#c-wallet .b{width:auto;flex:none;margin:0;padding:8px 14px;font-size:13px}
+/* the LED: grey nothing, accent read-only, green live, red wrong chain — a glow means live and nothing else */
+.led{flex:none;width:7px;height:7px;border-radius:50%;background:var(--line2)}
+.led.live{background:var(--ok);box-shadow:0 0 10px var(--ok)}
+.led.ro{background:var(--a)}
+.led.bad{background:var(--bad)}
+@media(max-width:560px){#c-chain,.brand b{display:none}}
+/*──── the rooms: Home, a room of the dock, or a sheet laid over the frame ────*/
+#body{max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+section,#lane{display:none}
+section.on,#lane.on{display:block}
+#lane-home.on{display:flex;flex-direction:column;gap:14px}
+#body:not([data-room=home]) #col{display:none}
+#lane>section{margin-top:14px;padding-top:4px}
+#lane>section>div:has(>h3:first-child){margin:14px -6px 0;padding:0 14px 12px;border-radius:18px;background:#ffffff09;border:1px solid var(--line)}
+#room{position:relative}
+#room-s{margin:8px 0 0}
+#room-x{display:none;position:absolute;top:14px;right:14px;width:38px;height:38px;border-radius:50%;border:1px solid var(--line2);background:#ffffff12;color:var(--ink);font:inherit;cursor:pointer}
+#scrim{position:fixed;inset:0;z-index:25;display:none;background:#03020899}
+[data-room=sheet]~#scrim,[data-room=sheet] #room-x{display:block}
+[data-room=sheet] #lane{position:fixed;z-index:30;left:0;right:0;bottom:0;max-height:88vh;overflow-y:auto;overscroll-behavior:contain;padding:14px 6px calc(env(safe-area-inset-bottom) + 24px);border-radius:30px 30px 0 0;animation:rise .55s var(--ease)}
+[data-room=sheet] #lane>*{background:none;border:0;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}
+@keyframes rise{from{opacity:0;transform:translateY(48px)}}
+/*──── Home: the frame — art within art ────*/
+#stage{perspective:1100px;padding:2px 4px 0}
+#frame{position:relative;width:100%;max-width:min(100%,64vh,560px);aspect-ratio:1;margin:0 auto;padding:2px;border-radius:34px;background:conic-gradient(from var(--ang),var(--iri));animation:spin 9s linear infinite paused;transform:rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .5s var(--ease);box-shadow:0 40px 90px -24px hsl(var(--h2) 90% 66% / .55)}
+@keyframes spin{to{--ang:360deg}}
+#art{position:relative;height:100%;border-radius:32px;overflow:hidden;background:#07080c}
+#art svg{display:block;width:100%;height:100%}
+/* the sheen crosses the art with the pointer */
+#art::after{content:"";position:absolute;inset:-20%;background:linear-gradient(115deg,#0000 35%,#ffffff26 48%,#0000 62%);mix-blend-mode:screen;transform:translateX(var(--sx,-25%));transition:transform .6s var(--ease);pointer-events:none}
+.badge{position:absolute;top:14px;left:14px;padding:6px 12px 6px 10px;border-radius:99px;font-size:12px;font-weight:650;background:#05040aa0;border:1px solid var(--line2)}
+.badge::before{content:"● ";color:var(--ok)}
+.badge.off::before{color:var(--warn)}
+#intro{padding:20px 18px}
+#rights-sentence{margin:10px 0 0}
+#rights-sentence:empty,#qr:empty,#collection>div:empty,.badge:empty{display:none}
+#qr{width:184px;max-width:100%;margin-top:12px;border-radius:16px;overflow:hidden;background:#fff}
+#qr svg{display:block;width:100%;height:auto}
+#viewer p{margin:0 0 8px}
+#collection{display:flex;flex-direction:column;gap:14px}
+#collection h3{margin-top:0}
+.market,.coin{display:block;padding:8px 0;border-bottom:1px solid var(--line)}
+/*──── the dock: Home and the lanes, a lit indicator under the room in use ────*/
+#dock{position:fixed;z-index:29;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 14px);width:max-content;max-width:calc(100% - 24px);margin:0 auto;display:flex;gap:2px;padding:7px;border-radius:28px}
+#dock::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit}
+#lanes{display:contents}
+#dock a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:64px;height:56px;border-radius:20px;color:var(--dim);font-size:10.5px;font-weight:700;text-decoration:none;transition:color .3s}
+#dock a.on{color:var(--ink)}
+#dock svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#lanes a[aria-disabled=true]{opacity:.4;pointer-events:none}
+#lit{position:absolute;z-index:-1;top:7px;left:0;width:64px;height:56px;border-radius:20px;background:linear-gradient(140deg,hsl(var(--h2) 85% 66% / .4),hsl(var(--h) 80% 56% / .28));box-shadow:0 0 24px hsl(var(--h2) 88% 66% / .45);transform:translateX(7px);transition:transform .5s var(--ease),width .5s var(--ease)}
+/* the two sheets open from the crest bar: identity as the token's own orb, the agent as a door */
+#lanes [data-lane=identity],#lanes [data-lane=agent]{position:fixed;top:calc(env(safe-area-inset-top) + 21px);right:calc(var(--side) + 9px);width:36px;height:36px;border-radius:50%;font-size:0;gap:0;background:radial-gradient(circle at 35% 30%,hsl(var(--h2) 92% 86%),hsl(var(--h) 76% 58%) 55%,hsl(var(--h) 70% 22%));box-shadow:0 0 0 2px var(--line2)}
+#lanes [data-lane=agent]{right:calc(var(--side) + 53px);background:#ffffff0f;color:var(--mute)}
+#lanes .on[data-lane=identity],#lanes .on[data-lane=agent]{box-shadow:0 0 0 2px var(--a),0 0 20px var(--a)}
+/*──── the ticker: one line above the dock; it fades to .55 after seven seconds and never disappears ────*/
+#tick{position:fixed;z-index:45;left:0;right:0;bottom:calc(env(safe-area-inset-bottom) + 96px);width:max-content;max-width:min(560px,calc(100% - 32px));margin:0 auto;padding:0 16px;border-block:10px solid #0000;border-radius:18px;font-size:13px;font-weight:600;color:var(--mute);pointer-events:none;transition:opacity .6s;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+#tick:empty{display:none}
 #tick.fade{opacity:.55}
 #tick.ok{color:var(--ok)}
-#tick.err{color:var(--bad)}
-#verified{position:fixed;right:0;bottom:0;z-index:6;margin:0;padding:0 14px 4px;max-width:60vw;text-align:right}
-#verified.bad{color:var(--bad)}
-/*──── the confirm slab ────*/
-#cbox{position:fixed;inset:0;z-index:9;display:none;align-items:center;justify-content:center;background:rgba(4,5,10,.86);padding:18px}
-#cbox.on{display:flex}
-#cslab{width:min(460px,100%);max-height:86vh;overflow-y:auto;background:var(--void-2);border:1px solid var(--rule-2);padding:18px}
-#cslab [data-sentence]{margin:12px 0 0;padding-left:11px;border-left:1px solid var(--a);color:var(--lit)}
+#tick.err,#verified.bad{color:var(--bad)}
+#verified{margin:6px 0 0;text-align:center;overflow-wrap:anywhere}
+/*──── the slab, as a sheet: the sentence first and large, the facts one tap away, Sign in view ────*/
+#cbox{position:fixed;inset:0;z-index:50;display:flex;align-items:flex-end;justify-content:center;background:#03020899;opacity:0;visibility:hidden;transition:opacity .35s,visibility 0s .35s}
+#cbox.on{opacity:1;visibility:visible;transition:opacity .35s}
+#cslab{width:min(560px,100%);max-height:90vh;overflow-y:auto;overscroll-behavior:contain;padding:22px 20px calc(env(safe-area-inset-bottom) + 22px);border-radius:30px 30px 0 0;transform:translateY(100%);transition:transform .55s var(--ease)}
+#cbox.on #cslab{transform:none}
+#cslab:focus{outline:0}
+#cslab [data-sentence]{margin:0 0 14px;font-size:19px;line-height:1.45}
+#cslab [data-go]{margin-top:16px;padding:16px 22px;animation:flow 7s ease-in-out infinite paused}
+#cslab [data-go][disabled]{animation:none}
+.alive #frame,.alive #cslab [data-go]{animation-play-state:running}
+@keyframes flow{50%{background-position:100%}}
 /*──── the picker: page UI, one card, one button per announcer ────*/
-#picker{position:fixed;inset:0;z-index:10;display:grid;place-items:center;background:rgba(4,5,10,.86)}
-#picker .card{width:min(320px,92%);background:var(--void-2);border:1px solid var(--rule-2);padding:16px}
+#picker{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:16px;background:#030208b3}
+#picker .card{width:min(340px,100%)}
+#picker .b{display:flex;align-items:center;gap:12px}
+#picker img{width:28px;height:28px;border-radius:8px}
+/*──── wide screens: the slab centred; from 1080 px the frame held still on the left, the room on the right ────*/
+@media(min-width:760px){
+  #cbox{align-items:center;padding:24px}
+  #cslab{border-radius:30px;max-height:86vh}
+  [data-room=sheet] #lane{top:88px;bottom:110px;left:auto;right:var(--side);width:min(560px,calc(100% - 24px));max-height:none;border-radius:28px}
+}
+@media(min-width:1080px){
+  body{padding-top:98px}
+  h1{font-size:42px}
+  #body{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,600px);column-gap:48px;max-width:1200px;align-items:start}
+  #stage{grid-row:1/span 2;position:sticky;top:98px}
+  #frame{max-width:min(100%,100vh - 230px)}
+  #col,#lane,#verified{grid-column:2}
+  #col,#lane{grid-row:1}
+}
+@media(max-width:1079px){[data-room=room] #stage{display:none}}
+/*──── reduced motion: nothing moves, nothing slides; a fade is all ────*/
+@media(prefers-reduced-motion:reduce){*,::before,::after{animation:none!important;transition-property:opacity!important}}
