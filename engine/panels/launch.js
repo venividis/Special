@@ -102,7 +102,63 @@
                 redeem|lock|lockRelease|extend|give|approveFirstLaunch]
     Sentences the group proves (tools/verify-site/launch.mjs): "the raise
     shows the tax as a countdown", and the Launch sell's half of "every
-    approval the slab builds is exact" (there is none to build).           */
+    approval the slab builds is exact" (there is none to build).
+
+    V2 (W12, docs/V2.md §3.4, §4, §5): the lane is the Studio room, and a
+    segmented control opens one of two launches. "A coin" is everything
+    above, unchanged. "A collection" launches a Studio collection from this
+    token: every token of it a website with its own room, minted from links
+    that pay whoever shared them. It is drawn only where the Studio reports
+    (S.bits.studio, CONSOLE §6.3); elsewhere it is the chip, and nothing is
+    read from the codeless address. The default segment is the collection
+    where the Studio reports and the coin elsewhere, so a V1 band opens on
+    exactly the lane it always had; the choice lives in this closure, never
+    in storage (CONSOLE §1: the console stores nothing but the picker's rdns).
+      · the form: name, symbol and what it is in view, everything else
+        filled (100 tokens at 0.01 ETH, open at once, never closing, no
+        limit per wallet, 5 % to whoever shared the link, 2.5 % royalty,
+        W4's default site with the name escaped in, the default orb) behind
+        two disclosures, so Launch is three fields away. The window is
+        hours and days counted from the chain's clock at the press, printed
+        as dates — never a typed wall-clock date (CONSOLE §12). The page and
+        the art (24,000 / 12,000 bytes, ≤ 256 holes each, counted with
+        Template's twelve exact names left to right) and the name and
+        symbol are refused in words before any read; every other bound is
+        the Studio's own refusal by name in the estimate, before the wallet;
+      · the salt is the name's first 24 bytes and the chain's clock at this
+        paint, so studio.predict(persona, salt), read live as the name is
+        typed, is the address the press sends to; a new paint (a receipt)
+        reads a new clock and so a new salt;
+      · the launch is studio.launch(persona, spec, salt), need HOLD|ACCOUNT;
+        the spec is a tuple, so the slab draws no [data-arg] rows and every
+        field is a line (CONSOLE §4.2);
+      · this token's collections (studio.collectionsOf(persona)): the terms
+        from spec(), minted of supply from the Minted log (a walk the
+        endpoint refuses is "not counted", never 0), what each owes this
+        token and its claim (anyone may press it; the Collection pays the
+        fee sink and nobody else), the mint link and its QR on a light
+        ground, the room (Agora's collectionKey, keccak(4 ‖ c), through the
+        shell's keccak) as a pointer to Social, the family (parentOf), and
+        "mint one", the link's consumer: a mint from this page names the
+        link's ?via= as its referrer, with the terms read again at the press.
+    The link is web3://<premises>:<chain>/token/<id>/live?via=<id>#launch:
+    the referrer by its number, as every path this Premises serves names a
+    hub token, because the QR holds 106 bytes (CONSOLE §13) and a hub
+    persona is 77 decimal digits. Only digits below 2^96 (at most 28) are
+    read, and a number whose token does not exist (hub.feeSink reverts) is
+    no referrer. Every field carries its label as aria-label.
+
+    Elements V2 adds (scoped to #lane-launch):
+      #launch-mode                 the segmented control: button.chip "A collection" | "A coin", .on and aria-pressed
+      #launch-collection           the collection section (or the studio chip in its place)
+      #launch-collection-form      the form (HOLD|ACCOUNT only): input[name=name|symbol|about|supply|price|opens|
+                                   closes|limit|share|royalty], textarea[name=page|art], two details
+      #launch-collection-at        where studio.predict says the collection will land, live
+      #launch-collections          this token's collections; .collection[data-address] each: a heading (name ·
+                                   symbol · price · address), .kv rows keyed "minted", "owes #<id>", "mint link",
+                                   "room" ([data-room] the key, a[href="#social"] inside), "family"; the QR as
+                                   svg[role=img]
+      [data-act=collectionLaunch|collectionMint|collectionClaim]                                         */
 (function () {
   var S = window.INTACT, ui = S && S.ui;
   if (!ui) return;
@@ -115,8 +171,9 @@
     /*  the rows this panel calls and nothing else (the shell's approveExactThen declares its own erc20
         approve/allowance), grouped by contract word; the key is "<word>.<name>" as INTACT.sel spells it,
         and ui.rows holds every signature to the selector the chain baked, or the lane does not open */
-    var M = {};
-    [["kiln", "launch(uint256,string,string,uint8,uint256,bytes32,uint256)", "coinAt(uint256,address,string,string,uint8,uint256,bytes32,uint256)", "recordsOf(uint256)"],
+    var SPEC = ["string", "string", "string", "uint32", "uint128", "uint64", "uint64", "uint32", "uint16", "uint16", "bytes", "bytes"];
+    var table = function (t) { var m = {}; t.forEach(function (r) { r.slice(1).forEach(function (s) { m[r[0] + "." + s.split("(")[0]] = s; }); }); return m; };
+    ui.rows(table([["kiln", "launch(uint256,string,string,uint8,uint256,bytes32,uint256)", "coinAt(uint256,address,string,string,uint8,uint256,bytes32,uint256)", "recordsOf(uint256)"],
      ["launchpad", CREATE, "termsHash(" + PARAMS + ")", "approveFirstLaunch(uint256)", "buy(uint256,uint256,uint64,uint16)", "sell(uint256,uint256,uint256,uint64)",
       "graduate(uint256)", "fail(uint256)", "refund(uint256,address)", "claim(uint256,address)", "launchOf(uint256)", "launchesOf(uint256)", "quoteBuy(uint256,uint256)",
       "quoteSell(uint256,uint256)", "snipeTaxBps(uint256)", "creditOf(uint256,address)", "graduationTargetOf(uint256)", "boughtInWindow(uint256,address)",
@@ -126,8 +183,10 @@
      ["locks", "lock(address,uint112,address,uint64,uint64,uint64,bool)", "release(uint256)", "extend(uint256,uint64)", "give(uint256,address)", "lockOf(uint256)",
       "releasable(uint256)", "lockCountOf(address)", "lockIdOf(address,uint256)"],
      ["erc20", "balanceOf(address)", "symbol()", "decimals()"],
-     ["reach", "execute(address,uint256,bytes,uint8)"]].forEach(function (r) { r.slice(1).forEach(function (s) { M[r[0] + "." + s.split("(")[0]] = s; }); });
-    ui.rows(M);
+     ["reach", "execute(address,uint256,bytes,uint8)"],
+     /* V2 (CatalogRowsV2, which every Catalog this Engine ships beside serves): the Studio, a Studio collection */
+     ["studio", "launch(uint256,(" + SPEC + "),bytes32)", "predict(uint256,bytes32)", "collectionsOf(uint256)", "parentOf(address)"],
+     ["collection", "mint(address,uint256)", "claim(uint256)", "owed(uint256)", "spec()"], ["hub", "feeSink(uint256)"]]));
 
     /*── words: every amount at its full precision (the words in a slab are the words in the calldata),
          percentages from basis points in BigInt, dates in UTC ──*/
@@ -152,7 +211,11 @@
          as it was, so "press the same button again" can be followed); keyed by item — "b<L>" is raise L's
          buy, "e<k>" lock k's extension — and dropped when the account, the bits or the epoch move ──*/
     var typed = {}, gen = 0, pick = null, T = null, t0 = 0, ck, can, hold, seenBits, seenAcct;
-    var fld = function (p, k, label, d) { var i = ui.field(p, label, d); i.value = k in typed ? typed[k] : d; i.name = k; i.addEventListener("input", function () { typed[k] = i.value; }); return i; };
+    /* every field carries its label as its accessible name; `ta` makes it a textarea (a page, an SVG) */
+    var fld = function (p, k, label, d, ta) {
+      var i; if (ta) { p.append(el("div", "k", label)); i = el("textarea"); i.placeholder = ta; p.append(i); } else i = ui.field(p, label, d);
+      i.value = k in typed ? typed[k] : d; i.name = k; i.setAttribute("aria-label", label); i.addEventListener("input", function () { typed[k] = i.value; }); return i;
+    };
     /* a typed amount through ui.parse, so a non-number is a sentence and never NaN; zero is refused too */
     var num = function (i, d, what) { var v; try { v = ui.parse(i.value, d); } catch (e) {} if (!v) throw Error(what + ": a number above zero"); return v; };
     /* whole numbers typed for bps, seconds and days: digits only, then BigInt — never Number() */
@@ -566,6 +629,176 @@
       }), { spend: true });
     }
 
+    /*═══════════ a collection: the Studio, beside the coin (V2 §3.4) ═══════════*/
+    var ST = S.studio, HUB = BigInt(S.hub), P = HUB << 96n | ID, mode;
+    /* the referrer a link names, by its number (below 2^96: a hub token); whether it is a token is read at the press */
+    var VIA = (/[?&]via=(\d{1,28})(&|$)/.exec(location.search) || [])[1];
+    var LINK = "web3://" + lower(S.premises) + ":" + S.chainId + "/token/" + ID + "/live?via=" + ID + "#launch";
+    var no = function (c, m) { if (c) throw Error(m); };
+    /* a string as the chain will hold it, through the shell's own encoder: its UTF-8 length and its hex */
+    var u8 = function (s) { var e = ui.enc.str(s), n = parseInt(e.slice(0, 64), 16); return { n: n, h: "0x" + e.slice(64, 64 + 2 * n) }; };
+    /* a template as the Studio counts it — its bytes, and lib/Template's twelve exact names left to right — refused before any read */
+    var tpl = function (s, max, what) {
+      var b = u8(s), k = (s.match(/\{\{(id|seed|holder|epoch|memories|minted|supply|price|collection|creator|room|chain)\}\}/g) || []).length;
+      no(b.n > max || k > 256, what + " is " + b.n + " bytes with " + k + " holes; the Studio takes at most " + max + " and 256");
+      b.k = k; return b;
+    };
+    /* the salt: the name's first 24 bytes and the chain's clock at this paint, so the address read live is the press's */
+    var saltOf = function (n, T) { return "0x" + u8(n).h.slice(2, 50).padEnd(48, "0") + T.toString(16).padStart(16, "0"); };
+    var pc = function (b) { return fmt(b, 2, 2) + " %"; };
+    var bps = function (i, what) { var v; try { v = ui.parse(i.value.trim() || "0", 2); } catch (e) {} no(v == null, what + ": a percentage"); return v; };
+
+    function collection(p, g) {
+      var b = el("div"); b.id = "launch-collection"; p.append(b);
+      b.append(el("h3", "", "a collection"));
+      if (three(b, S.bits.studio, "studio")) return;
+      note(b, "every token a website with its own room");
+      if (can && ui.rights() & (R.HOLD | R.ACCOUNT)) form(b, g); else if (can) ui.gate(b, R.HOLD | R.ACCOUNT);
+      mine(p, g);
+    }
+
+    /*── the form: three fields in view, every other term filled and folded; every bound before anything is asked ──*/
+    function form(b, g) {
+      var f = el("div"), F = {}, q = 0, box = f; f.id = "launch-collection-form"; b.append(f);
+      [["name", "name"], ["symbol", "symbol"], ["about", "what it is"], "the terms", ["supply", "how many", "100"], ["price", "price, in ETH", "0.01"],
+       ["opens", "opens in, hours (empty: at once)"], ["closes", "closes after, days (empty: never)"], ["limit", "per wallet (0: no limit)", "0"],
+       ["share", "% to whoever shared the link", "5"], ["royalty", "% royalty on a resale", "2.5"], "its site and its art",
+       ["page", "its site, HTML", "", "empty: the default site"], ["art", "its art, SVG", "", "empty: the default orb"]].forEach(function (r) {
+        if (typeof r == "string") { box = el("details"); box.append(el("summary", "", r)); f.append(box); } else F[r[0]] = fld(box, r[0], r[1], r[2] || "", r[3]);
+      });
+      var at = slot(f, "lands at", "launch-collection-at"), v = function (k) { return F[k].value.trim(); };
+      /* where predict says it lands, as the name is typed; an older answer never paints over a newer one */
+      var show = function () { var s = ++q; at.textContent = "reading…"; ck.then(function (T) { return read(ST, "studio.predict", [P, saltOf(v("name"), T)]); }).then(function (r) { if (s === q && g === gen) at.textContent = r.a(0); }).catch(function (e) { if (s === q && g === gen) at.textContent = unread(e); }); };
+      F.name.addEventListener("input", show); show();
+      act(f, "collectionLaunch", "Launch", R.HOLD | R.ACCOUNT, guard(function () {
+        var n = v("name"), y = v("symbol"), d = v("about"), own = v("page"), pr, sup, w, sh, ry, pg, ar, oh, cd;
+        /*  the name and the symbol here, because the sentence names them; every other bound is the Studio's own
+            refusal by name in the estimate, before the wallet opens (BadDescription, BadSupply, BadShare) */
+        no(!n || u8(n).n > 48, "the name: 1 to 48 bytes"); no(!y || u8(y).n > 12, "the symbol: 1 to 12 bytes");
+        sup = digits(F.supply, 1000000n, "how many");
+        try { pr = ui.parse(v("price") || "0", 18); } catch (e) {} no(pr == null, "the price: an amount of ETH");
+        w = digits(F.limit, 4294967295n, "per wallet"); sh = bps(F.share, "the share"); ry = bps(F.royalty, "the royalty");
+        pg = tpl(own ? F.page.value : sitePage(n), 24000, "the page"); ar = tpl(v("art") ? F.art.value : "", 12000, "the art");
+        /* the window in hours and days on the chain's clock at the press, never a typed wall-clock date (CONSOLE §12) */
+        oh = v("opens") ? digits(F.opens, 8760n, "opens in") : 0n; cd = v("closes") ? digits(F.closes, 3650n, "closes after") : 0n;
+        return Promise.all([ck, clock()]).then(function (z) {
+          var o = oh ? z[1] + oh * 3600n : 0n, c = cd ? (o || z[1]) + cd * 86400n : 0n, sa = saltOf(n, z[0]);
+          return read(ST, "studio.predict", [P, sa]).then(function (r) {
+            return propose({ to: ST, key: "studio.launch", args: [P, [n, y, d, sup, pr, o, c, w, sh, ry, pg.h, ar.h], sa], need: R.HOLD | R.ACCOUNT,
+              lines: [["Creator", tok], ["Name", n], ["Symbol", y], ["About", d], ["Supply", "" + sup], ["Price", pr ? eth(pr) : "free"],
+                      ["Opens", o ? date(o) : "at the launch"], ["Closes", c ? date(c) : "never"], ["Per wallet", w ? "at most " + w : "no limit"], ["Share", pc(sh)], ["Royalty", pc(ry)],
+                      ["Site", (own ? "yours" : "the default") + ", " + pg.n + " bytes, " + pg.k + " holes"], ["Art", ar.n ? "yours, " + ar.n + " bytes, " + ar.k + " holes" : "the default orb"],
+                      ["Salt", sa], ["Lands at", r.a(0)]],
+              sentence: "You launch " + n + ": " + sup + (sup > 1n ? " tokens " : " token ") + (pr ? "at " + eth(pr) : "free") + ", each a website; " + pc(sh) +
+                " of every mint goes to whoever shared it, the rest to " + tok + "'s fee sink; " + pc(ry) + " of every resale" + (o ? "; minting opens " + date(o) : "") +
+                (c ? (o ? " and closes " : "; minting closes ") + date(c) : "") + (w ? "; at most " + w + " a wallet" : "") + ".",
+              then: done(["name", "symbol", "about"]) });
+          });
+        });
+      }));
+    }
+
+    /*── this token's collections: the terms, minted of supply, what each owes, its link, its room, its family ──*/
+    function mine(p, g) {
+      var b = el("div"); b.id = "launch-collections"; p.append(b);
+      b.append(el("h3", "", tok + "'s collections"));
+      read(ST, "studio.collectionsOf", [P]).then(function (r) {
+        var cs = r.arr(0, "address");
+        if (g !== gen) return;
+        note(b, cs.length ? "what each owes " + tok + " goes to " + tok + "'s holder at the claim: claim before a sale" : "none yet");
+        cs.forEach(function (c) { one(b, c, g); });
+      }, function (e) { if (g === gen) note(b, unread(e), "warn"); });
+    }
+
+    function one(b, c, g) {
+      var row = el("div", "collection"), h = el("p", "v"), cl = el("div"), go = el("a", "", " · in Social"), key = BigInt(ui.kbytes("0x04" + lower(c).slice(2)));
+      var line = function (k, v) { return kv(row, k, v).lastChild; };
+      row.dataset.address = c; row.append(h); b.append(row);
+      var mi = line("minted", "reading…"), ow = line("owes " + tok, "reading…");
+      row.append(cl); line("mint link", LINK);
+      /* a QR on a light ground, as Home draws #qr: its modules carry no fill of their own */
+      try { var q = ui.qr(LINK); q.setAttribute("style", "width:184px;background:#fff;border-radius:16px"); row.append(q); } catch (e) {}
+      /* the room is Agora's collectionKey, keccak(4 ‖ collection), as each token's page prints {{room}} */
+      var rm = line("room", String(key).slice(0, 10) + "…"), fa = line("family", "reading…");
+      rm.dataset.room = key; go.href = "#social"; rm.append(go);
+      /* minted of supply is the Minted log, walked: a walk the endpoint refuses is not counted, never 0 */
+      Promise.all([read(c, "collection.spec", []), read(c, "collection.owed", [P]), read(ST, "studio.parentOf", [c]),
+                   ui.walkLogs({ address: c, topics: [S.topics.collectionMinted], fromBlock: "0x0" }).then(null, function () {})]).then(function (z) {
+        if (g !== gen) return;
+        var s = z[0].tuple(0, SPEC), o = z[1].w(0), nm = s[0];
+        h.textContent = nm + " · " + s[1] + " · " + (s[4] ? eth(s[4]) : "free") + " · " + short(c);
+        mi.textContent = z[3] ? z[3].length + " of " + s[3] : "not counted: the endpoint refused the log";
+        ow.textContent = eth(o);
+        fa.textContent = "a child of " + (BigInt(z[2].a(0)) === HUB ? "INTACT" : short(z[2].a(0))) + " through " + tok + "; every " + nm + " token may launch its own";
+        /* the claim is anyone's and pays the fee sink only (lib/Persona's payeeOf, read by the Collection at the claim); drawn only when something is owed */
+        if (can && o) act(cl, "collectionClaim", "claim it", 0, function () {
+          return send(c, "collection.claim", [P], [["Owes", eth(o) + " to " + tok]],
+            "You claim the " + eth(o) + " " + nm + " owes " + tok + "; it is paid to " + tok + "'s fee sink and nobody else.");
+        });
+        /*  the link's consumer: a mint here names the link's via, the terms read again at the press (a link carries none,
+            W4 §7); a number that names no token is no referrer */
+        if (can) act(row, "collectionMint", "mint one", 0, guard(function () {
+          var v = VIA ? HUB << 96n | BigInt(VIA) : 0n;
+          return Promise.all([read(c, "collection.spec", []), v && read(S.hub, "hub.feeSink", [BigInt(VIA)]).then(null, function () { v = 0n; })]).then(function (z) {
+            var t = z[0].tuple(0, SPEC), pr = t[4], me = ui.account();
+            return send(c, "collection.mint", [me, v], [["Price", eth(pr)], ["To", me]],
+              "You mint one " + t[0] + " for exactly " + eth(pr) + (v && v !== P ? " through #" + VIA + "'s link; #" + VIA + " is owed " + eth(pr * t[8] / 10000n) + " of it" : "") + ".",
+              { value: pr, spend: true });
+          });
+        }), { spend: true });
+      }).catch(bad(g, h));
+    }
+
+    /*  W4's default site, lifted from tools/verify-studio.mjs `sitePage` byte for byte (the suite holds the two
+        equal): the collection's name written in as escaped text, everything else a hole the Collection fills */
+    function sitePage(name) {
+  const text = String(name).replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch]);
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${text} #{{id}}</title>
+<style>
+:root{color-scheme:dark;--a:266;--b:146}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;color:#f4f1ff;font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(90% 70% at 50% 0%,hsl(var(--a) 45% 14%),#05040a 70%)}
+main{width:min(92vw,560px);padding:28px 0 40px;text-align:center}
+.orb{width:min(78vw,380px);aspect-ratio:1;margin:0 auto 22px;border-radius:50%;background:radial-gradient(circle at 35% 30%,hsl(var(--b) 90% 82%),hsl(var(--a) 75% 58%) 55%,hsl(var(--a) 70% 22%));box-shadow:0 0 90px hsl(var(--a) 80% 55%/.45),inset -18px -24px 60px rgba(0,0,0,.35);animation:breathe 6s ease-in-out infinite}
+@keyframes breathe{50%{transform:scale(1.025)}}
+@media (prefers-reduced-motion:reduce){.orb{animation:none}}
+h1{margin:0;font-size:clamp(28px,7vw,40px);letter-spacing:-.01em}
+h1 small{font-weight:400;opacity:.6;font-size:.55em}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:22px auto;text-align:left;font-size:13px}
+.facts dt{color:rgba(236,232,255,.6)}
+.facts dd{margin:0;font-family:ui-monospace,Menlo,monospace;word-break:break-all}
+.mint{margin-top:18px;padding:18px;border-radius:20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);text-align:left}
+.mint h2{margin:0 0 6px;font-size:17px}
+.mint p{margin:6px 0;font-size:13px;color:rgba(236,232,255,.75)}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12px;word-break:break-all;color:#b9f6ea}
+footer{margin-top:18px;font-size:11px;color:rgba(236,232,255,.4);word-break:break-all}
+</style></head><body><main>
+<div class="orb" id="orb" role="img" aria-label="${text} #{{id}}"></div>
+<h1 id="title">#{{id}} <small>of {{supply}}</small></h1>
+<dl class="facts">
+<dt>Held by</dt><dd id="holder">{{holder}}</dd>
+<dt>Memories</dt><dd id="memories">{{memories}}</dd>
+<dt>Custody epoch</dt><dd>{{epoch}}</dd>
+<dt>Minted</dt><dd>{{minted}} of {{supply}}</dd>
+<dt>Room</dt><dd id="room">{{room}}</dd>
+</dl>
+<section class="mint"><h2>Mint yours</h2>
+<p>{{price}} wei on chain {{chain}}: call <code>mint(to, via)</code> on <code>{{collection}}</code> with <code>via</code> = <code id="via">{{collection}} &lt;&lt; 96 | {{id}}</code>, and this token is paid its share of your mint.</p>
+</section>
+<footer>${text}, served by {{collection}} from chain {{chain}}; launched by token {{creator}}; seed {{seed}}</footer>
+</main>
+<script>
+(()=>{const s="{{seed}}",c="{{collection}}",i="{{id}}",r=document.documentElement.style;
+const a=parseInt(s.slice(2,4),16)*360>>8,b=(a+60+parseInt(s.slice(4,6),16)%120)%360;
+r.setProperty("--a",a);r.setProperty("--b",b);
+document.getElementById("via").textContent=((BigInt(c)<<96n)|BigInt(i)).toString()})()
+</script>
+</body></html>
+`;
+}
+
     /*═══════════ paint ═══════════*/
     function paint() {
       var g = ++gen; host.replaceChildren();
@@ -574,19 +807,30 @@
       seenBits = ui.rights(); seenAcct = ui.account();
       ck = clock().then(function (t) { if (g === gen) { T = t; t0 = ui.now(); } return t; });
       ck.catch(function () {});
+      /*  V2: what to launch, before anything else in the room — the collection where the Studio reports, else the
+          coin, and then whichever was pressed; only the open one is drawn, so neither reads for the other */
+      var sg = el("div"); sg.id = "launch-mode"; host.append(sg);
+      mode = mode || (S.reported & S.bits.studio ? "collection" : "coin");
+      [["collection", "A collection"], ["coin", "A coin"]].forEach(function (m) {
+        var x = ui.button(sg, m[1], 0, function () { if (mode !== m[0]) mode = m[0], paint(); });
+        x.className = "chip" + (mode === m[0] ? " on" : ""); x.setAttribute("aria-pressed", mode === m[0]);
+      });
       /*  one sentence when nobody here can press anything — not connected, the viewer, a session, the wrong
           chain, or rights that could not be read — and none per control. Unread rights are not a stranger's:
           even the anyone-controls wait for a rights read that answered (boot's "rights that could not be read
           are not zero" holds with every panel loaded), so the gate is asked for HOLD then, for its sentence */
       can = ui.gate(host, ui.rights() === null ? R.HOLD : 0); hold = !!(can && ui.rights() & R.HOLD);
-      if (!three(host, S.bits.launchpad, "launchpad")) {
-        coin(host, g);
-        var pos = el("div"); pos.id = "launch-positions"; host.append(pos);
-        pos.append(el("h3", "", "sealed markets"));
-        note(pos, "Uniswap v4 launches, their positions and the LP custodian are not built here yet");
-        raises(host, pos, g);
+      if (mode === "collection") collection(host, g);
+      else {
+        if (!three(host, S.bits.launchpad, "launchpad")) {
+          coin(host, g);
+          var pos = el("div"); pos.id = "launch-positions"; host.append(pos);
+          pos.append(el("h3", "", "sealed markets"));
+          note(pos, "Uniswap v4 launches, their positions and the LP custodian are not built here yet");
+          raises(host, pos, g);
+        }
+        locks(host, g);
       }
-      locks(host, g);
       S.loaded.launch = true;
     }
     paint();

@@ -1856,6 +1856,74 @@ async function groupLaunch(t, ctx) {
     await pg.close();
   }
   t.ok(J, "the raise shows the tax as a countdown");
+
+  /*  V2 (W12): the collection journey, clicked as a person would, on a chain of its own where the Studio
+      reports — three fields typed, Launch, the one sentence, Sign; the list's link opened by another wallet
+      and minted through; the creator's claim; the 24,000-byte bound refused before any slab. */
+  t.head("W · a collection: typed, launched, minted through its link, claimed");
+  const V = await ctx.fresh({ v2: true });
+  try {
+    const vc = V.c, vs = V.site, ST = vs.studio, HUBA = vs.hub, VME = V.actors.me.from.toString(), VBUYER = V.actors.buyer.from.toString();
+    await mint(vc, vs, VME); await mint(vc, vs, VME);
+    const P1 = (BigInt(HUBA) << 96n) | 1n, PRICE = WAD / 100n, LINK = `web3://${lower(vs.premises)}:1/token/1/live?via=1#launch`;
+    const EXAMPLE = "You launch Moonlit: 100 tokens at 0.01 ETH, each a website; 5 % of every mint goes to whoever shared it, the rest to #1's fee sink; 2.5 % of every resale.";
+    const W = V.wallet(V.actors.me);
+    const pg = await V.open({ wallet: W });
+    await pg.lane("launch");
+    await pg.until(() => __e("#lane-launch #launch-collection-form input[name=name]") && /^0x[0-9a-fA-F]{40}$/.test(__t("#lane-launch #launch-collection-at")), null, 15000);
+    const seg = await pg.evaluate(() => [...document.querySelectorAll("#lane-launch #launch-mode button")].map((b) => b.textContent + ":" + b.getAttribute("aria-pressed")).join(","));
+    const fold = await pg.evaluate(() => ["supply", "price", "opens", "closes", "limit", "share", "royalty", "page", "art"].map((n) => { const i = document.querySelector(`#lane-launch #launch-collection-form [name=${n}]`); return !i ? n + ":absent" : !i.closest("details") ? n + ":unfolded" : i.closest("details").open ? n + ":open" : i.checkVisibility() ? n + ":painted" : ""; }).join("")), folded = fold === "";
+    t.ok(seg === "A collection:true,A coin:false" && folded && await pg.visible("#lane-launch #launch-collection-form input[name=symbol]") && await pg.visible("#lane-launch #launch-collection-form input[name=about]"),
+      "the Studio room opens on A collection: name, symbol and what it is in view, every other term folded with its default", `${seg} fold "${fold}" symbol ${await pg.visible("#lane-launch #launch-collection-form input[name=symbol]")} about ${await pg.visible("#lane-launch #launch-collection-form input[name=about]")}`);
+    await pg.fill("#lane-launch #launch-collection-form input[name=name]", "Moonlit");
+    await pg.fill("#lane-launch #launch-collection-form input[name=symbol]", "MOON");
+    await pg.fill("#lane-launch #launch-collection-form input[name=about]", "A map of the night it was minted.");
+    const T = ctx.EVM.BLOCK.header.timestamp, salt = "0x" + Buffer.from("Moonlit", "utf8").toString("hex").padEnd(48, "0") + T.toString(16).padStart(16, "0");
+    const want = decAddr(await vc.read(ST, "predict(uint256,bytes32)", [P1, salt]));
+    await pg.until((w) => __t("#lane-launch #launch-collection-at").toLowerCase() === w, lower(want), 10000);
+    const shown = await pg.text("#lane-launch #launch-collection-at");
+    const gas = await pg.press("#lane-launch [data-act=collectionLaunch]");
+    t.ok(lower(shown) === lower(want) && await pg.text("#cslab [data-sentence]") === EXAMPLE && /^\d+ units$/.test(gas) && await pg.count("#cslab [data-arg]") === 0 && await pg.line("Lands at") === shown,
+      "three fields and Launch: the slab says the one sentence and the address it lands at, the address shown before the press", `${await pg.text("#cslab [data-sentence]")} | ${shown} vs ${want}`);
+    await pg.sign(W, 1);
+    const moon = decAddr(await vc.read(ST, "collectionsOf(uint256)", [P1]), 2);
+    await pg.until(() => __n("#lane-launch #launch-collections .collection") === 1 && /0 of 100/.test(__t("#lane-launch #launch-collections .collection")), null, 15000);
+    const ground = await pg.evaluate(() => { const s = document.querySelector("#lane-launch #launch-collections svg[role=img]"); return s ? getComputedStyle(s).backgroundColor + " " + Math.round(s.getBoundingClientRect().width) : null; });
+    const qr = await qrDecode(pg, "#lane-launch #launch-collections svg[role=img]");
+    t.ok(lower(moon) === lower(shown) && (await pg.text("#lane-launch #launch-collections .collection")).includes(LINK) && qr.text === LINK && ground === "rgb(255, 255, 255) 184",
+      "it landed where it was shown, and its row prints the mint link and a QR Chromium paints on white and jsqr reads back as the link", `landed ${moon} shown ${shown} qr "${qr.text}" ground ${ground}`);
+    /* another wallet opens the link as written: the Studio room, the collection, "mint one" names #1 as the referrer */
+    const WB = V.wallet(V.actors.buyer);
+    const pb = await V.open({ wallet: WB, path: "/token/1/live?via=1#launch" });
+    await pb.until(() => __e("#lane-launch #launch-collections [data-act=collectionMint]"), null, 15000);
+    await pb.press("#lane-launch #launch-collections [data-act=collectionMint]");
+    const mcd = await pb.slabCd();
+    t.ok(await pb.fn() === "mint(address,uint256)" && lower(addrWord(mcd, 0)) === lower(VBUYER) && word(mcd, 1) === P1 && await pb.ds("#cslab [data-value]", "wei") === String(PRICE) && await pb.text("#cslab [data-sentence]") === "You mint one Moonlit for exactly 0.01 ETH.",
+      "the link opens the Studio room for another wallet, and its mint names #1 as the referrer at exactly the price", `${await pb.fn()} via ${word(mcd, 1)}`);
+    await pb.sign(WB, 1);
+    const ml = (await vc.getLogs({ address: moon, topics: [kec(Buffer.from("Minted(uint256,address,uint256,uint256,uint256)", "utf8"))] })).pop();
+    t.ok(!!ml && BigInt(ml.topics[3]) === P1 && decUint(ml.data, 1) === PRICE * 500n / 10_000n && decUint(await vc.read(moon, "owed(uint256)", [P1])) === PRICE && pb.clean(),
+      "a mint through the shared link credits the referrer, in Chromium: the Minted log names #1 with its 5 % share", `via ${ml && ml.topics[3]}`);
+    await pb.close();
+    /* the creator's claim, and the bound refused in words before any slab */
+    await pg.evaluate(() => dispatchEvent(new CustomEvent("intact:lane", { detail: { name: "launch" } })));
+    await pg.until(() => __e("#lane-launch #launch-collections [data-act=collectionClaim]"), null, 15000);
+    const sink = decAddr(await vc.read(HUBA, "feeSink(uint256)", [1])), s0 = await vc.balanceOf(sink);
+    await pg.press("#lane-launch #launch-collections [data-act=collectionClaim]");
+    t.ok(await pg.fn() === "claim(uint256)" && await pg.text("#cslab [data-sentence]") === "You claim the 0.01 ETH Moonlit owes #1; it is paid to #1's fee sink and nobody else.", "the claim says it pays #1's fee sink and nobody else", await pg.text("#cslab [data-sentence]"));
+    await pg.sign(W, 2);
+    t.ok((await vc.balanceOf(sink)) - s0 === PRICE && decUint(await vc.read(moon, "owed(uint256)", [P1])) === 0n, "the creator's claim pays #1's fee sink exactly what was owed", `delta ${(await vc.balanceOf(sink)) - s0}`);
+    await pg.until(() => __e("#lane-launch #launch-collection-form input[name=name]"), null, 10000);
+    await pg.click("#lane-launch #launch-collection-form details:last-of-type summary");
+    await pg.fill("#lane-launch #launch-collection-form input[name=name]", "Overflow"); await pg.fill("#lane-launch #launch-collection-form input[name=symbol]", "OVER");
+    await pg.fill("#lane-launch #launch-collection-form textarea[name=page]", "<p>" + "x".repeat(25_000 - 7) + "</p>");
+    const sent0 = W.sent(), est0 = W.count("eth_estimateGas");
+    await pg.click("#lane-launch [data-act=collectionLaunch]");
+    await pg.until(() => /the page is 25000 bytes/.test(__t("#tick")), null, 5000);
+    t.ok(await pg.tick() === "the page is 25000 bytes with 0 holes; the Studio takes at most 24000 and 256" && !(await pg.slabOpen()) && W.sent() === sent0 && W.count("eth_estimateGas") === est0 && pg.clean(),
+      "a 25,000-byte page pasted into the site is refused in words before any slab, in Chromium", `${await pg.tick()} ${pg.problems()}`);
+    await pg.close();
+  } finally { await V.close(); }
 }
 
 /*──────────────── the journey ────────────────*/

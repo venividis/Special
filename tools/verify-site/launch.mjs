@@ -112,9 +112,59 @@
   (#cbox.on, #cslab, [data-go], [data-no], [data-to], [data-value],
   [data-function], [data-arg], [data-calldata], [data-gas],
   [data-sentence]), #tick, body[data-rights].
+
+  V2 (W12): the lane is the Studio room, A collection | A coin. Two blocks,
+  each claim a sentence. M runs on this group's chain, a V1 band where the
+  Studio is a codeless placeholder: the room opens on A coin, V1's lane as
+  it was; A collection is the chip and reads nothing from the placeholder.
+  W runs on a chain of its own, `fresh({ v2: true })` (tools/site.mjs
+  deploys the Studio, Agora, the Journal and the rest), with #1 and #2 to
+  `me`: the room opens on the collection form (three fields in view, the
+  rest filled and folded, every field labelled); the address is read live
+  from studio.predict(persona, salt) as the name is typed; the launch slab
+  is one sentence, the brief's own ("You launch Moonlit: 100 tokens at 0.01
+  ETH, each a website; …"), and every field a line; the collection lands
+  where it was shown; spec() reads back as typed, its page W4's sitePage
+  byte for byte (read out of tools/verify-studio.mjs and run apart, so the
+  lift is a comparison); the list shows the terms, minted of supply, what
+  it owes, the mint link and its QR (decoded with jsqr), the room and the
+  family; a mint through the link names #1 as via with its share, the same
+  link as #2's credits #2, a link naming no token passes via 0; pageOf(1)
+  is the template with every hole the chain's value; the creator's claim
+  pays #1's fee sink; a 25,000-byte page and a 300-hole template are
+  refused in words before any read; a second launch's window is the
+  chain's clock at the press (moved first) and its name is escaped into
+  the default site; a stranger gets the gate once and a mint, the viewer
+  every collection and nothing to press; a refused mint log is "not
+  counted". The shim rolls its block on every send, so a paint after a
+  receipt reads a newer clock and so a new salt; the test predicts with the
+  clock of the paint it drives.
+
+  Elements V2 reads (scoped to #lane-launch): #launch-mode button (by its
+  text, aria-pressed), #launch-collection (.chip), #launch-collection-form
+  [name=name|symbol|about|supply|price|opens|closes|limit|share|royalty|
+  page|art], #launch-collection-at, #launch-collections .collection
+  [data-address] and its .kv rows by key (minted, owes #<id>, mint link,
+  room[data-room] with a[href="#social"], family), its svg[role=img],
+  [data-act=collectionLaunch|collectionMint|collectionClaim].
 ───────────────────────────────────────────────────────────────────────────*/
+import vm from "node:vm";
 const WAD = 10n ** 18n;
 const PARAMS = "(uint256,address,uint128,uint128,uint128,uint64,uint64,uint128,uint16,uint16,uint16,uint16,uint64,uint8)";
+/*  V2 (W12): the collection spec as the Studio takes it, and a decoder for spec()'s answer — a dynamic
+    tuple at word 0, its three strings and two bytes placed by offsets from the tuple's own start */
+const SPEC_T = "(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes)";
+const STUDIO_LAUNCH = `launch(uint256,${SPEC_T},bytes32)`;
+const decSpec = (hex) => {
+  const h = hex.replace(/^0x/, ""), W = (at) => BigInt("0x" + h.substr(at * 2, 64)), base = Number(W(0));
+  const dyn = (i) => { const o = base + Number(W(base + 32 * i)), n = Number(W(o)); return Buffer.from(h.substr((o + 32) * 2, n * 2), "hex"); };
+  return { name: dyn(0).toString("utf8"), symbol: dyn(1).toString("utf8"), description: dyn(2).toString("utf8"), supply: W(base + 96), price: W(base + 128),
+           opensAt: W(base + 160), closesAt: W(base + 192), perWallet: W(base + 224), referralBps: W(base + 256), royaltyBps: W(base + 288), page: dyn(10), art: dyn(11) };
+};
+/// the bytes a `bytes` return carries (pageOf)
+const decBytes = (hex) => { const x = hex.replace(/^0x/, ""), off = Number(BigInt("0x" + x.slice(0, 64))) * 2, len = Number(BigInt("0x" + x.slice(off, off + 64))); return Buffer.from(x.slice(off + 64, off + 64 + len * 2), "hex"); };
+/// lib/Template's twelve names, exact, left to right — the count the Studio refuses past 256
+const HOLES = ["id", "seed", "holder", "epoch", "memories", "minted", "supply", "price", "collection", "creator", "room", "chain"];
 const LAUNCH = "launch(uint256,string,string,uint8,uint256,bytes32,uint256)";
 const COIN_AT = "coinAt(uint256,address,string,string,uint8,uint256,bytes32,uint256)";
 const BUY = "buy(uint256,uint256,uint64,uint16)";
@@ -805,5 +855,233 @@ export async function run(t, ctx) {
     t.ok(first && opened(L2) && LL(page, "#launch-raises .raise")[0].classList.contains("on") && page.$$("#launch-tax").length === 1 && page.$$("#launch-buy-in").length === 1,
       "with two raises the newest opens first, a press opens the other, and every id stays one element", `first ${first} opened ${L(page, "#launch-raise") && L(page, "#launch-raise").firstChild.textContent}`);
     page.close();
+  }
+
+  /*═══════════ M · the Studio room: a collection or a coin (V2, W12), on this group's V1 band ═══════════*/
+  t.head("M · the Studio room: a collection or a coin");
+  const segOf = (page, label) => LL(page, "#launch-mode button").find((b) => b.textContent === label);
+  {
+    const W = walletFor(c, me);
+    const { page, S } = await bootToken(1, { wallet: W });
+    await lane(page, "launch");
+    await page.until(() => !!L(page, "#launch-coin-form"), 80);
+    const segs = LL(page, "#launch-mode button").map((b) => b.textContent + ":" + b.getAttribute("aria-pressed"));
+    t.ok(!(S.reported & S.bits.studio) && (S.absent & S.bits.studio) && segs.join(",") === "A collection:false,A coin:true" && !!L(page, "#launch-coin-form") && !L(page, "#launch-collection") && page.errors.length === 0,
+      "where the Studio does not report, the room opens on A coin, V1's lane as it was", segs.join(","));
+    const mark = W.calls.length;
+    page.click(segOf(page, "A collection")); await page.settle(); await page.settle();
+    const chip = L(page, "#launch-collection .chip"), after = W.calls.slice(mark);
+    t.ok(!!chip && chip.textContent === "studio: not deployed on this chain" && chip.dataset.state === "absent" && !L(page, "#launch-collection-form") && !L(page, "#launch-collections") && !L(page, "#launch-coin") &&
+      after.every((x) => x.method !== "eth_call" && x.method !== "eth_getLogs") && segOf(page, "A collection").getAttribute("aria-pressed") === "true",
+      "A collection is the chip where the Studio does not report, and nothing is read from its codeless address", `chip "${chip && chip.textContent}" calls ${after.map((x) => x.method).join(",")}`);
+    page.click(segOf(page, "A coin")); await page.settle();
+    await page.until(() => !!L(page, "#launch-coin-form") && /next launch in|none yet/.test(page.text("#lane-launch #launch-spacing")), 60);
+    t.ok(!!L(page, "#launch-coin-form") && !L(page, "#launch-collection") && segOf(page, "A coin").getAttribute("aria-pressed") === "true" && page.innerHTMLWrites === 0 && page.errors.length === 0,
+      "and A coin opens the coin lane again", page.text("#lane-launch").slice(0, 120));
+    page.close();
+  }
+
+  /*═══════════ W · a collection, launched from a token (V2, W12), on a band where the Studio reports ═══════════*/
+  t.head("W · a collection: launched from #1, minted through its link, claimed to #1's fee sink");
+  {
+    const V = await ctx.fresh({ v2: true });
+    const vc = V.c, vs = V.site, va = V.actors, ST = vs.studio, HUBA = vs.hub, ME2 = va.me.from.toString(), BUYER2 = va.buyer.from.toString();
+    await mint(vc, vs, ME2); await mint(vc, vs, ME2);
+    const P1 = (BigInt(HUBA) << 96n) | 1n, P2 = (BigInt(HUBA) << 96n) | 2n, PRICE = WAD / 100n;
+    const vtopic = (s) => kec(Buffer.from(s, "utf8"));
+    /* W4's own default site, read out of tools/verify-studio.mjs and run apart from the panel, so "lifted byte for byte" is a comparison */
+    const W4 = vm.runInNewContext("(" + ctx.fs.readFileSync(ctx.path.join(ctx.ROOT, "tools/verify-studio.mjs"), "utf8").match(/\nfunction sitePage\(name\) \{[\s\S]*?\n\}\n/)[0].trim() + ")");
+    const saltOf = (name, T) => "0x" + Buffer.from(name, "utf8").toString("hex").slice(0, 48).padEnd(48, "0") + BigInt(T).toString(16).padStart(16, "0");
+    const predict = async (name, T) => decAddr(await vc.read(ST, "predict(uint256,bytes32)", [P1, saltOf(name, T)]));
+    const F = (page, n) => L(page, `#launch-collection-form [name=${n}]`);
+    const cell = (row, k) => { const kv = row && [...row.querySelectorAll(".kv")].find((x) => x.firstChild && x.firstChild.textContent === k); return kv ? kv.lastChild : null; };
+    const LINK = `web3://${lower(vs.premises)}:1/token/1/live?via=1#launch`;
+    const keyOf = (col) => BigInt(kec(Buffer.concat([Buffer.from([4]), Buffer.from(col.slice(2), "hex")])));
+    const owedTo = async (col, p) => decUint(await vc.read(col, "owed(uint256)", [p]));
+
+    /* the holder's room: the collection opens first, three fields in view, every other term filled and folded */
+    const W = walletFor(vc, va.me);
+    const { page, ctx: vctx, S } = await V.bootToken(1, { wallet: W });
+    await V.lane(page, "launch");
+    await page.until(() => !!F(page, "name") && /^0x[0-9a-fA-F]{40}$/.test(page.text("#lane-launch #launch-collection-at")), 80);
+    const inFold = (n) => !!F(page, n).closest("details");
+    const defaults = [["supply", "100"], ["price", "0.01"], ["opens", ""], ["closes", ""], ["limit", "0"], ["share", "5"], ["royalty", "2.5"], ["page", ""], ["art", ""]];
+    t.ok((S.reported & S.bits.studio) && segOf(page, "A collection").getAttribute("aria-pressed") === "true" && ["name", "symbol", "about"].every((n) => !inFold(n) && F(page, n).value === "") &&
+      defaults.every(([n, v]) => inFold(n) && F(page, n).value === v) && F(page, "page").tagName === "TEXTAREA" && F(page, "art").tagName === "TEXTAREA" &&
+      LL(page, "#launch-collection-form [name]").every((i) => !!i.getAttribute("aria-label")) && !L(page, "#launch-coin") && /none yet/.test(page.text("#lane-launch #launch-collections")),
+      "where the Studio reports, the room opens on A collection: three fields in view, every other term filled and folded, every field labelled",
+      defaults.map(([n]) => n + "=" + (F(page, n) && F(page, n).value)).join(" "));
+
+    /* the address, live: studio.predict(persona, salt) as the name is typed; the salt is the name and the chain's clock */
+    const T = EVM.BLOCK.header.timestamp;
+    page.type(F(page, "name"), "Moon");
+    const want0 = await predict("Moon", T);
+    await page.until(() => lower(page.text("#lane-launch #launch-collection-at")) === lower(want0), 60);
+    page.type(F(page, "name"), "Moonlit");
+    const want = await predict("Moonlit", T);
+    await page.until(() => lower(page.text("#lane-launch #launch-collection-at")) === lower(want), 60);
+    const asked = W.callsTo(ST, sel("predict(uint256,bytes32)")).pop();
+    t.ok(lower(want) !== lower(want0) && lower(page.text("#lane-launch #launch-collection-at")) === lower(want) && word(asked.params[0].data, 0) === P1 &&
+      "0x" + asked.params[0].data.slice(10 + 64, 10 + 128) === saltOf("Moonlit", T) && W.sent() === 0,
+      "the address is shown live from studio.predict(persona, salt) as the name is typed, the salt the name and the chain's clock", `${page.text("#lane-launch #launch-collection-at")} vs ${want}`);
+
+    /* the launch: one sentence that names everything; the spec is a tuple, so every field is a line */
+    page.type(F(page, "symbol"), "MOON"); page.type(F(page, "about"), "A map of the night it was minted.");
+    const shown = page.text("#lane-launch #launch-collection-at");
+    await press(page, L(page, "[data-act=collectionLaunch]"));
+    const EXAMPLE = "You launch Moonlit: 100 tokens at 0.01 ETH, each a website; 5 % of every mint goes to whoever shared it, the rest to #1's fee sink; 2.5 % of every resale.";
+    const lcd = slabCd(page), holes = (s) => [...s.matchAll(/\{\{(\w+)\}\}/g)].filter((m) => HOLES.includes(m[1])).length, page0 = W4("Moonlit");
+    t.ok(page.text("#cslab [data-sentence]") === EXAMPLE && page.text("#cslab [data-function]") === STUDIO_LAUNCH && lower(page.text("#cslab [data-to]")) === lower(ST) && /^\d+ units$/.test(gasRow(page)),
+      "the launch is one sentence before the signature, the brief's own: You launch Moonlit: 100 tokens at 0.01 ETH, each a website; 5 % of every mint goes to whoever shared it, the rest to #1's fee sink; 2.5 % of every resale.", `"${page.text("#cslab [data-sentence]")}" gas "${gasRow(page)}"`);
+    const lines = { Creator: "#1", Name: "Moonlit", Symbol: "MOON", About: "A map of the night it was minted.", Supply: "100", Price: "0.01 ETH", Opens: "at the launch", Closes: "never",
+      "Per wallet": "no limit", Share: "5 %", Royalty: "2.5 %", Site: `the default, ${Buffer.byteLength(page0)} bytes, ${holes(page0)} holes`, Art: "the default orb", Salt: saltOf("Moonlit", T), "Lands at": shown };
+    const badLines = Object.entries(lines).filter(([k, v]) => line(page, k) !== v);
+    t.ok(page.$$("#cslab [data-arg]").length === 0 && badLines.length === 0 && word(lcd, 0) === P1 && "0x" + lcd.slice(10 + 128, 10 + 192) === saltOf("Moonlit", T) && W.prompts().length === 0,
+      "a tuple draws no [data-arg] rows, so every field of the spec is a line, and the calldata carries the persona and the salt the lines name", badLines.map(([k, v]) => `${k}: "${line(page, k)}" want "${v}"`).join("; "));
+    await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
+    await sign(page, W, 1);
+    const lg = vc.getLogs({ address: ST, topics: [vtopic("Launched(address,uint256,address,string,string,uint32,uint128)")] }).pop();
+    const moon = lg ? "0x" + lg.topics[1].slice(26) : ZERO;
+    t.ok(!!lg && lower(moon) === lower(shown) && lower(decAddr(await vc.read(ST, "collectionsOf(uint256)", [P1]), 2)) === lower(shown) && BigInt(lg.topics[2]) === P1 && BigInt(lg.topics[3]) === BigInt(HUBA),
+      "the address shown before the launch is where the collection landed: Launched and collectionsOf name it, from #1, child of the hub", `${moon} vs shown ${shown}`);
+    const sp = decSpec(await vc.read(moon, "spec()"));
+    t.ok(sp.name === "Moonlit" && sp.symbol === "MOON" && sp.description === "A map of the night it was minted." && sp.supply === 100n && sp.price === PRICE && sp.opensAt === 0n && sp.closesAt === 0n &&
+      sp.perWallet === 0n && sp.referralBps === 500n && sp.royaltyBps === 250n && sp.art.length === 0 && sp.page.equals(Buffer.from(page0, "utf8")),
+      "the spec read back from the chain equals the form, and its page is W4's default site byte for byte, the name written in", JSON.stringify({ ...sp, page: sp.page.length, art: sp.art.length }, (k, v) => typeof v === "bigint" ? String(v) : v));
+
+    /* the list: the terms, minted of supply, what it owes, the link and its QR, the room, the family */
+    await page.until(() => LL(page, "#launch-collections .collection").length === 1 && cell(L(page, "#launch-collections .collection"), "minted").textContent === "0 of 100", 60);
+    const row = L(page, "#launch-collections .collection"), svg = row.querySelector("svg[role=img]");
+    t.ok(row.dataset.address === checksum(moon, kec) && row.firstChild.textContent === "Moonlit · MOON · 0.01 ETH · " + vctx.INTACT.ui.short(checksum(moon, kec)) && cell(row, "owes #1").textContent === "0 ETH" &&
+      cell(row, "mint link").textContent === LINK && !!svg && svg.getAttribute("aria-label") === LINK && cell(row, "room").dataset.room === String(keyOf(moon)) &&
+      cell(row, "room").querySelector("a").getAttribute("href") === "#social" && cell(row, "family").textContent === "a child of INTACT through #1; every Moonlit token may launch its own" && !row.querySelector("[data-act=collectionClaim]"),
+      "#1's collections list it: its terms, 0 of 100 minted, nothing owed, the mint link and its QR, its room (Agora's collectionKey) pointing to Social, its family", row.textContent.slice(0, 300));
+    /* the QR, decoded apart from the shell: the module map rasterised at 4 px a module and handed to jsqr */
+    let qrText = null;
+    try {
+      const N = 37, map = new Uint8Array(N * N);
+      for (const r of svg.querySelectorAll("rect")) map[(Number(r.getAttribute("y")) - 4) * N + Number(r.getAttribute("x")) - 4] = 1;
+      const jsQR = (await import("jsqr")).default, px = 4, side = 45 * px, img = new Uint8ClampedArray(side * side * 4);
+      for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) {
+        const mx = Math.floor(x / px) - 4, my = Math.floor(y / px) - 4, dark = mx >= 0 && my >= 0 && mx < N && my < N && map[my * N + mx], o = (y * side + x) * 4;
+        img[o] = img[o + 1] = img[o + 2] = dark ? 0 : 255; img[o + 3] = 255;
+      }
+      const r = jsQR(img, side, side); qrText = r && r.data;
+    } catch (e) { qrText = "decode failed: " + e.message; }
+    t.ok(qrText === LINK && Buffer.byteLength(LINK) <= 106 && svg.getAttribute("style") === "width:184px;background:#fff;border-radius:16px", "the QR encodes the mint link, decoded apart from the shell, on a light ground", `decoded "${qrText}"`);
+
+    /* a mint through the shared link: the buyer opens it as written, and the mint names #1 as its referrer */
+    const WB = walletFor(vc, va.buyer);
+    const MINTED = vtopic("Minted(uint256,address,uint256,uint256,uint256)");
+    const mintVia = async (query, n) => {
+      const { page: pb } = await V.bootToken(1, { wallet: WB, query, hash: "#launch" });
+      await V.lane(pb, "launch");
+      await pb.until(() => !!L(pb, "#launch-collections [data-act=collectionMint]"), 80);
+      await press(pb, L(pb, "#launch-collections [data-act=collectionMint]"));
+      const out = { cd: slabCd(pb), sentence: pb.text("#cslab [data-sentence]"), wei: pb.$("#cslab [data-value]") && pb.$("#cslab [data-value]").dataset.wei, fn: pb.text("#cslab [data-function]"), gas: gasRow(pb) };
+      if (n) { await pb.until(() => !pb.$("#cslab [data-go]").disabled, 40); await sign(pb, WB, n); out.log = vc.getLogs({ address: moon, topics: [MINTED] }).pop(); }
+      else { pb.click(pb.$("#cslab [data-no]")); await pb.settle(); }
+      out.ok = pb.innerHTMLWrites === 0 && pb.errors.length === 0; pb.close();
+      return out;
+    };
+    const m1 = await mintVia("?via=1", 1);
+    t.ok(m1.fn === "mint(address,uint256)" && lower(addrWord(m1.cd, 0)) === lower(BUYER2) && word(m1.cd, 1) === P1 && m1.wei === String(PRICE) && m1.sentence === "You mint one Moonlit for exactly 0.01 ETH." &&
+      !!m1.log && BigInt(m1.log.topics[3]) === P1 && decUint(m1.log.data, 1) === PRICE * 500n / 10_000n && await owedTo(moon, P1) === PRICE && m1.ok,
+      "a mint through the shared link credits the referrer: the Minted log names #1's persona as via with its 5 % share, and #1 is owed the price", `via ${m1.log && m1.log.topics[3]} referral ${m1.log && decUint(m1.log.data, 1)} "${m1.sentence}"`);
+    const m2 = await mintVia("?via=2", 2);
+    t.ok(word(m2.cd, 1) === P2 && m2.sentence === "You mint one Moonlit for exactly 0.01 ETH through #2's link; #2 is owed 0.0005 ETH of it." && !!m2.log && BigInt(m2.log.topics[3]) === P2 &&
+      await owedTo(moon, P2) === PRICE * 500n / 10_000n && await owedTo(moon, P1) === PRICE + PRICE - PRICE * 500n / 10_000n,
+      "the same link re-shared as #2's credits #2 its 5 % and #1 the rest", `"${m2.sentence}" owed #2 ${await owedTo(moon, P2)}`);
+    const m3 = await mintVia("?via=99", 0);
+    t.ok(word(m3.cd, 1) === 0n && m3.sentence === "You mint one Moonlit for exactly 0.01 ETH." && /^\d+ units$/.test(m3.gas),
+      "a link naming no token is no referrer: the mint passes via 0 and says nothing of a share", `via ${word(m3.cd, 1)} "${m3.sentence}"`);
+    /* the default site, filled: pageOf(1) is W4's template with every hole the chain's value */
+    const seed1 = lower(await vc.read(moon, "seedOf(uint256)", [1]));
+    const vals = { id: "1", seed: seed1, holder: lower(BUYER2), epoch: "1", memories: "0", minted: String(decUint(await vc.read(moon, "totalSupply()"))), supply: "100", price: String(PRICE),
+      collection: lower(moon), creator: P1.toString(), room: keyOf(moon).toString(), chain: "1" };
+    const filled = decBytes(await vc.read(moon, "pageOf(uint256)", [1])).toString("utf8");
+    t.ok(filled === page0.replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vals ? vals[k] : m)) && HOLES.every((h) => !filled.includes(`{{${h}}}`)) && vals.minted === "2",
+      "the default site's holes are filled in pageOf: id, seed, holder, epoch, memories, minted, supply, price, collection, creator, room, chain", filled.length + " vs " + page0.length);
+
+    /* the creator's claim: anyone's press, and only #1's fee sink is paid */
+    await repaint(page, vctx);
+    await page.until(() => !!L(page, "#launch-collections [data-act=collectionClaim]") && cell(L(page, "#launch-collections .collection"), "minted").textContent === "2 of 100", 60);
+    const owed1 = await owedTo(moon, P1), sink1 = decAddr(await vc.read(HUBA, "feeSink(uint256)", [1])), reach1 = decAddr(await vc.read(HUBA, "account(uint256)", [1]));
+    await press(page, L(page, "#launch-collections [data-act=collectionClaim]"));
+    t.ok(page.text("#cslab [data-function]") === "claim(uint256)" && word(slabCd(page), 0) === P1 && lower(page.text("#cslab [data-to]")) === lower(moon) &&
+      page.text("#cslab [data-sentence]") === "You claim the " + full(owed1) + " ETH Moonlit owes #1; it is paid to #1's fee sink and nobody else." && line(page, "Owes") === full(owed1) + " ETH to #1",
+      "the claim says what Moonlit owes #1 and that only #1's fee sink is paid", page.text("#cslab [data-sentence]"));
+    const s0 = await vc.balanceOf(sink1);
+    await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
+    await sign(page, W, 2);
+    t.ok((await vc.balanceOf(sink1)) - s0 === owed1 && lower(sink1) === lower(reach1) && await owedTo(moon, P1) === 0n && owed1 === PRICE * 2n - PRICE * 500n / 10_000n,
+      "the creator's claim pays #1's fee sink, its Reach, exactly what was owed", `delta ${(await vc.balanceOf(sink1)) - s0} owed ${owed1}`);
+    await page.until(() => cell(L(page, "#launch-collections .collection"), "owes #1").textContent === "0 ETH" && !L(page, "#launch-collections [data-act=collectionClaim]"), 60);
+
+    /* the bounds, in words, before any read and any slab: a 25,000-byte page, a template of 300 holes */
+    page.type(F(page, "name"), "Overflow"); page.type(F(page, "symbol"), "OVER");
+    page.type(F(page, "page"), "<p>" + "x".repeat(25_000 - 7) + "</p>");
+    await page.settle(); await page.settle();
+    let mark = W.calls.length;
+    page.click(L(page, "[data-act=collectionLaunch]")); await page.settle(); await page.settle();
+    const t1 = page.text("#tick"), calls1 = W.calls.length - mark;
+    page.type(F(page, "page"), ""); page.type(F(page, "art"), "{{room}}".repeat(300));
+    mark = W.calls.length;
+    page.click(L(page, "[data-act=collectionLaunch]")); await page.settle(); await page.settle();
+    const t2 = page.text("#tick"), calls2 = W.calls.length - mark;
+    t.ok(t1 === "the page is 25000 bytes with 0 holes; the Studio takes at most 24000 and 256" && calls1 === 0 && !slabOpen(page),
+      "a 25,000-byte page is refused in words before any read and any slab", `"${t1}" calls ${calls1}`);
+    t.ok(t2 === "the art is 2400 bytes with 300 holes; the Studio takes at most 12000 and 256" && calls2 === 0 && !slabOpen(page) && W.prompts().length === 2,
+      "a template of 300 holes is refused in words before any read and any slab", `"${t2}" calls ${calls2}`);
+
+    /* the window on the chain's clock at the press, moved first; the name escaped into the default site */
+    page.type(F(page, "art"), "");
+    page.type(F(page, "name"), "Tide & <Co>"); page.type(F(page, "symbol"), "TIDE"); page.type(F(page, "opens"), "2"); page.type(F(page, "closes"), "7");
+    page.type(F(page, "limit"), "3"); page.type(F(page, "share"), "10"); page.type(F(page, "royalty"), "0");
+    /* every send rolls the shim's block (12 s), so the paint after the claim read a newer clock: a new salt, as it should */
+    const T2 = EVM.BLOCK.header.timestamp, tide = await predict("Tide & <Co>", T2);
+    await page.until(() => lower(page.text("#lane-launch #launch-collection-at")) === lower(tide), 60);
+    const ts = EVM.BLOCK.header.timestamp, open = ts + 7777n + 7200n, close = open + 7n * 86400n, dt = (x) => new Date(Number(x) * 1e3).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+    W.override("eth_getBlockByNumber", () => ({ number: hexN(EVM.BLOCK.header.number), timestamp: hexN(ts + 7777n), hash: "0x" + "11".repeat(32) }));
+    await press(page, L(page, "[data-act=collectionLaunch]"));
+    W.override("eth_getBlockByNumber", null);
+    const wantT = `You launch Tide & <Co>: 100 tokens at 0.01 ETH, each a website; 10 % of every mint goes to whoever shared it, the rest to #1's fee sink; 0 % of every resale; minting opens ${dt(open)} and closes ${dt(close)}; at most 3 a wallet.`;
+    t.ok(T2 > T && lower(line(page, "Lands at")) === lower(tide) && /^\d+ units$/.test(gasRow(page)) && page.text("#cslab [data-sentence]") === wantT && line(page, "Opens") === dt(open) && line(page, "Closes") === dt(close) && line(page, "Lands at") === page.text("#lane-launch #launch-collection-at"),
+      "the window is the chain's clock at the press: opens in 2 hours, closes 7 days after, both in the sentence", `"${page.text("#cslab [data-sentence]")}" gas "${gasRow(page)}"`);
+    await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
+    await sign(page, W, 3);
+    const tspHex = await vc.read(tide, "spec()"), tsp = tspHex.length > 2 ? decSpec(tspHex) : {};
+    t.ok((await vc.codeSize(tide)) > 0 && tsp.opensAt === open && tsp.closesAt === close && tsp.perWallet === 3n && tsp.referralBps === 1000n && tsp.royaltyBps === 0n &&
+      tsp.page.equals(Buffer.from(W4("Tide & <Co>"), "utf8")) && tsp.page.includes("Tide &amp; &lt;Co&gt;") && !tsp.page.includes("<Co>"),
+      "Tide lands where it was shown, its window and terms read back as typed, its name escaped into the default site", `${JSON.stringify({ opensAt: String(tsp.opensAt), closesAt: String(tsp.closesAt) })} tick "${page.text("#tick")}" sent ${W.sent()} shown ${page.text("#lane-launch #launch-collection-at")} tide ${tide}`);
+    await page.until(() => LL(page, "#launch-collections .collection").length === 2, 60);
+    t.ok(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML and no script threw on the holder's room", page.errors.map((e) => e.message).join("; "));
+    page.close();
+
+    /* who may launch: the holder or its Reach; a stranger reads the gate once and may still mint; the viewer reads every collection */
+    const { page: ps } = await V.bootToken(1, { wallet: walletFor(vc, va.stranger) });
+    await V.lane(ps, "launch");
+    await ps.until(() => LL(ps, "#launch-collections .collection").length === 2 && LL(ps, "#launch-collections [data-act=collectionMint]").length === 2, 80);
+    t.ok(!L(ps, "#launch-collection-form") && (ps.text("#lane-launch").match(/this wallet holds no right on #1/g) || []).length === 1 && LL(ps, "#launch-collection input, #launch-collection textarea").length === 0 &&
+      ps.$("body").dataset.rights === "0" && ps.errors.length === 0,
+      "only the holder or its Reach is offered the form: a stranger reads the gate once, every collection, and a mint", ps.text("#lane-launch").slice(0, 160));
+    ps.close();
+    const WV = walletFor(vc, va.me);
+    const { page: pv } = await V.bootToken(1, { opaque: true, wallet: WV });
+    await V.lane(pv, "launch");
+    await pv.until(() => LL(pv, "#launch-collections .collection").length === 2 && LL(pv, "#launch-collections svg[role=img]").length === 2, 80);
+    t.ok(pv.$("body").dataset.mode === "viewer" && LL(pv, "[data-act]").length === 0 && LL(pv, "input, textarea").length === 0 && (pv.text("#lane-launch").match(/nothing here can sign/g) || []).length === 1 &&
+      WV.prompts().length === 0 && cell(LL(pv, "#launch-collections .collection")[0], "mint link").textContent === LINK,
+      "the viewer reads every collection, its link and its QR, and offers nothing to press", `acts ${LL(pv, "[data-act]").length} inputs ${LL(pv, "input, textarea").length}`);
+    pv.close();
+    /* minted of supply is a log walk: one the endpoint refuses is not counted, never 0 */
+    const WR = walletFor(vc, va.buyer);
+    WR.refuse("eth_getLogs", Object.assign(new Error("query returned more than 10000 results"), { code: -32005 }));
+    const { page: pr } = await V.bootToken(1, { wallet: WR });
+    await V.lane(pr, "launch");
+    await pr.until(() => LL(pr, "#launch-collections .collection").length === 2 && /not counted/.test(cell(LL(pr, "#launch-collections .collection")[0], "minted").textContent), 80);
+    t.ok(LL(pr, "#launch-collections .collection").every((r) => cell(r, "minted").textContent === "not counted: the endpoint refused the log") && pr.errors.length === 0,
+      "a mint log the endpoint refuses is not counted, never 0 minted", cell(LL(pr, "#launch-collections .collection")[0], "minted").textContent);
+    pr.close();
   }
 }
