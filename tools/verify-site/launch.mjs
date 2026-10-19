@@ -932,8 +932,8 @@ export async function run(t, ctx) {
     const EXAMPLE = "You launch Moonlit: 100 tokens at 0.01 ETH, each a website; 5 % of every mint goes to whoever shared it, the rest to #1's fee sink; 2.5 % of every resale.";
     const lcd = slabCd(page), holes = (s) => [...s.matchAll(/\{\{(\w+)\}\}/g)].filter((m) => HOLES.includes(m[1])).length, page0 = W4("Moonlit");
     t.ok(page.text("#cslab [data-sentence]") === EXAMPLE && page.text("#cslab [data-function]") === STUDIO_LAUNCH && lower(page.text("#cslab [data-to]")) === lower(ST) && /^\d+ units$/.test(gasRow(page)),
-      "the launch is one sentence before the signature: " + EXAMPLE, `"${page.text("#cslab [data-sentence]")}" gas "${gasRow(page)}"`);
-    const lines = { Creator: "#1 · " + P1, Name: "Moonlit", Symbol: "MOON", About: "A map of the night it was minted.", Supply: "100", Price: "0.01 ETH", Opens: "at the launch", Closes: "never",
+      "the launch is one sentence before the signature, the brief's own: You launch Moonlit: 100 tokens at 0.01 ETH, each a website; 5 % of every mint goes to whoever shared it, the rest to #1's fee sink; 2.5 % of every resale.", `"${page.text("#cslab [data-sentence]")}" gas "${gasRow(page)}"`);
+    const lines = { Creator: "#1", Name: "Moonlit", Symbol: "MOON", About: "A map of the night it was minted.", Supply: "100", Price: "0.01 ETH", Opens: "at the launch", Closes: "never",
       "Per wallet": "no limit", Share: "5 %", Royalty: "2.5 %", Site: `the default, ${Buffer.byteLength(page0)} bytes, ${holes(page0)} holes`, Art: "the default orb", Salt: saltOf("Moonlit", T), "Lands at": shown };
     const badLines = Object.entries(lines).filter(([k, v]) => line(page, k) !== v);
     t.ok(page.$$("#cslab [data-arg]").length === 0 && badLines.length === 0 && word(lcd, 0) === P1 && "0x" + lcd.slice(10 + 128, 10 + 192) === saltOf("Moonlit", T) && W.prompts().length === 0,

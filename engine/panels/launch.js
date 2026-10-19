@@ -114,15 +114,17 @@
     where the Studio reports and the coin elsewhere, so a V1 band opens on
     exactly the lane it always had; the choice lives in this closure, never
     in storage (CONSOLE §1: the console stores nothing but the picker's rdns).
-      · the form: name, symbol and a description in view, everything else
-        filled (100 tokens at 0.01 ETH, open at the launch, never closing,
-        no limit per wallet, 5 % to whoever shared the link, 2.5 % royalty,
+      · the form: name, symbol and what it is in view, everything else
+        filled (100 tokens at 0.01 ETH, open at once, never closing, no
+        limit per wallet, 5 % to whoever shared the link, 2.5 % royalty,
         W4's default site with the name escaped in, the default orb) behind
-        two disclosures, so Launch is three fields away. Every bound of the
-        Studio (name 1–48 B, symbol 1–12 B, description ≤ 1,024 B, supply
-        1–1,000,000, referral ≤ 20 %, royalty ≤ 10 %, page 1–24,000 B,
-        art ≤ 12,000 B, ≤ 256 holes in each, counted with Template's exact
-        names) is refused in words before any read or slab;
+        two disclosures, so Launch is three fields away. The window is
+        hours and days counted from the chain's clock at the press, printed
+        as dates — never a typed wall-clock date (CONSOLE §12). The page and
+        the art (24,000 / 12,000 bytes, ≤ 256 holes each, counted with
+        Template's twelve exact names left to right) and the name and
+        symbol are refused in words before any read; every other bound is
+        the Studio's own refusal by name in the estimate, before the wallet;
       · the salt is the name's first 24 bytes and the chain's clock at this
         paint, so studio.predict(persona, salt), read live as the name is
         typed, is the address the press sends to; a new paint (a receipt)
@@ -133,27 +135,29 @@
       · this token's collections (studio.collectionsOf(persona)): the terms
         from spec(), minted of supply from the Minted log (a walk the
         endpoint refuses is "not counted", never 0), what each owes this
-        token and its claim (to the fee sink, anyone may press it), the mint
-        link and its QR, the room (Agora's collectionKey, keccak(4 ‖ c),
-        through the shell's keccak) as a pointer to Social, the family
-        (parentOf), and "mint one", the link's consumer: a mint from this
-        page names the link's ?via= as its referrer.
-    The link is web3://<premises>:<chain>/token/<id>/live?via=<id>#launch.
-    A via below 2^96 names a hub token by its number, as every path this
-    Premises serves does; one at or above it is a persona as W4 prints it
-    (collection << 96 | id). The two never collide: lib/Persona refuses the
-    zero collection. The short form is what lets the QR (106 bytes, CONSOLE
-    §13) carry the link: a hub persona is 77 decimal digits.
+        token and its claim (anyone may press it; the Collection pays the
+        fee sink and nobody else), the mint link and its QR on a light
+        ground, the room (Agora's collectionKey, keccak(4 ‖ c), through the
+        shell's keccak) as a pointer to Social, the family (parentOf), and
+        "mint one", the link's consumer: a mint from this page names the
+        link's ?via= as its referrer, with the terms read again at the press.
+    The link is web3://<premises>:<chain>/token/<id>/live?via=<id>#launch:
+    the referrer by its number, as every path this Premises serves names a
+    hub token, because the QR holds 106 bytes (CONSOLE §13) and a hub
+    persona is 77 decimal digits. Only digits below 2^96 (at most 28) are
+    read, and a number whose token does not exist (hub.feeSink reverts) is
+    no referrer. Every field carries its label as aria-label.
 
     Elements V2 adds (scoped to #lane-launch):
-      #launch-mode                 the segmented control: button.chip[data-mode=collection|coin], .on and aria-pressed
+      #launch-mode                 the segmented control: button.chip "A collection" | "A coin", .on and aria-pressed
       #launch-collection           the collection section (or the studio chip in its place)
       #launch-collection-form      the form (HOLD|ACCOUNT only): input[name=name|symbol|about|supply|price|opens|
-                                   closes|limit|share|royalty], textarea[name=page|art]
+                                   closes|limit|share|royalty], textarea[name=page|art], two details
       #launch-collection-at        where studio.predict says the collection will land, live
-      #launch-collections          this token's collections; .collection[data-address] each, holding .minted,
-                                   .owed, .link (the mint link), svg[role=img] (its QR), .room[data-room]
-                                   (a[href="#social"] inside), .family
+      #launch-collections          this token's collections; .collection[data-address] each: a heading (name ·
+                                   symbol · price · address), .kv rows keyed "minted", "owes #<id>", "mint link",
+                                   "room" ([data-room] the key, a[href="#social"] inside), "family"; the QR as
+                                   svg[role=img]
       [data-act=collectionLaunch|collectionMint|collectionClaim]                                         */
 (function () {
   var S = window.INTACT, ui = S && S.ui;
@@ -664,7 +668,7 @@
       });
       var at = slot(f, "lands at", "launch-collection-at"), v = function (k) { return F[k].value.trim(); };
       /* where predict says it lands, as the name is typed; an older answer never paints over a newer one */
-      var show = function () { var s = ++q; at.textContent = "reading…"; ck.then(function (T) { return read(ST, "studio.predict", [P, saltOf(v("name"), T)]); }).then(function (r) { if (s === q && g === gen) at.textContent = r.a(0); }, function (e) { if (s === q && g === gen) at.textContent = unread(e); }); };
+      var show = function () { var s = ++q; at.textContent = "reading…"; ck.then(function (T) { return read(ST, "studio.predict", [P, saltOf(v("name"), T)]); }).then(function (r) { if (s === q && g === gen) at.textContent = r.a(0); }).catch(function (e) { if (s === q && g === gen) at.textContent = unread(e); }); };
       F.name.addEventListener("input", show); show();
       act(f, "collectionLaunch", "Launch", R.HOLD | R.ACCOUNT, guard(function () {
         var n = v("name"), y = v("symbol"), d = v("about"), own = v("page"), pr, sup, w, sh, ry, pg, ar, oh, cd;
@@ -681,7 +685,7 @@
           var o = oh ? z[1] + oh * 3600n : 0n, c = cd ? (o || z[1]) + cd * 86400n : 0n, sa = saltOf(n, z[0]);
           return read(ST, "studio.predict", [P, sa]).then(function (r) {
             return propose({ to: ST, key: "studio.launch", args: [P, [n, y, d, sup, pr, o, c, w, sh, ry, pg.h, ar.h], sa], need: R.HOLD | R.ACCOUNT,
-              lines: [["Creator", tok + " · " + P], ["Name", n], ["Symbol", y], ["About", d], ["Supply", "" + sup], ["Price", pr ? eth(pr) : "free"],
+              lines: [["Creator", tok], ["Name", n], ["Symbol", y], ["About", d], ["Supply", "" + sup], ["Price", pr ? eth(pr) : "free"],
                       ["Opens", o ? date(o) : "at the launch"], ["Closes", c ? date(c) : "never"], ["Per wallet", w ? "at most " + w : "no limit"], ["Share", pc(sh)], ["Royalty", pc(ry)],
                       ["Site", (own ? "yours" : "the default") + ", " + pg.n + " bytes, " + pg.k + " holes"], ["Art", ar.n ? "yours, " + ar.n + " bytes, " + ar.k + " holes" : "the default orb"],
                       ["Salt", sa], ["Lands at", r.a(0)]],
@@ -742,7 +746,7 @@
               { value: pr, spend: true });
           });
         }), { spend: true });
-      }, bad(g, h));
+      }).catch(bad(g, h));
     }
 
     /*  W4's default site, lifted from tools/verify-studio.mjs `sitePage` byte for byte (the suite holds the two
@@ -808,8 +812,8 @@ document.getElementById("via").textContent=((BigInt(c)<<96n)|BigInt(i)).toString
       var sg = el("div"); sg.id = "launch-mode"; host.append(sg);
       mode = mode || (S.reported & S.bits.studio ? "collection" : "coin");
       [["collection", "A collection"], ["coin", "A coin"]].forEach(function (m) {
-        var x = ui.button(sg, m[1], mode !== m[0], function () { if (mode !== m[0]) mode = m[0], paint(); });
-        x.setAttribute("aria-pressed", mode === m[0]);
+        var x = ui.button(sg, m[1], 0, function () { if (mode !== m[0]) mode = m[0], paint(); });
+        x.className = "chip" + (mode === m[0] ? " on" : ""); x.setAttribute("aria-pressed", mode === m[0]);
       });
       /*  one sentence when nobody here can press anything — not connected, the viewer, a session, the wrong
           chain, or rights that could not be read — and none per control. Unread rights are not a stranger's:
