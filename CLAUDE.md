@@ -177,10 +177,21 @@ after wave 0: a change is additive only and goes in
   the deployment un-includable. Post-MVB rows go in
   `CatalogRowsPost.SERVICES` — the second table, its own transaction —
   under their own letters (`M` market, `D` roles, `A` the agent card, `U`
-  the custodian, `I` the nameplate); the text layer serves both as one
-  `sel` map and one `services` array, and the drift gate in
-  `tools/verify.mjs` holds a row to its contract's interface until the
-  contract lands, then to both.
+  the custodian, `I` the nameplate). V2's rows go in a third table,
+  `CatalogRowsV2.SERVICES`, again its own transaction, under `V` keepsake,
+  `J` journal, `B` bazaar, `b` bridges, `Z` studio, `c` a collection and
+  `F` agora (construction measured at 14.53 M, 4.95 M and 5.62 M gas,
+  docs/v2/W6-hub.md). The text layer serves all three as one `sel` map
+  and one `services` array, and the drift gate in `tools/verify.mjs`
+  holds a row to its contract's interface until the contract lands, then
+  to both.
+- **The fingerprint has two V2 terms, appended after `planHash`.** They
+  are `Keepsake.commitmentOf(account(id))` and `Journal.rootOf(hub, id)`,
+  read through the hub's `KEEPSAKE`/`JOURNAL` pins, guarded like every
+  other term. `residueOf(id)` hashes the fourteen terms a sale leaves
+  standing; the Bazaar's zone compares it after a fill's transfers, so a
+  seller paid inside a fill cannot move the token's state. Records are at
+  schema 3, and the V2 pins skip an older record.
 - **The shell is 2,051 B under its gzip ceiling** (21,949 of 24,000, the
   living-light shell, docs/v2/W7-shell.md); the largest panel is 8,187 of
   12,288. The ceiling follows the gas caps: at a padded 24,000 B,
@@ -202,7 +213,8 @@ after wave 0: a change is additive only and goes in
 - **The bars are fixed over the page.** html's `scroll-padding` keeps the
   body's clearance; if the crest bar or the dock grows, both numbers move
   together, or focus lands under them again (WCAG 2.2 2.4.11).
-- **The monolith is over EIP-170** (25,402 B); the diamond ships. Both
+- **The monolith is over EIP-170** (26,082 B with V2's two terms and
+  `residueOf`; 25,364 before them); the diamond ships. Both
   builds are compiled and tested on every run; the harness deploys with the
   size limit lifted, so the gate is `compile.mjs`, not the test runner.
 - **A mutated `src/` poisons every compile in the tree.** `tools/mutations.mjs`

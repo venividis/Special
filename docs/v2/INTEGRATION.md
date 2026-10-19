@@ -44,8 +44,8 @@ Interfaces (additive only, one new section in `docs/INTERFACE-CHANGES.md`):
 
 | # | Request | From | Decision | State |
 |---|---|---|---|---|
-| I1 | `IBazaarEvents`: `error Unpriced()`, SIP-5's `event SeaportCompatibleContractDeployed()`, and drop Bazaar's local copies | W3 | yes | open |
-| I2 | `ISeaport`: Seaport 1.6's own `ZoneInterface` (which re-declares `supportsInterface`, id `0x39dd6933`) beside `ISeaportZone` (`0x3822a094`) | W3 | yes; the Bazaar already answers both | open |
+| I1 | `IBazaarEvents`: `error Unpriced()`, SIP-5's `event SeaportCompatibleContractDeployed()`, and drop Bazaar's local copies | W3 | yes | done: W6 |
+| I2 | `ISeaport`: Seaport 1.6's own `ZoneInterface` (which re-declares `supportsInterface`, id `0x39dd6933`) beside `ISeaportZone` (`0x3822a094`) | W3 | yes; the Bazaar already answers both | done: W6 |
 | I3 | `IAgora`: `evict`, `heads`, `topics`, `roomsOf`, `roomCount` | W5 | yes | done |
 | I4 | `IAgoraEvents`: `error NoSuchPersona(uint256)` | W5 | no: `NotAPersona` is already in the ABI and says the same | closed |
 | I5 | `IStudio`: `SaltUsed(address at)` → `SaltUsed(address collection)` (solc: `at` becomes a keyword) | W4 | yes; ABI-neutral, same selector | done |
@@ -64,11 +64,11 @@ The hub, the Catalog and the deployment (W6):
 
 | # | Request | From | Decision | State |
 |---|---|---|---|---|
-| H1 | The fingerprint gains `Journal.rootOf(HUB, id)` and `Keepsake.commitmentOf(account(id))`, each read guarded | V2 §3.1, §3.2 | yes; `IntactConfig` gains `keepsake` and `journal`, pinned as predictions like the Market | open |
-| H2 | `residueOf(id)`: keccak of every fingerprint term a sale does not move. The Bazaar stores it at `publish` and compares it after the transfers, which closes the in-fill gap its report §2.1 measured | W3 | yes; the Bazaar's two-term residue goes | open |
-| H3 | The Catalog learns the V2 contracts: letters (B, F, J, V, Z are free; seven are needed), rows, errors, topics, the state block and its bits | W1–W5 | yes; a third rows table, so neither existing table's construction gas grows | open |
-| H4 | `deploySite` options for every V2 contract; Studio and Agora at CREATE3 predictions (each constructor pins the other) | W2, W4, W5 | yes | open |
-| H5 | The Seaport venue row for 84532 and its `checkVenues` claims, from the probe in `tools/fixtures/seaport-1.6/probe.json` | W3 | yes | open |
+| H1 | The fingerprint gains `Journal.rootOf(HUB, id)` and `Keepsake.commitmentOf(account(id))`, each read guarded | V2 §3.1, §3.2 | yes; `IntactConfig` gains `keepsake` and `journal`, pinned as predictions like the Market | done: W6, merged 3d33e4d; rows A12 (pending) |
+| H2 | `residueOf(id)`: keccak of every fingerprint term a sale does not move. The Bazaar stores it at `publish` and compares it after the transfers, which closes the in-fill gap its report §2.1 measured | W3 | yes; the Bazaar's two-term residue goes | done: W6; rows A13, Z12 (pending) |
+| H3 | The Catalog learns the V2 contracts: letters (B, F, J, V, Z are free; seven are needed), rows, errors, topics, the state block and its bits | W1–W5 | yes; a third rows table, so neither existing table's construction gas grows | done: W6, `CatalogRowsV2` under V J B b Z c F; CONSOLE §19; row F15 (pending) |
+| H4 | `deploySite` options for every V2 contract; Studio and Agora at CREATE3 predictions (each constructor pins the other) | W2, W4, W5 | yes | done: W6, `v2: true` and one option each, at CREATE predictions as every other deploySite address |
+| H5 | The Seaport venue row for 84532 and its `checkVenues` claims, from the probe in `tools/fixtures/seaport-1.6/probe.json` | W3 | yes | done: W6; record schema 3 (deployments/README.md) |
 | H6 | The Engine's six-panel constant becomes an array, so the Gallery lane fits | V2 §2, W7 | yes, with the lanes | open |
 
 The shell (W7, merged d2838bd):
@@ -98,6 +98,18 @@ The battery:
 The ledger's ids for the units' rows: W1's K1–K12 and W2's J1–J7 keep
 their ids; W3's W3-1…W3-11 are Z1–Z11; W4's ST1–ST6 are S1–S6 and its
 CL1–CL10 are S7–S16; W5's AG1–AG9 are N1–N9.
+
+W6's own requests, beyond those rows:
+- `src/interfaces/Site.sol`'s `TokenState` comment lists the bits up to
+  262144: open. It is a comment in `src/`, so it waits for a run that
+  recompiles anyway.
+- The agent card's `manifestHash` probe is the dearest of `stateOf`'s
+  seventeen. Face 1 is at 92.8 % of its cap, 95.2 % with V2 landed: open,
+  and it changes verify-site A13's wording.
+- `tools/gas.mjs` measuring a band with V2 landed (`v2: true`): open.
+- V2's `SATELLITES` rows and PINS in `tools/deploy.mjs`, so
+  `deploySatellite` can land each V2 contract at its placeholder: open,
+  for wave 3.
 
 Noted in review, not requested:
 

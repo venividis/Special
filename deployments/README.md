@@ -63,6 +63,24 @@ admin, venue table and Coin template by name, reports a factory etched
 with a stranger's as a contradiction, and walks a codeless Engine to the
 end.
 
+## Schema 3 (V2, `intact.deployment/3`)
+
+Schema 3 is schema 2 with V2's pins:
+- the hub's `KEEPSAKE()` and `JOURNAL()`;
+- the Catalog's V2 world: `keepsake`, `journal`, `bazaar`, `bridges`,
+  `studio`, `agora` and `seaport`;
+- `contracts.catalogRowsV2`, the third rows table.
+
+The six V2 satellites are salted `intact.v2.<key>` and listed under
+`salts` and `placeholders`, codeless until each lands. A Seaport venue row
+carries `seaport`, `conduitController`, `openseaConduitKey`,
+`openseaConduit` and `seaportProbed`, the probe in
+`tools/fixtures/seaport-1.6/probe.json`.
+
+`tools/deploy.mjs`'s `PINS` names the schema each row starts in, so a
+schema-1 or schema-2 record recovers without the rows its contracts
+predate, and still agrees. `tools/verify-recover.mjs` proves both.
+
 ## The schema (`intact.deployment/2`)
 
 Schema 2 (the console round) is schema 1 with one pin more: the Catalog's `NAMEPLATE()`, band 0's resolver or the codeless placeholder, read back like every other pin. A record of schema 1 (every record written before 2026-10-19: 31337, 84532 and its first run) is recovered without that one row — its Catalog has no such getter — and agrees on everything else; `tools/deploy.mjs`'s `PINS` names the schema a row starts in.

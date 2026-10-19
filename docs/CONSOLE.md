@@ -899,3 +899,27 @@ celebrate.
 `/token/1/live` 1.47 M, `/token/1/hash` 2.27 M cold; `verify-site` 604
 passed and `verify-console` 174 passed, 0 failed; an idle page at 0.3–0.9 %
 of a core.
+
+## 19. The state block learns V2 (W6)
+
+`window.INTACT` and every `/token/<id>/state.json` gain the V2 world
+(docs/v2/W6-hub.md §4 has the whole map):
+
+- **Addresses:** `keepsake`, `journal`, `bazaar`, `bridges`, `studio`,
+  `agora` (the satellite, or its codeless placeholder), and `seaport` (the
+  venue, zero where the venue table has none).
+- **Bits, read from `reported` and `absent` by the §6.3 rule:** `keepsake`
+  8192, `journal` 16384, `bazaar` 32768, `studio` 65536, `agora` 131072,
+  `bridges` 262144. Home draws a chip per bit, so a band without V2 shows
+  six *not deployed on this chain* chips.
+- **Rows, under seven word prefixes in `sel`:** `keepsake.*`, `journal.*`,
+  `bazaar.*`, `bridges.*`, `studio.*`, `collection.*` (a per-collection
+  family, as `coin.*` is) and `agora.*`, 48 keys. A lane declares them
+  with `ui.rows`, which holds each to its selector as it does every row.
+- **Errors:** the 57 V2 errors, by whole signature.
+- **Topics:** `inscribed`, `wrapped`, `paid`, `dripped`, `dripSet`,
+  `dripCleared`, `keepsakeExtended`, `published`, `pinned`,
+  `orderValidated`, `orderFulfilled`, `endpointSet`, `collectionLaunched`,
+  `collectionMinted`, `collectionClaimed`, `reacted`, `followed` and
+  `agoraKeyBound`. Agora's `Said`, `Founded` and `Entered` have Parley's
+  signatures, so they are the existing `said`, `founded` and `entered`.
