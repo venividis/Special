@@ -27,7 +27,10 @@
   Two halves: every argument-free view of every argument-free contract
   (a sweep that catches a view before a unit remembers to list it), and
   the routes — the whole MVB deployed from dist/ by tools/site.mjs, every
-  row of DESIGN §5.3 probed with its own cap (U7).
+  row of DESIGN §5.3 probed with its own cap (U7) — in two shapes since
+  V2 (W15): the band whose V2 satellites are codeless placeholders, and
+  the same band with all six landed (`deploySite`'s `v2: true`), every
+  label of the second ending in " · V2". Both must hold every cap.
 
   Every probe is measured COLD. `evm.runCall` leaves the EIP-2929 warm
   address and slot sets populated between calls — only `runTx` cleans the
@@ -132,7 +135,16 @@ async function buildProbes(chain, out) {
       dist/ — run `npm run build` first — and every route of DESIGN §5.3
       is probed with the cap its row names; the hub's faces and the
       Catalog's documents beside them. Without a dist/ this half is
-      skipped and says so, so the sweep above still runs alone.         */
+      skipped and says so, so the sweep above still runs alone.
+
+      Two shapes (V2, W15; W6's request 8), each its own chain: the band
+      as the post-MVB satellites leave it (below), and the same band with
+      V2's six satellites landed (`deploySite`'s `v2: true`: the Keepsake
+      and its art, the Journal, the Bazaar against the probed Seaport, the
+      Bridges, the Studio and Agora). The state block probes all six and
+      every face that reads `stateOf` pays for what they answer, so a cap
+      that holds codeless must hold landed too; a second-shape label ends
+      in " · V2".                                                       */
   if (fs.existsSync(path.join(ROOT, "dist/shards.json"))) {
     const { deploySite, mint, encRequest, PANELS } = await import("./site.mjs");
     const satellites = { market: Boolean(out.contracts["src/Market.sol"]?.Market) };
@@ -141,44 +153,48 @@ async function buildProbes(chain, out) {
         Market as it lands) — since the Catalog's state block probes each
         one and tokenURI carries the state block; a card-less world would
         flatter the figure by what the card costs to answer.            */
-    const site = await deploySite(chain, out, { deployAgentCard: true, deployRoles: true, ...(satellites.market ? { deployMarket: true } : {}) });
-    const { id } = await mint(chain, site);
-    const route = (resource, cap, note) => probes.push({
-      label: "/" + resource.join("/"), note: note || "Premises.request", cap, to: site.premises, data: encRequest(resource) });
-    const view = (label, to, sig, args, cap, note) => probes.push({ label, note: note || "", cap, to, data: enc(sig, args) });
-    const i = String(id);
-    view(`hub.tokenURI(${i})`, site.hub, "tokenURI(uint256)", [id], "tokenURI", "face 0: the whole document, base64 twice");
-    view(`hub.tokenURIAt(${i},1)`, site.hub, "tokenURIAt(uint256,uint8)", [id, 1], "face", "face 1: the crest alone");
-    view(`hub.tokenURIs(${i})`, site.hub, "tokenURIs(uint256)", [id], "any", "every face at once");
-    view("hub.contractURI()", site.hub, "contractURI()", [], "any");
-    view(`hub.getStateFingerprint(${i})`, site.hub, "getStateFingerprint(uint256)", [id], "any");
-    route([], "live", "the collection document");
-    route(["token", i, "live"], "live", "the console, on a real origin");
-    route(["token", i, "raw"], "tokenURI");
-    route(["token", i, "face", "1"], "face");
-    route(["token", i, "face", "2"], "face", "the ERC-8004 registration (U17)");
-    route([".well-known", "agent-registration.json"], "state", "the collection's registration (U17)");
-    route([".well-known", "agent-card.json"], "state", "the A2A card (U17)");
-    route(["llms.txt"], "state", "llms.txt for the collection (U17)");
-    route(["token", i, "llms.txt"], "state", "llms.txt for one token (U17)");
-    route(["token", i, "crest.svg"], "crest");
-    route(["token", i, "state.json"], "state");
-    route(["token", i, "hash"], "live");
-    route(["token", i, "services.json"], "state");
-    for (const name of PANELS) route(["panel", name + ".js"], "panel");
-    route(["services.json"], "state");
-    route(["open"], "state");
-    route(["manifest"], "manifest");
-    route(["k", i, "0x" + "ab".repeat(20)], "any", "a 301");
-    route(["nonsense"], "any", "a 404");
-    view(`catalog.state(${i})`, site.catalog, "state(uint256)", [id], "state", "the state block");
-    view("catalog.state(0)", site.catalog, "state(uint256)", [0], "state", "the collection's block");
-    view(`catalog.stateOf(${i})`, site.catalog, "stateOf(uint256)", [id], "any", "the gather");
-    view("catalog.services()", site.catalog, "services()", [], "any");
-    view("catalog.agrees()", site.catalog, "agrees()", [], "any");
-    view(`renderer.document(${i})`, site.renderer, "document(uint256)", [id], "live");
-    view(`crest.svg(${i},1,0,0)`, site.crest, "svg(uint256,uint64,uint8,uint64)", [id, 1, 0, 0], "crest");
-    view(`crest.svg(4096,9,1,now)`, site.crest, "svg(uint256,uint64,uint8,uint64)", [4096, 9, 1, 1_900_000_000], "crest", "the most rings a crest draws");
+    const landed = { deployAgentCard: true, deployRoles: true, ...(satellites.market ? { deployMarket: true } : {}) };
+    for (const [on, opts, tag] of [[chain, landed, ""], [await Chain.open(), { ...landed, v2: true }, " · V2"]]) {
+      const site = await deploySite(on, out, opts);
+      const { id } = await mint(on, site);
+      const route = (resource, cap, note) => probes.push({
+        label: "/" + resource.join("/") + tag, note: note || "Premises.request", cap, chain: on, to: site.premises, data: encRequest(resource) });
+      const view = (label, to, sig, args, cap, note) => probes.push({ label: label + tag, note: note || "", cap, chain: on, to, data: enc(sig, args) });
+      const i = String(id);
+      view(`hub.tokenURI(${i})`, site.hub, "tokenURI(uint256)", [id], "tokenURI", "face 0: the whole document, base64 twice");
+      view(`hub.tokenURIAt(${i},1)`, site.hub, "tokenURIAt(uint256,uint8)", [id, 1], "face", "face 1: the crest alone");
+      view(`hub.tokenURIs(${i})`, site.hub, "tokenURIs(uint256)", [id], "any", "every face at once");
+      view("hub.contractURI()", site.hub, "contractURI()", [], "any");
+      view(`hub.getStateFingerprint(${i})`, site.hub, "getStateFingerprint(uint256)", [id], "any");
+      view(`hub.residueOf(${i})`, site.hub, "residueOf(uint256)", [id], "any", "what a zone compares after a sale's transfers (W6)");
+      route([], "live", "the collection document");
+      route(["token", i, "live"], "live", "the console, on a real origin");
+      route(["token", i, "raw"], "tokenURI");
+      route(["token", i, "face", "1"], "face");
+      route(["token", i, "face", "2"], "face", "the ERC-8004 registration (U17)");
+      route([".well-known", "agent-registration.json"], "state", "the collection's registration (U17)");
+      route([".well-known", "agent-card.json"], "state", "the A2A card (U17)");
+      route(["llms.txt"], "state", "llms.txt for the collection (U17)");
+      route(["token", i, "llms.txt"], "state", "llms.txt for one token (U17)");
+      route(["token", i, "crest.svg"], "crest");
+      route(["token", i, "state.json"], "state");
+      route(["token", i, "hash"], "live");
+      route(["token", i, "services.json"], "state");
+      for (const name of PANELS) route(["panel", name + ".js"], "panel");
+      route(["services.json"], "state");
+      route(["open"], "state");
+      route(["manifest"], "manifest");
+      route(["k", i, "0x" + "ab".repeat(20)], "any", "a 301");
+      route(["nonsense"], "any", "a 404");
+      view(`catalog.state(${i})`, site.catalog, "state(uint256)", [id], "state", "the state block");
+      view("catalog.state(0)", site.catalog, "state(uint256)", [0], "state", "the collection's block");
+      view(`catalog.stateOf(${i})`, site.catalog, "stateOf(uint256)", [id], "any", "the gather");
+      view("catalog.services()", site.catalog, "services()", [], "any");
+      view("catalog.agrees()", site.catalog, "agrees()", [], "any");
+      view(`renderer.document(${i})`, site.renderer, "document(uint256)", [id], "live");
+      view(`crest.svg(${i},1,0,0)`, site.crest, "svg(uint256,uint64,uint8,uint64)", [id, 1, 0, 0], "crest");
+      view(`crest.svg(4096,9,1,now)`, site.crest, "svg(uint256,uint64,uint8,uint64)", [4096, 9, 1, 1_900_000_000], "crest", "the most rings a crest draws");
+    }
   } else if (!JSON_OUT) {
     console.log("      \x1b[2mno dist/shards.json — run `npm run build` to probe the routes; the argument-free sweep ran alone\x1b[0m");
   }
@@ -210,10 +226,12 @@ const rows = [];
     `eth_call` bills. The recipient is a stranger with no code.           */
 const STRANGER = "0x" + "77".repeat(20);
 for (const p of probes) {
-  await chain.send({ to: STRANGER, value: 1n, label: "chill" });
-  const r = await measure(chain, p.to, p.data);
+  const on = p.chain || chain;                     // a route probe carries the chain of its shape
+  await on.send({ to: STRANGER, value: 1n, label: "chill" });
+  const r = await measure(on, p.to, p.data);
   rows.push({ ...p, ...r, ...verdict({ ...p, ...r }) });
 }
+const shapes = rows.some((r) => r.label.endsWith(" · V2")) ? "; the band twice, V2's six satellites codeless and landed" : "";
 const over = rows.filter((r) => r.over);
 
 if (SELFTEST) {
@@ -229,7 +247,8 @@ if (SELFTEST) {
 if (JSON_OUT) {
   console.log(JSON.stringify({
     caps: Object.fromEntries(Object.entries(CAPS).map(([k, v]) => [k, String(v)])),
-    rows: rows.map((r) => ({ label: r.label, cap: r.cap, gas: r.gas === null ? null : String(r.gas), bytes: r.bytes, over: r.over, err: r.err || null })),
+    rows: rows.map((r) => ({ label: r.label, shape: r.label.endsWith(" · V2") ? "v2" : r.chain ? "codeless" : "sweep",
+                             cap: r.cap, gas: r.gas === null ? null : String(r.gas), bytes: r.bytes, over: r.over, err: r.err || null })),
     over: over.map((r) => r.label)
   }, null, 2));
 } else {
@@ -243,7 +262,7 @@ if (JSON_OUT) {
   }
   console.log("\n  \x1b[1mverdict\x1b[0m");
   if (!over.length) {
-    console.log(`      \x1b[32mevery measured view is under its cap\x1b[0m (${rows.length} probed cold, a transaction between each; every view ≤ ${M(CAPS.any)}, tokenURI ≤ ${M(CAPS.tokenURI)}, /live ≤ ${M(CAPS.live)})`);
+    console.log(`      \x1b[32mevery measured view is under its cap\x1b[0m (${rows.length} probed cold, a transaction between each${shapes}; every view ≤ ${M(CAPS.any)}, tokenURI ≤ ${M(CAPS.tokenURI)}, /live ≤ ${M(CAPS.live)})`);
   } else {
     for (const r of over) console.log(`      \x1b[31m${r.label} needs ${M(r.gas)}\x1b[0m, over its ${M(r.capValue)} cap.`);
     console.log(`\n      \x1b[2mA call over the cap does not fail politely. The node returns "out of gas"` +
