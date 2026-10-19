@@ -7,11 +7,12 @@ import {IBazaar, IBazaarEvents} from "../src/interfaces/IBazaar.sol";
 import {Floor} from "../src/interfaces/IMarket.sol";
 import {
     Order, OrderParameters, OrderComponents, OfferItem, ConsiderationItem, SpentItem, ReceivedItem,
-    ZoneParameters, Schema, ItemType, OrderType, ISeaportZone
+    ZoneParameters, Schema, ItemType, OrderType, ISeaportZone, ISeaportZoneInterface
 } from "../src/interfaces/ISeaport.sol";
 import {Transient} from "../src/lib/Transient.sol";
+import {Journal} from "../src/Journal.sol";
 import {
-    BazaarHub, BazaarReach, BazaarPool, BazaarSeaport, BazaarToken, BazaarNFT, BazaarSeller
+    BazaarHub, BazaarReach, BazaarPool, BazaarSeaport, BazaarToken, BazaarNFT, BazaarSeller, BazaarLaunchpad
 } from "./mocks/BazaarFixtures.sol";
 
 /*───────────────────────────────────────────────────────────────────────────
@@ -26,6 +27,12 @@ import {
   holds the token), and what `publish` refuses to index. Every refusal is
   asserted as its exact revert data through a raw call, since this
   runner's `expectRevert(bytes)` matches any revert.
+
+  V2 wave 2 (W6): the zone reads the hub's `residueOf` after the
+  transfers instead of its own two terms, so the hub mock carries the
+  Journal (the real one, src/Journal.sol) and a launch root, and a seller
+  who writes a trait or a memory, or launches, inside the fill is refused
+  as one who acts on the Reach or trades the market is.
 ───────────────────────────────────────────────────────────────────────────*/
 contract BazaarTest is Test, IBazaarEvents {
     BazaarPool pool;
@@ -35,6 +42,8 @@ contract BazaarTest is Test, IBazaarEvents {
     BazaarToken weth;
     BazaarToken usdc;
     BazaarNFT art;
+    Journal journal;
+    BazaarLaunchpad launchpad;
 
     address seller = address(0x5E11E2);
     address buyer = address(0xB0B);
@@ -59,6 +68,9 @@ contract BazaarTest is Test, IBazaarEvents {
         weth = new BazaarToken();
         usdc = new BazaarToken();
         art = new BazaarNFT();
+        journal = new Journal(address(hub));
+        launchpad = new BazaarLaunchpad(hub);
+        hub.setSatellites(address(journal), address(launchpad));
         hub.setRoyalty(royalties, BPS);
         vm.deal(buyer, 100 ether);
         vm.deal(seller, 1 ether);
@@ -203,6 +215,8 @@ contract BazaarTest is Test, IBazaarEvents {
         assertTrue(bazaar.supportsInterface(0x2e778efc), "the zone answers SIP-5's getSeaportMetadata id");
         assertTrue(bazaar.supportsInterface(type(ISeaportZone).interfaceId), "the zone answers ISeaportZone as frozen");
         assertTrue(bazaar.supportsInterface(0x39dd6933), "the zone answers Seaport 1.6's own ZoneInterface id");
+        assertEq(bytes32(type(ISeaportZoneInterface).interfaceId), bytes32(bytes4(0x39dd6933)),
+                 "ISeaport's mirror of Seaport 1.6's ZoneInterface has the id 0x39dd6933, as the compiler computes it");
         assertTrue(bazaar.supportsInterface(type(IBazaar).interfaceId), "the zone answers IBazaar");
         assertFalse(bazaar.supportsInterface(0xffffffff), "the zone answers no to 0xffffffff");
         assertFalse(bazaar.supportsInterface(0x80ac58cd), "the zone is not an ERC-721");
@@ -397,7 +411,7 @@ contract BazaarTest is Test, IBazaarEvents {
     function test_anIntactOrderPricedInTwoCurrenciesOrInAnNFTIsNotPublished() public {
         (uint256 id, ) = _token(seller, END);
         bytes32 zh = _pin(id, _none());
-        bytes memory unpriced = abi.encodeWithSelector(Bazaar.Unpriced.selector);
+        bytes memory unpriced = abi.encodeWithSelector(Unpriced.selector);
 
         OrderParameters memory p = _listing(id, seller, zh, END);
         p.consideration[1] = ConsiderationItem(ItemType.ERC20, address(weth), 0, 5, 5, payable(royalties));
@@ -700,8 +714,20 @@ contract BazaarTest is Test, IBazaarEvents {
         pool.trade(d);
         (, ret) = _fill(od, buyer, PRICE, bytes32(0));
         assertTrue(_selector(ret) == moved, "a trade on the owned market after publishing refuses the fill");
-        assertTrue(hub.ownerOf(a) == seller && hub.ownerOf(b) == seller && hub.ownerOf(c) == seller && hub.ownerOf(d) == seller,
-                   "no token moved");
+
+        (uint256 e, , , Order memory oe) = _published(END, END, _none());
+        vm.prank(seller);
+        journal.inscribe(address(hub), e, 0, "written after the listing", bytes32(0));
+        (, ret) = _fill(oe, buyer, PRICE, bytes32(0));
+        assertTrue(_selector(ret) == moved, "a memory written after publishing refuses the fill");
+
+        (uint256 f, , , Order memory of_) = _published(END, END, _none());
+        vm.prank(seller);
+        launchpad.launch(f);
+        (, ret) = _fill(of_, buyer, PRICE, bytes32(0));
+        assertTrue(_selector(ret) == moved, "a launch after publishing refuses the fill");
+        assertTrue(hub.ownerOf(a) == seller && hub.ownerOf(b) == seller && hub.ownerOf(c) == seller && hub.ownerOf(d) == seller
+                   && hub.ownerOf(e) == seller && hub.ownerOf(f) == seller, "no token moved");
     }
 
     function test_aReachSealShorterThanTheOrderRefusesTheFill() public {
@@ -929,7 +955,7 @@ contract BazaarTest is Test, IBazaarEvents {
         p.salt = 3;
         (bool ok, bytes memory ret) = _fill(_signed(p), buyer, PRICE, bytes32(0));
         assertFalse(ok, "an order priced in two currencies under a pin does not fill");
-        assertEq(ret, abi.encodeWithSelector(Bazaar.Unpriced.selector), "two currencies on the priced side are refused at the fill with Unpriced");
+        assertEq(ret, abi.encodeWithSelector(Unpriced.selector), "two currencies on the priced side are refused at the fill with Unpriced");
     }
 
     function test_aSecondOrderUnderAPinIsHeldToTheSameState() public {
@@ -1000,6 +1026,58 @@ contract BazaarTest is Test, IBazaarEvents {
         assertTrue(_selector(ret) == FingerprintMoved.selector, "a market that traded inside the fill is refused with FingerprintMoved");
         assertEq(_arg(ret, 0), pinned, "the refusal names the pinned fingerprint");
         assertEq(hub.ownerOf(id), address(s), "nothing moved");
+    }
+
+    function test_aSellerWhoWritesATraitInsideTheFillIsRefusedAfterTheTransfers() public {
+        (BazaarSeller s, uint256 id, , Order memory o, bytes32 pinned) = _windowed();
+        s.arm(address(hub), abi.encodeCall(BazaarHub.setTrait, (id, NAME, bytes32("renamed inside the fill"))));
+        (bool ok, bytes memory ret) = _fill(o, buyer, PRICE, KEY);
+        assertFalse(ok, "a seller who writes a trait from its own receive() does not sell");
+        assertTrue(_selector(ret) == FingerprintMoved.selector, "a trait written inside the fill is refused with FingerprintMoved");
+        assertEq(_arg(ret, 0), pinned, "the refusal names the pinned fingerprint");
+        assertEq(hub.ownerOf(id), address(s), "nothing moved");
+        assertEq(hub.traitsRoot(id), bytes32(0), "the trait did not survive the refusal");
+    }
+
+    function test_aSellerWhoWritesAMemoryInsideTheFillIsRefusedAfterTheTransfers() public {
+        (BazaarSeller s, uint256 id, , Order memory o, bytes32 pinned) = _windowed();
+        s.arm(address(journal), abi.encodeCall(Journal.inscribe, (address(hub), id, 0, bytes("written inside the fill"), bytes32(0))));
+        (bool ok, bytes memory ret) = _fill(o, buyer, PRICE, KEY);
+        assertFalse(ok, "a seller who writes a memory from its own receive() does not sell");
+        assertTrue(_selector(ret) == FingerprintMoved.selector, "a memory written inside the fill is refused with FingerprintMoved");
+        assertEq(_arg(ret, 0), pinned, "the refusal names the pinned fingerprint");
+        assertEq(hub.ownerOf(id), address(s), "nothing moved");
+        assertEq(journal.countOf(address(hub), id), 0, "the memory did not survive the refusal");
+    }
+
+    function test_aSellerWhoLaunchesInsideTheFillIsRefusedAfterTheTransfers() public {
+        (BazaarSeller s, uint256 id, , Order memory o, bytes32 pinned) = _windowed();
+        s.arm(address(launchpad), abi.encodeCall(BazaarLaunchpad.launch, (id)));
+        (bool ok, bytes memory ret) = _fill(o, buyer, PRICE, KEY);
+        assertFalse(ok, "a seller who launches from the token in its own receive() does not sell");
+        assertTrue(_selector(ret) == FingerprintMoved.selector, "a launch inside the fill is refused with FingerprintMoved");
+        assertEq(_arg(ret, 0), pinned, "the refusal names the pinned fingerprint");
+        assertEq(hub.ownerOf(id), address(s), "nothing moved");
+        assertEq(launchpad.launchRoot(id), bytes32(0), "the launch did not survive the refusal");
+    }
+
+    function test_theZoneReadsTheHubsResidueAndTheSaleMovesNoneOfIt() public {
+        BazaarSeller s = new BazaarSeller();
+        (uint256 id, ) = _contractToken(s, END);
+        // a memory and a launch made before the listing are in the residue the pin holds
+        s.run(address(journal), 0, abi.encodeCall(Journal.inscribe, (address(hub), id, 0, bytes("before the listing"), bytes32(0))));
+        s.run(address(launchpad), 0, abi.encodeCall(BazaarLaunchpad.launch, (id)));
+        OrderParameters memory p = _listing(id, address(s), _pin(id, _none()), END);
+        p.conduitKey = KEY;
+        Order memory o = _signed(p);
+        bazaar.publish(o, _none());
+        bytes32 before = hub.residueOf(id);
+        s.arm(address(0x1D1E), "");
+        (bool ok, bytes memory ret) = _fill(o, buyer, PRICE, KEY);
+        assertTrue(ok, string(ret));
+        assertEq(hub.ownerOf(id), buyer, "a conduit fill of a token with a memory and a launch lands");
+        assertEq(hub.residueOf(id), before, "and the sale moved no term of the hub's residue");
+        assertEq(journal.countOf(address(hub), id), 1, "the memory the buyer read is the buyer's");
     }
 
     function test_theSameConduitFillLandsWhenTheSellerDoesNothingInsideIt() public {

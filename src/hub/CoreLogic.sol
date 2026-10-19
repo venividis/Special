@@ -292,6 +292,8 @@ abstract contract CoreLogic is IntactBase {
     function CATALOG() external view returns (address) { return _CATALOG; }
     function PREMISES() external view returns (address) { return _PREMISES; }
     function TIMELOCK() external view returns (address) { return _TIMELOCK; }
+    function KEEPSAKE() external view returns (address) { return _KEEPSAKE; }
+    function JOURNAL() external view returns (address) { return _JOURNAL; }
 
     /*═══════════════════ ERC-165 ═══════════════════*/
 

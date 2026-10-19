@@ -4,26 +4,14 @@ pragma solidity ^0.8.24;
 import {IBazaar} from "./interfaces/IBazaar.sol";
 import {Floor} from "./interfaces/IMarket.sol";
 import {
-    ISeaport, ISeaportZone, Order, OrderParameters, OrderComponents, ZoneParameters, SpentItem,
-    ReceivedItem, Schema, ItemType, OrderType, Side
+    ISeaport, ISeaportZone, ISeaportZoneInterface, Order, OrderParameters, OrderComponents, ZoneParameters,
+    SpentItem, ReceivedItem, Schema, ItemType, OrderType, Side
 } from "./interfaces/ISeaport.sol";
 import {IIntact} from "./interfaces/IIntact.sol";
 import {IReach} from "./interfaces/IReach.sol";
 import {IPool, Market as OwnedMarket} from "./interfaces/IPool.sol";
 import {IERC20, IERC165} from "./interfaces/Standards.sol";
 import {Transient} from "./lib/Transient.sol";
-
-/// @dev Seaport 1.6's own `ZoneInterface` (seaport-types, src/interfaces/
-///      ZoneInterface.sol) re-declares `supportsInterface` inside the
-///      interface, so the id a Seaport integrator computes from it is
-///      ISeaportZone's XOR 0x01ffc9a7. Declared here only so the compiler
-///      computes that id rather than a document stating it.
-interface ISeaportZoneInterface is IERC165 {
-    function authorizeOrder(ZoneParameters calldata zoneParameters) external returns (bytes4);
-    function validateOrder(ZoneParameters calldata zoneParameters) external returns (bytes4);
-    function getSeaportMetadata() external view returns (string memory name, Schema[] memory schemas);
-    function supportsInterface(bytes4 interfaceId) external view override returns (bool);
-}
 
 /// @dev SIP-5's interface is the one view; its id is the selector, 0x2e778efc.
 interface ISIP5 {
@@ -96,8 +84,8 @@ interface ISIP5 {
 
   ── after the transfers ──
 
-  `validateOrder` runs after every item has moved, and it re-reads two
-  things, because Seaport hands the seller a moment inside the fill in
+  `validateOrder` runs after every item has moved, and it reads the token
+  again, because Seaport hands the seller a moment inside the fill in
   which it still holds the token. Seaport 1.6's standard and combined
   paths (`fulfillOrder`, `fulfillAdvancedOrder`, the `fulfillAvailable*`
   family, `matchOrders`) push native currency to each recipient at once
@@ -111,20 +99,26 @@ interface ISIP5 {
   sale. So, after the transfers:
     - every floor is measured again (the Market's rule: before the
       payment and again after the token has moved);
-    - the pin's residue — the Reach's `state()` counter and the owned
-      market's `marketHash` — must be unchanged. Both are terms of the
-      fingerprint the sale itself does not move, and the Reach bumps its
-      counter on every act it performs (each call, seal, guard, grant,
-      revocation), so a Reach that acted, or a market that traded, during
-      the fill refuses it with FingerprintMoved. The residue is stored at
-      `publish`: the fingerprint matched at `authorizeOrder`, and it hashes
-      both terms, so the residue stored is the residue `authorizeOrder` saw.
-  What this does not re-read: the terms a sale leaves standing that move
-  no value — the traits, the launches, the locks, the steward's plan (and
-  V2's journal root). A seller acting inside the fill can still rewrite a
-  name. Closing that needs the hub to expose its own "residue" view, which
-  is the hub's file (docs/v2/W3-bazaar.md, requests). Basic orders paid in
-  ether move the token first and have no such moment.
+    - the hub's `residueOf(id)` — keccak of every fingerprint term a sale
+      does not move: the counted locks, the transfer seal, the creation
+      time, the launch count, the two traits, the Reach's state counter,
+      seal and approval ledger, the owned market's hash, the Locks and
+      Keepsake commitments of the Reach, the launch root and the Journal's
+      root — must be what it was at `publish`. The sale itself moves none
+      of them, and the Reach bumps its counter on every act it performs
+      (each call, seal, guard, grant, revocation), so a seller who acts on
+      its Reach, trades the owned market, writes a trait or a memory, or
+      launches from the token during the fill is refused FingerprintMoved.
+      The residue is stored at `publish`: the fingerprint matched at
+      `authorizeOrder`, and it hashes every residue term, so the residue
+      stored is the residue `authorizeOrder` saw.
+  What the sale moves or voids — the holder, the custody epoch, the
+  status, the pinned face, the guardian and its hold, `feesToGrip`, the
+  user, the agent wallet, the steward's plan — is not in the residue, and
+  is what the buyer receives the sale's own way. (Until V2 wave 2 the
+  residue here was two terms, the Reach's counter and the market's hash;
+  docs/v2/W6-hub.md.) Basic orders paid in ether move the token first and
+  have no such moment.
 
   ── what this contract has no function to do ──
 
@@ -150,11 +144,6 @@ interface ISIP5 {
 contract Bazaar is IBazaar {
     /// @notice A pin was zero at construction.
     error ZeroAddress();
-    /// @notice An INTACT order's priced side is not one currency.
-    error Unpriced();
-
-    /// @notice SIP-5: emitted once, when a Seaport-compatible contract is deployed.
-    event SeaportCompatibleContractDeployed();
 
     address public immutable SEAPORT;
     address public immutable HUB;
@@ -168,7 +157,7 @@ contract Bazaar is IBazaar {
     struct Pin {
         uint256 id;
         bytes32 fingerprint;
-        bytes32 residue;       // keccak(Reach.state(), Pool.marketHash(id)) at publish
+        bytes32 residue;       // the hub's residueOf(id) at publish
         Floor[] floors;
     }
 
@@ -215,7 +204,7 @@ contract Bazaar is IBazaar {
             if (pin.fingerprint == bytes32(0)) {
                 pin.id = id;
                 pin.fingerprint = fingerprint;
-                pin.residue = _residue(id, hub.account(id));
+                pin.residue = hub.residueOf(id);
                 for (uint256 i; i < floors.length; ++i) pin.floors.push(floors[i]);
             }
             emit Pinned(expected, id, fingerprint, floors.length);
@@ -270,16 +259,16 @@ contract Bazaar is IBazaar {
         return ISeaportZone.authorizeOrder.selector;
     }
 
-    /// @notice After every transfer: the residue and the floors, measured
-    ///         again (the box above says why).
+    /// @notice After every transfer: the hub's residue and the floors,
+    ///         measured again (the box above says why).
     function validateOrder(ZoneParameters calldata zp) external view returns (bytes4) {
         if (msg.sender != SEAPORT) revert NotSeaport();
         Pin storage pin = _pins[zp.zoneHash];
         if (pin.fingerprint == bytes32(0)) revert NotPinned(zp.zoneHash);
         IIntact hub = IIntact(HUB);
         uint256 id = pin.id;
+        if (hub.residueOf(id) != pin.residue) revert FingerprintMoved(pin.fingerprint, hub.getStateFingerprint(id));
         address reach = hub.account(id);
-        if (_residue(id, reach) != pin.residue) revert FingerprintMoved(pin.fingerprint, hub.getStateFingerprint(id));
         Floor[] storage floors = pin.floors;
         for (uint256 i; i < floors.length; ++i) {
             (address asset, uint256 min) = (floors[i].asset, floors[i].min);
@@ -323,15 +312,6 @@ contract Bazaar is IBazaar {
             if (balance < min) return abi.encodeWithSelector(FloorBroken.selector, asset, balance, min);
         }
         return "";
-    }
-
-    /// @dev The two fingerprint terms a sale does not move and a seller
-    ///      inside the fill could. "No answer" reads as zero, as it does in
-    ///      the hub's own guarded reads, so the two sides compare alike.
-    function _residue(uint256 id, address reach) private view returns (bytes32) {
-        (, uint256 state) = _word(reach, abi.encodeCall(IReach.state, ()));
-        (, uint256 market) = _word(POOL, abi.encodeCall(IPool.marketHash, (id)));
-        return keccak256(abi.encode(state, market));
     }
 
     /// @dev A Reach that does not answer is not sealed, and a word wider than

@@ -15,7 +15,7 @@ import {KeyRegistry} from "../src/KeyRegistry.sol";
 import {Locks} from "../src/Locks.sol";
 import {Engine} from "../src/Engine.sol";
 import {Crest} from "../src/Crest.sol";
-import {Catalog, CatalogRows, CatalogRowsPost, CatalogText, CatalogState, CatalogConfig} from "../src/Catalog.sol";
+import {Catalog, CatalogRows, CatalogRowsPost, CatalogRowsV2, CatalogText, CatalogState, CatalogConfig} from "../src/Catalog.sol";
 import {Renderer} from "../src/Renderer.sol";
 import {Premises} from "../src/Premises.sol";
 import {LibNum} from "../src/lib/LibNum.sol";
@@ -93,6 +93,7 @@ abstract contract SiteFixture is IntactFixture {
     Locks locksReal;
     CatalogRows rowsC;
     CatalogRowsPost postC;
+    CatalogRowsV2 v2C;
     CatalogText text;
     CatalogState stateC;
     Catalog catalog_;
@@ -121,15 +122,16 @@ abstract contract SiteFixture is IntactFixture {
 
         diamondBuild = keccak256(bytes(vm.envOr("INTACT_IMPL", "monolith"))) == keccak256("diamond");
         // Nonce n is the real Locks (it pins the hub, so the hub must be
-        // predicted first); n+1..n+3 the Catalog's three companions; then
-        // the Catalog, the Renderer, the Premises; then the hub — one
-        // deployment on the monolith, four facets and the diamond on the
-        // other build. The assertEqs below catch a shifted prediction.
+        // predicted first); n+1..n+5 the Catalog's companions (the three
+        // row tables, the text, the state); then the Catalog, the Renderer,
+        // the Premises; then the hub — one deployment on the monolith, four
+        // facets and the diamond on the other build. The assertEqs below
+        // catch a shifted prediction.
         uint256 n = _myNonce();
-        address pCatalog = _create(address(this), n + 5);
-        address pRenderer = _create(address(this), n + 6);
-        address pPremises = _create(address(this), n + 7);
-        predictedHub = _create(address(this), diamondBuild ? n + 12 : n + 8);
+        address pCatalog = _create(address(this), n + 6);
+        address pRenderer = _create(address(this), n + 7);
+        address pPremises = _create(address(this), n + 8);
+        predictedHub = _create(address(this), diamondBuild ? n + 13 : n + 9);
         locksReal = new Locks(predictedHub);
 
         address[21] memory byLetter;                              // HPRYTSKNLCOWXEGQMDAUI
@@ -138,7 +140,9 @@ abstract contract SiteFixture is IntactFixture {
         byLetter[14] = address(engine); byLetter[15] = pCatalog;
         rowsC = new CatalogRows(byLetter);
         postC = new CatalogRowsPost(byLetter);
-        text = new CatalogText(rowsC, postC);
+        address[7] memory v2Letters;                              // VJBbZcF: no V2 contract on this world
+        v2C = new CatalogRowsV2(v2Letters);
+        text = new CatalogText(rowsC, postC, v2C);
         stateC = new CatalogState(text);
         catalog_ = new Catalog(_catalogConfig(pRenderer, pPremises));
         renderer_ = new Renderer(predictedHub, address(engine), address(crest), address(catalog_), AGENTCARD0);
@@ -493,6 +497,8 @@ contract PremisesTest is SiteFixture {
         assertTrue(has(st, abi.encodePacked('"', hex4(bytes4(keccak256("Slippage(uint256,uint256)"))), '":"Slippage(uint256,uint256)"')), "err carries the argument list a slab decodes with");
         assertTrue(has(st, abi.encodePacked('"engine.engineHash":"', hex4(bytes4(keccak256("engineHash()"))), '"')), "engine.engineHash");
         assertTrue(has(st, abi.encodePacked('"catalog.knownDelegates":"', hex4(bytes4(keccak256("knownDelegates()"))), '"')), "catalog.knownDelegates");
+        assertTrue(has(st, abi.encodePacked('"journal.inscribe":"', hex4(bytes4(keccak256("inscribe(address,uint256,uint8,bytes,bytes32)"))), '"')), "journal.inscribe, from the third table (V2)");
+        assertTrue(has(st, abi.encodePacked('"', hex4(bytes4(keccak256("Unpriced()"))), '":"Unpriced()"')), "the err table carries the V2 errors");
         assertTrue(has(st, bytes('"ownedMarket":')), "the token's market object is ownedMarket");
         assertTrue(has(st, bytes('"reachLocks":')), "the lock count is reachLocks");
         assertTrue(has(st, bytes('"stewardStatus":')), "wouldPass is stewardStatus");

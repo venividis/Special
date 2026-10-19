@@ -14,6 +14,12 @@ import {IRoles} from "./interfaces/IRoles.sol";
 import {IKeyRegistry} from "./interfaces/IKeyRegistry.sol";
 import {IKiln} from "./interfaces/IKiln.sol";
 import {IMarket} from "./interfaces/IMarket.sol";
+import {IKeepsake} from "./interfaces/IKeepsake.sol";
+import {IJournal} from "./interfaces/IJournal.sol";
+import {IBazaar} from "./interfaces/IBazaar.sol";
+import {IBridges} from "./interfaces/IBridges.sol";
+import {IStudio} from "./interfaces/IStudio.sol";
+import {IAgora} from "./interfaces/IAgora.sol";
 import {IEngine, IAgentCard, TokenState} from "./interfaces/Site.sol";
 import {SSTORE2} from "./lib/SSTORE2.sol";
 import {LibNum} from "./lib/LibNum.sol";
@@ -91,6 +97,8 @@ interface INameplateProbe {
       Catalog        the immutables, the gather (`stateOf`), the façade
       CatalogRows    the service table, rendered ONCE at construction
                      into SSTORE2 shards: the `sel` map and the rows
+                     (CatalogRowsPost and CatalogRowsV2 are two more
+                     tables of the same shape, each its own transaction)
       CatalogText    the error and event tables, likewise; the routes,
                      the bands, `services.json` assembled from them
       CatalogState   every JSON skeleton as a TEMPLATE with typed markers
@@ -102,6 +110,21 @@ interface INameplateProbe {
   deployed before the Catalog, which pins them: a Catalog whose
   constructor created them carried their init codes inside its own and
   measured 53,268 bytes of initcode, over EIP-3860's 49,152.
+
+  ── V2 (wave 2, W6) ──
+
+  The world learns the seven V2 contracts (keepsake, journal, bazaar,
+  bridges, studio, agora, and seaport, a venue), `stateOf` probes the six
+  that are satellites under bits 8192..262144, and their rows go in a
+  THIRD table, CatalogRowsV2, its own transaction, so neither existing
+  table's construction grows (the MVB table renders at 89 % of the 2^24
+  cap). The V2 letters: V keepsake (the vault's bundle), J journal,
+  B bazaar, b bridges (the Timelock's door record, beside the Bazaar in
+  W3), Z studio, c a
+  collection (a per-address family, as C is a coin, zero in the table's
+  addresses), F agora (the forum). B, F, J, V and Z were the free capitals
+  of HPRYTSKNLCOWXEGQMDAUI; the two lower-case letters extend the
+  alphabet, and `word()` names every letter of both.
 
   ── the escaping rule ──
 
@@ -132,7 +155,13 @@ struct World {
     address engine;
     address agentCard;
     address nameplate;      // band 0's ENS resolver; a codeless pin elsewhere
-    address[12] h;          // the hub's immutables, in H_ order
+    address[14] h;          // the hub's immutables, in H_ order
+    // V2 (wave 2, W6): the V2 contracts the hub does not pin
+    address bazaar;
+    address bridges;
+    address studio;
+    address agora;
+    address seaport;        // a venue, not a satellite: an address and no bit
 }
 
 /// @dev The hub's immutables, in the order `Catalog._hub()` reads them.
@@ -149,6 +178,8 @@ library H {
     uint256 internal constant TIMELOCK = 9;
     uint256 internal constant PREMISES = 10;
     uint256 internal constant RENDERER = 11;
+    uint256 internal constant KEEPSAKE = 12;    // V2 (W6)
+    uint256 internal constant JOURNAL = 13;     // V2 (W6)
 }
 
 /*───────────────────────────────────────────────────────────────────────────
@@ -286,21 +317,56 @@ abstract contract Templated {
 
     /// @dev `0x` and the low `nBytes` bytes of `v` as hex, written at the
     ///      cursor: 20 for an address, 32 for a word, 4 for a selector
-    ///      (passed as `uint256(h) >> 224`). Two MSTORE8s per byte against
-    ///      a table held in one word; the Solidity version indexed two
-    ///      bounds-checked arrays per nibble and cost five times as much.
+    ///      (passed as `uint256(h) >> 224`). An address or a word is two
+    ///      words of characters (`hex16`, sixteen bytes at a time); a
+    ///      selector is two MSTORE8s per byte against a table held in one
+    ///      word. Measured (V2, W6, cold, as tools/gas.mjs measures): the
+    ///      state block's world, which names 33 addresses, cost 143,933 gas
+    ///      with the byte loop for every width and 68,063 with this.
     function _writeHex(bytes memory o, uint256 n, uint256 v, uint256 nBytes) internal pure returns (uint256) {
         if (n + 2 + nBytes * 2 > o.length) revert BufferOverflow();
         assembly ("memory-safe") {
+            /*  Sixteen bytes (x < 2^128) as thirty-two characters in one
+                word: every nibble spread into its own byte, the most
+                significant first (five halvings), then '0' added to every
+                byte and 39 more to each one holding ten or above — bit 4
+                of nibble + 6 is set exactly then. No byte carries.     */
+            function hex16(x) -> y {
+                x := or(and(x, 0xffffffffffffffff), shl(64, and(x, 0xffffffffffffffff0000000000000000)))
+                x := or(and(x, 0x000000000000000000000000ffffffff000000000000000000000000ffffffff),
+                        shl(32, and(x, 0x0000000000000000ffffffff000000000000000000000000ffffffff00000000)))
+                x := or(and(x, 0x000000000000ffff000000000000ffff000000000000ffff000000000000ffff),
+                        shl(16, and(x, 0x00000000ffff000000000000ffff000000000000ffff000000000000ffff0000)))
+                x := or(and(x, 0x000000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff),
+                        shl(8, and(x, 0x0000ff000000ff000000ff000000ff000000ff000000ff000000ff000000ff00)))
+                x := or(and(x, 0x000f000f000f000f000f000f000f000f000f000f000f000f000f000f000f000f),
+                        shl(4, and(x, 0x00f000f000f000f000f000f000f000f000f000f000f000f000f000f000f000f0)))
+                let ten := and(shr(4, add(x, 0x0606060606060606060606060606060606060606060606060606060606060606)),
+                               0x0101010101010101010101010101010101010101010101010101010101010101)
+                y := add(add(x, 0x3030303030303030303030303030303030303030303030303030303030303030), mul(ten, 0x27))
+            }
             let ptr := add(add(o, 32), n)
             mstore8(ptr, 0x30)
             mstore8(add(ptr, 1), 0x78)
             ptr := add(ptr, 2)
-            let table := 0x3031323334353637383961626364656600000000000000000000000000000000
-            for { let i := 0 } lt(i, nBytes) { i := add(i, 1) } {
-                let b := and(shr(mul(8, sub(sub(nBytes, 1), i)), v), 0xff)
-                mstore8(add(ptr, mul(2, i)), byte(shr(4, b), table))
-                mstore8(add(add(ptr, mul(2, i)), 1), byte(and(b, 15), table))
+            switch gt(nBytes, 16)
+            case 1 {
+                /*  The high nBytes - 16 bytes' characters, left-aligned in
+                    the first word; then the low sixteen bytes' thirty-two
+                    characters, written over that word's zero tail and
+                    ending exactly at the last character: nothing past the
+                    2·nBytes characters the bound above admitted is written. */
+                let h := sub(nBytes, 16)
+                mstore(ptr, shl(mul(8, sub(32, mul(2, h))), hex16(and(shr(128, v), sub(shl(mul(8, h), 1), 1)))))
+                mstore(add(ptr, mul(2, h)), hex16(and(v, 0xffffffffffffffffffffffffffffffff)))
+            }
+            default {
+                let table := 0x3031323334353637383961626364656600000000000000000000000000000000
+                for { let i := 0 } lt(i, nBytes) { i := add(i, 1) } {
+                    let b := and(shr(mul(8, sub(sub(nBytes, 1), i)), v), 0xff)
+                    mstore8(add(ptr, mul(2, i)), byte(shr(4, b), table))
+                    mstore8(add(add(ptr, mul(2, i)), 1), byte(and(b, 15), table))
+                }
             }
         }
         return n + 2 + nBytes * 2;
@@ -363,7 +429,9 @@ abstract contract RowTable is Templated {
         G engine, Q the catalog; and, post-MVB (wave 4, rendered by the
         second table so the first stays under the 2^24 transaction cap),
         M market, D roles, A the agent card, U the LP custodian, I the
-        nameplate. Kind: r read, w write, p payable. Via: d
+        nameplate; and, in V2 (rendered by the third table, CatalogRowsV2,
+        which names them), V keepsake, J journal, B bazaar, b bridges,
+        Z studio, c a collection, F agora. Kind: r read, w write, p payable. Via: d
         direct from the holder's wallet, a `acts` (holder or the token's
         Reach), r the Reach only. The selector is keccak'd from the
         signature at construction; nothing hex is written by hand.
@@ -510,14 +578,18 @@ abstract contract RowTable is Templated {
         return n;
     }
 
-    function _index(bytes1 c) private pure returns (uint256) {
+    /// @dev The slot of `byLetter` a row's letter names. Virtual for
+    ///      CatalogRowsV2, whose letters are its own; the two tables above
+    ///      it use this one, unchanged.
+    function _index(bytes1 c) internal pure virtual returns (uint256) {
         bytes memory l = LETTERS;
         for (uint256 i; i < l.length; ++i) if (l[i] == c) return i;
         return 15;
     }
 
-    /// @notice The contract a letter names.
-    function word(bytes1 c) public pure returns (string memory) {
+    /// @notice The contract a letter names. CatalogRowsV2 names the V2
+    ///         letters before these.
+    function word(bytes1 c) public pure virtual returns (string memory) {
         if (c == "H") return "hub";
         if (c == "P") return "pool";
         if (c == "R") return "reach";
@@ -767,6 +839,104 @@ contract CatalogRowsPost is RowTable {
     constructor(address[21] memory byLetter) RowTable(bytes(SERVICES), byLetter) {}
 }
 
+/// @notice The V2 rows (wave 2, W6): the Keepsake, the Journal, the Bazaar,
+///         Bridges, the Studio, a Studio collection and Agora — a third
+///         contract and a third transaction, so neither table above it
+///         grows; the text layer serves all three as one `sel` map and one
+///         `services` array. Each row is taken from its unit's proposal
+///         (docs/v2/W1..W5) and names a function its CONTRACT serves: the
+///         drift gate in tools/verify.mjs holds the V2 rows to the compiled
+///         contracts' ABIs, which carry the frozen interfaces and the
+///         additions the units recorded (Agora's `evict`, `heads`,
+///         `roomsOf`; a Collection's `pageOf`).
+///
+///         Its letters are its own (`_index`): V keepsake, J journal,
+///         B bazaar, b bridges, Z studio, c a collection — a per-address
+///         family like C, pinned as address(0) — and F agora; `word` names
+///         them and, through RowTable's, every letter of the two tables
+///         above, so it is total over the whole alphabet.
+contract CatalogRowsV2 is RowTable {
+    string internal constant SERVICES =
+        "wrap|V|wrap(((address,uint256)[],(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))|p|d|value is the ETH asset exactly, 0 when none - each ERC-20 needs an exact approval to the Keepsake - a drip only when to is you;"
+        "swapAndWrap|V|swapAndWrap((uint256,bool,uint256,uint256,uint64,(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))|p|d|native input: value is amountIn - what is locked is the balance delta - a drip only on asset 0 and only for you;"
+        "claim|V|claim(uint256)|w|d|anyone - pays ownerOf(id) only - a token that will not move stays owed;"
+        "claimable|V|claimable(uint256)|r|d|per asset what a claim pays now - then every proceed;"
+        "extend|V|extend(uint256,uint64)|w|d|holder only - only later - never once the end has passed - moves the commitment;"
+        "setDrip|V|setDrip(uint256,(uint8,uint256,uint256,uint256))|w|d|holder only - floor is output per 1e18 input, never 0 - moves the commitment;"
+        "clearDrip|V|clearDrip(uint256)|w|d|holder only - moves the commitment;"
+        "drip|V|drip(uint256)|w|d|anyone - once per block - never below the floor;"
+        "transferFrom|V|transferFrom(address,address,uint256)|w|d|a gift by transfer - moves the sender's commitment;"
+        "keepsakeOf|V|keepsakeOf(uint256)|r|d|holder creator createdAt schedule assets paid sold proceeds message drip lastDripBlock;"
+        "commitmentOf|V|commitmentOf(address)|r|d|moves only on a keepsake leaving and on its holder's own term changes - a hub fingerprint term;"
+        "keepsakeCount|V|keepsakeCount()|r|d|;"
+        "inscribe|J|inscribe(address,uint256,uint8,bytes,bytes32)|w|a|kind 0-4, body 1-1024 B, sealed 1-4096 B - the root moves;"
+        "countOf|J|countOf(address,uint256)|r|d|;"
+        "rootOf|J|rootOf(address,uint256)|r|d|a hub fingerprint term;"
+        "mayInscribe|J|mayInscribe(address,uint256,address)|r|d|;"
+        "publish|B|publish(((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),bytes),(address,uint256)[])|w|d|anyone - validates the order on Seaport and indexes it - an INTACT order zoned here carries zoneHash = pinHash(id, getStateFingerprint(id), floors);"
+        "check|B|check(bytes32,uint256)|r|d|zero while a fill would pass, else the refusal's selector - offer buy only on zero;"
+        "pinHash|B|pinHash(uint256,bytes32,(address,uint256)[])|r|d|;"
+        "pinOf|B|pinOf(bytes32)|r|d|id fingerprint floors - a zero fingerprint pins nothing;"
+        "endpointOf|b|endpointOf(bytes32)|r|d|the url and when the Timelock wrote it - off by default, nothing is sent until the viewer turns it on;"
+        "names|b|names()|r|d|every name that holds a record, in first-set order;"
+        "launch|Z|launch(uint256,(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes),bytes32)|w|a|the holder or the Reach of the creator token - the address is predict(creator, salt) - name 1..48 symbol 1..12 description <= 1024 supply 1..1000000 referral <= 2000 royalty <= 1000 page 1..24000 art <= 12000 bytes - <= 256 holes per template;"
+        "predict|Z|predict(uint256,bytes32)|r|d|the collection's address before the launch;"
+        "collectionsOf|Z|collectionsOf(uint256)|r|d|every collection a token launched;"
+        "parentOf|Z|parentOf(address)|r|d|the creator token's collection - the family tree;"
+        "isCollection|Z|isCollection(address)|r|d|launched by this Studio;"
+        "mint|c|mint(address,uint256)|p|d|value is the price exactly - via is a persona or 0 - the share is withheld when via's payee is the minter or the recipient;"
+        "claim|c|claim(uint256)|w|d|anyone - pays the persona's payee at the moment of the claim;"
+        "owed|c|owed(uint256)|r|d|;"
+        "spec|c|spec()|r|d|the terms and both templates;"
+        "pageOf|c|pageOf(uint256)|r|d|the token's site, filled now;"
+        "speak|F|speak(uint256,uint256,uint8,uint64,uint64,bytes)|w|a|from is a persona, the collection shifted left 96 bits plus the id - never a bare id;"
+        "whisper|F|whisper(uint256,uint256,uint8,bytes32,bytes)|w|a|re-read keyOf before every send - a sealed whisper needs both sides bound;"
+        "react|F|react(uint256,uint256,uint64,uint256,bytes4)|p|a|the tip goes to the payee of the author named - name the author the Said log names;"
+        "follow|F|follow(uint256,uint256,bool)|w|a|a follow stays with the token through a sale;"
+        "found|F|found(uint256,string,bool)|w|a|;"
+        "invite|F|invite(uint256,uint256,uint256)|w|a|;"
+        "join|F|join(uint256,uint256)|w|a|;"
+        "leave|F|leave(uint256,uint256)|w|a|;"
+        "evict|F|evict(uint256,uint256,uint256)|w|a|the steward - a seat a sale left stale too;"
+        "setCooldown|F|setCooldown(uint256,uint256,uint32)|w|a|the steward - at most 7 days;"
+        "hide|F|hide(uint256,uint256,uint64)|w|a|the steward - presentation, never deletion;"
+        "bindKey|F|bindKey(uint256)|w|d|holder only - the binding dies with the stamp;"
+        "stateOf|F|stateOf(uint256)|r|d|opened 0 is a room that never came into being - kind 4 is a collection room;"
+        "keyOf|F|keyOf(uint256)|r|d|zero the moment the stamp moves;"
+        "heads|F|heads(uint256[])|r|d|the one-call poll;"
+        "roomsOf|F|roomsOf(uint256)|r|d|every room the token took a seat in - member says whether its holder holds it now;";
+
+    /// @dev The seven V2 letters, in the order the constructor takes their addresses.
+    bytes internal constant LETTERS_V2 = "VJBbZcF";
+
+    /// @param byLetter the address for each of LETTERS_V2: the Keepsake, the
+    ///        Journal, the Bazaar, Bridges, the Studio, zero for a collection
+    ///        (each is its own address), Agora.
+    constructor(address[7] memory byLetter) RowTable(bytes(SERVICES), _spread(byLetter)) {}
+
+    /// @dev RowTable's constructor takes twenty-one slots; the V2 letters use the first seven.
+    function _spread(address[7] memory a) private pure returns (address[21] memory b) {
+        for (uint256 i; i < 7; ++i) b[i] = a[i];
+    }
+
+    function _index(bytes1 c) internal pure override returns (uint256) {
+        bytes memory l = LETTERS_V2;
+        for (uint256 i; i < l.length; ++i) if (l[i] == c) return i;
+        return 20;                                 // a letter this table does not name: no contract
+    }
+
+    function word(bytes1 c) public pure override returns (string memory) {
+        if (c == "V") return "keepsake";
+        if (c == "J") return "journal";
+        if (c == "B") return "bazaar";
+        if (c == "b") return "bridges";
+        if (c == "Z") return "studio";
+        if (c == "c") return "collection";
+        if (c == "F") return "agora";
+        return super.word(c);
+    }
+}
+
 /*───────────────────────────────────────────────────────────────────────────
   CatalogText — the error and event tables, the routes, the bands, and
   `services.json` assembled from them and the rows
@@ -774,10 +944,18 @@ contract CatalogRowsPost is RowTable {
 contract CatalogText is Templated {
     CatalogRows public immutable ROWS;
     CatalogRowsPost public immutable ROWS_POST;
+    /// @notice The V2 rows (wave 2, W6), the third table.
+    CatalogRowsV2 public immutable ROWS_V2;
     address private immutable _ERR;
     address private immutable _TOP;
-    /// @notice keccak256 over the four raw tables' keccaks, for the
-    ///         deployment record: (services, post-MVB services, errors, events).
+    /// @dev The three tables' `sel` maps joined once, at construction (V2,
+    ///      W6): the state block reads one shard instead of three tables
+    ///      (measured cold: `selectors()` 35,950 gas joined per call, 7,721
+    ///      read from the shard).
+    address private immutable _SEL;
+    /// @notice keccak256 over the five raw tables' keccaks, for the
+    ///         deployment record: (services, post-MVB services, V2 services,
+    ///         errors, events).
     bytes32 public immutable tableHash;
 
     string public constant SCHEMA = "intact.services/1";
@@ -828,7 +1006,23 @@ contract CatalogText is Templated {
         "NotRegistered(uint256);AlreadySeeded(uint256);NotSeeded(uint256);BadTerms();BadSalt(address,uint16);HookMismatch(address,address);"
         "PriceOutOfRange(uint160);PriceOff(uint160,uint160);PositionNotHeld(uint256);UnexpectedEther();"
         "UnknownRecipe(uint8);UnsupportedCollection(address);UnsupportedSchedule();WrongChain();WrongCommitment();"
-        "WrongPrice(uint256,uint256);WrongTarget();ZeroInput();ZeroRecipient()";
+        "WrongPrice(uint256,uint256);WrongTarget();ZeroInput();ZeroRecipient();"
+        /*  V2 (wave 2, W6): every error the seven V2 contracts declare that
+            the table lacked — the Keepsake, ERC721Base's ERC-6093 six-and-two,
+            the Journal, the Bazaar (its Unpriced now IBazaarEvents'), Bridges,
+            the Studio and lib/SSTORE2's two, a Collection, Agora (Persona's
+            NotAPersona among them). The drift gate holds the table to their
+            ABIs as it holds it to every V1 contract's.                    */
+        "BadDrip();BadSchedule();BelowFloor(uint256,uint256);DuplicateAsset(address);MessageTooLong(uint256);NoAssets();"
+        "NoDrip();NoSuchKeepsake(uint256);NothingFreed();OnePerBlock();TooManyAssets();WrongMarket(uint256);"
+        "WrongValue(uint256,uint256);ERC721IncorrectOwner(address,uint256,address);ERC721InsufficientApproval(address,uint256);"
+        "ERC721InvalidApprover(address);ERC721InvalidOperator(address);ERC721InvalidOwner(address);ERC721InvalidReceiver(address);"
+        "ERC721InvalidSender(address);ERC721NonexistentToken(uint256);Empty();TooLong(uint256,uint256);UnknownKind(uint8);"
+        "BadPin(bytes32,bytes32);FloorsWithoutZone();MarketSealShort(uint64,uint256);NoNFT();NotIntact();NotPinned(bytes32);"
+        "NotRestricted();NotSeaport();NotValidated(bytes32);ReachSealShort(uint64,uint256);RoyaltyShort(address,uint256,uint256);"
+        "Unpriced();WrongToken(uint256,uint256);BadEndpoint();BadArt();BadDescription();BadPage();BadShare();BadSupply();"
+        "BadSymbol();BadWindow();SaltUsed(address);ShardEmpty();ShardTooLarge();Closed(uint64);NoPayee(uint256);NotOpen(uint64);"
+        "SoldOut();WalletLimit(uint32);BadGlyph();NotAPersona(address,uint256);NotOfCollection(uint256,address);TipFailed()";
 
     /// @dev `name=signature;` — the topics the panels filter logs with.
     string internal constant EVENTS =
@@ -851,7 +1045,22 @@ contract CatalogText is Templated {
         "stamped=Stamped(uint256,uint256,uint256,uint256,address,uint128,uint64);settled=Settled(uint256,address,address,uint128);"
         "sessionGranted=SessionGranted(address,uint8,uint64,uint128,uint64);sessionRevoked=SessionRevoked(address);"
         "locked=Locked(uint256,address,address,address,uint256,uint64,uint64,uint64,bool);"
-        "arranged=Arranged(uint256,uint64,bytes32,uint64,uint64,uint8);summoned=Summoned(uint256,address,address,uint64)";
+        "arranged=Arranged(uint256,uint64,bytes32,uint64,uint64,uint8);summoned=Summoned(uint256,address,address,uint64);"
+        /*  V2 (wave 2, W6): what the V2 lanes filter on. Agora's Said,
+            Founded and Entered are Parley's signatures, so their topics are
+            the ones above; its KeyBound carries the stamp and differs. A
+            name that would collide with a V1 key says whose it is.      */
+        "inscribed=Inscribed(address,uint256,uint256,uint8,address,uint64,bytes32,bytes32,bytes);"
+        "wrapped=Wrapped(uint256,address,address,uint64,uint64,uint64,uint256,string);paid=Paid(uint256,address,address,uint256);"
+        "dripped=Dripped(uint256,address,address,uint256,address,uint256);dripSet=DripSet(uint256,uint8,uint256,uint256,uint256);"
+        "dripCleared=DripCleared(uint256);keepsakeExtended=Extended(uint256,uint64,uint64);"
+        "published=Published(address,uint256,bytes32,address,uint8,uint8,address,uint256,uint256);pinned=Pinned(bytes32,uint256,bytes32,uint256);"
+        "orderValidated=OrderValidated(bytes32,(address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256));"
+        "orderFulfilled=OrderFulfilled(bytes32,address,address,address,(uint8,address,uint256,uint256)[],(uint8,address,uint256,uint256,address)[]);"
+        "endpointSet=EndpointSet(bytes32,string);collectionLaunched=Launched(address,uint256,address,string,string,uint32,uint128);"
+        "collectionMinted=Minted(uint256,address,uint256,uint256,uint256);collectionClaimed=Claimed(uint256,address,uint256);"
+        "reacted=Reacted(uint256,uint256,uint256,uint64,bytes4,uint256);followed=Followed(uint256,uint256,bool);"
+        "agoraKeyBound=KeyBound(uint256,address,bytes32,uint16,bytes32)";
 
     /// @dev The route table, over templates (DESIGN §5.3).
     string internal constant ROUTES =
@@ -864,53 +1073,72 @@ contract CatalogText is Templated {
         '"walk":"stateOf(room).last is the block of the newest message; eth_getLogs for exactly that block '
         'with topics [said, room]; follow the oldest log\'s prev; the home room of token N is '
         'keccak256(abi.encodePacked(uint8(3), N))","door":"/token/<id>/live?as=<key>",'
-        '"services":[\x04],"errors":\x04,"topics":\x04}';
+        '"services":[\x04\x04\x04\x04\x04],"errors":\x04,"topics":\x04}';
 
     string internal constant TPL_BAND = '{"band":\x02,"chainId":\x02,"lo":\x02,"hi":\x02}';
 
-    constructor(CatalogRows rows_, CatalogRowsPost post_) {
+    constructor(CatalogRows rows_, CatalogRowsPost post_, CatalogRowsV2 v2_) {
         bytes memory errors_ = bytes(ERRORS);
         bytes memory events_ = bytes(EVENTS);
         ROWS = rows_;
         ROWS_POST = post_;
-        tableHash = keccak256(abi.encode(rows_.servicesHash(), post_.servicesHash(), keccak256(errors_), keccak256(events_)));
+        ROWS_V2 = v2_;
+        tableHash = keccak256(abi.encode(rows_.servicesHash(), post_.servicesHash(), v2_.servicesHash(), keccak256(errors_), keccak256(events_)));
         _ERR = SSTORE2.write(_renderErrors(errors_));
         _TOP = SSTORE2.write(_renderTopics(events_));
+        _SEL = SSTORE2.write(_joinSelectors(rows_.selectors(), post_.selectors(), v2_.selectors()));
     }
 
     /*═══════════════════ served ═══════════════════*/
 
-    /// @notice `{"hub.mint":"0x…",…}` — both tables' maps as one object.
-    function selectors() external view returns (bytes memory) {
-        bytes memory a = ROWS.selectors();
-        bytes memory b = ROWS_POST.selectors();
-        if (b.length <= 2) return a;                 // `{}`: no post-MVB row
-        if (a.length <= 2) return b;
-        return bytes.concat(_sub(a, 0, a.length - 1), ",", _sub(b, 1, b.length - 1));
+    /// @notice `{"hub.mint":"0x…",…}` — the three tables' maps as one
+    ///         object, joined at construction.
+    function selectors() external view returns (bytes memory) { return SSTORE2.read(_SEL); }
+
+    /// @dev The three maps as one object, written into one buffer (an empty
+    ///      map, `{}`, adds nothing).
+    function _joinSelectors(bytes memory a, bytes memory b, bytes memory c) private pure returns (bytes memory o) {
+        o = new bytes(a.length + b.length + c.length);
+        uint256 n = _put(o, 0, "{");
+        n = _inner(o, n, a);
+        n = _inner(o, n, b);
+        n = _inner(o, n, c);
+        n = _put(o, n, "}");
+        assembly ("memory-safe") { mstore(o, n) }
     }
-    /// @dev Both tables' rows as one array's inside.
-    function _rowsAll() internal view returns (bytes memory) {
-        bytes memory a = ROWS.rows();
-        bytes memory b = ROWS_POST.rows();
-        if (b.length == 0) return a;
-        if (a.length == 0) return b;
-        return bytes.concat(a, ",", b);
+
+    /// @dev A map's inside, after a comma when something precedes it.
+    function _inner(bytes memory o, uint256 n, bytes memory m) private pure returns (uint256) {
+        if (m.length <= 2) return n;
+        if (n > 1) n = _put(o, n, ",");
+        return _slice(o, n, m, 1, m.length - 2);
     }
+
     function errors() public view returns (bytes memory) { return SSTORE2.read(_ERR); }
     function topics() public view returns (bytes memory) { return SSTORE2.read(_TOP); }
     function routes() external pure returns (bytes memory) { return bytes(ROUTES); }
 
     /// @notice The whole catalog document, given the world block the
     ///         Catalog rendered.
+    /// @dev The three tables' rows go into the one output buffer as three
+    ///      pieces with a comma between non-empty ones, never first into a
+    ///      joined copy, whose memory grows quadratically with the 79 KB
+    ///      document. Measured (V2, W6, tools/gas.mjs): with this and the
+    ///      word-at-a-time hex writer, `/services.json` went from 965,160
+    ///      gas to 796,932, and `/token/1/state.json` from 995,363 to 814,332.
     function services(bytes calldata world) external view returns (bytes memory) {
-        bytes[] memory B = new bytes[](7);
+        bytes[] memory B = new bytes[](11);
         B[0] = bytes(SCHEMA);
         B[1] = world;
         B[2] = bandsJson();
         B[3] = bytes(ROUTES);
-        B[4] = _rowsAll();
-        B[5] = errors();
-        B[6] = topics();
+        B[4] = ROWS.rows();
+        B[6] = ROWS_POST.rows();
+        B[8] = ROWS_V2.rows();
+        B[5] = B[4].length != 0 && B[6].length != 0 ? bytes(",") : bytes("");
+        B[7] = (B[4].length != 0 || B[6].length != 0) && B[8].length != 0 ? bytes(",") : bytes("");
+        B[9] = errors();
+        B[10] = topics();
         return _fill(bytes(TPL_SERVICES), "", B);
     }
 
@@ -999,9 +1227,11 @@ contract CatalogState is Templated {
         '"roster":"\x01","postage":"\x01","keys":"\x01","kiln":"\x01","launchpad":"\x01","locks":"\x01",'
         '"steward":"\x01","market":"\x01","roles":"\x01","timelock":"\x01","catalog":"\x01","premises":"\x01",'
         '"engine":"\x01","renderer":"\x01","agentCard":"\x01","nameplate":"\x01",'
+        '"keepsake":"\x01","journal":"\x01","bazaar":"\x01","bridges":"\x01","studio":"\x01","agora":"\x01","seaport":"\x01",'
         '"rights":{"HOLD":1,"ACCOUNT":2,"USE":4,"CUSTODY":8,"ROLE":16,"DELEGATE":32,"GUARDIAN":64,"SESSION":128},'
         '"bits":{"reach":1,"pool":2,"parley":4,"postage":8,"locks":16,"launchpad":32,"steward":64,"router":128,'
-        '"market":256,"roles":512,"keys":1024,"nameplate":2048,"agentcard":4096},';
+        '"market":256,"roles":512,"keys":1024,"nameplate":2048,"agentcard":4096,'
+        '"keepsake":8192,"journal":16384,"bazaar":32768,"studio":65536,"agora":131072,"bridges":262144},';
 
     /*  Four of the token-level keys were once `market`, `locks`, `steward`
         and `roles` — the names TPL_WORLD above already uses for ADDRESSES.
@@ -1062,12 +1292,14 @@ contract CatalogState is Templated {
     /*═══════════════════ the state block's parts ═══════════════════*/
 
     function world(World calldata w) external view returns (bytes memory) {
-        return _fill(bytes(TPL_WORLD), abi.encode(
+        return _fill(bytes(TPL_WORLD), bytes.concat(abi.encode(
             w.id, block.chainid, w.band, w.bandLo, w.bandHi,
             w.hub, w.h[H.REACH_IMPL], w.h[H.GRIP_IMPL], w.h[H.POOL], w.router, w.h[H.PARLEY], w.roster, w.postage,
             w.keys, w.kiln, w.h[H.LAUNCHPAD], w.h[H.LOCKS], w.h[H.STEWARD], w.h[H.MARKET], w.h[H.ROLES],
             w.h[H.TIMELOCK], w.catalog, w.h[H.PREMISES], w.engine, w.h[H.RENDERER], w.agentCard, w.nameplate
-        ), new bytes[](0));
+        ), abi.encode(
+            w.h[H.KEEPSAKE], w.h[H.JOURNAL], w.bazaar, w.bridges, w.studio, w.agora, w.seaport
+        )), new bytes[](0));
     }
 
     /// @notice One token: the facts, the clocks, and what each satellite
@@ -1308,6 +1540,15 @@ struct CatalogConfig {
     CatalogText text;
     CatalogState state;
     address nameplate;      // post-MVB, appended: band 0's predicted resolver, the codeless placeholder elsewhere
+    // V2 (wave 2, W6), appended: the Keepsake and the Journal the hub pins, and
+    // the other V2 contracts the world names — predictions, codeless until each lands
+    address keepsake;
+    address journal;
+    address bazaar;
+    address bridges;
+    address studio;
+    address agora;
+    address seaport;        // a venue, not a satellite: an address and no bit
 }
 
 contract Catalog {
@@ -1332,6 +1573,14 @@ contract Catalog {
     address public immutable TIMELOCK;
     address public immutable PREMISES;
     address public immutable RENDERER;
+    /// @dev V2 (wave 2, W6): the hub's two V2 pins, then the V2 contracts it does not pin.
+    address public immutable KEEPSAKE;
+    address public immutable JOURNAL;
+    address public immutable BAZAAR;
+    address public immutable BRIDGES;
+    address public immutable STUDIO;
+    address public immutable AGORA;
+    address public immutable SEAPORT;
     uint8   public immutable BAND;
     uint256 public immutable BAND_LO;
     uint256 public immutable BAND_HI;
@@ -1347,6 +1596,11 @@ contract Catalog {
     ///      (the console round): it is asked `APEX()`, so the identity lane
     ///      can tell band 0's resolver from a codeless pin, and its ENS row
     ///      exists only where the bit says one answered or was there to ask.
+    ///      V2 (W6) continues the run: keepsake 8192 (`commitmentOf(reach)`),
+    ///      journal 16384 (`countOf(hub, id)`), bazaar 32768 (`HUB()`), studio
+    ///      65536 (`collectionsOf(persona)`), agora 131072
+    ///      (`followerCount(persona)`), bridges 262144 (`names()`). Seaport is
+    ///      a venue, not a satellite: the world names it and no bit does.
     uint32 internal constant BIT_REACH     = 1;
     uint32 internal constant BIT_POOL      = 2;
     uint32 internal constant BIT_PARLEY    = 4;
@@ -1374,6 +1628,13 @@ contract Catalog {
         TIMELOCK = c.timelock;
         PREMISES = c.premises;
         RENDERER = c.renderer;
+        KEEPSAKE = c.keepsake;
+        JOURNAL = c.journal;
+        BAZAAR = c.bazaar;
+        BRIDGES = c.bridges;
+        STUDIO = c.studio;
+        AGORA = c.agora;
+        SEAPORT = c.seaport;
         BAND = c.band;
         BAND_LO = c.bandLo;
         BAND_HI = c.bandHi;
@@ -1400,7 +1661,12 @@ contract Catalog {
         w.agentCard = c.agentCard;
         w.nameplate = c.nameplate;
         w.h = [c.reachImpl, c.gripImpl, c.pool, c.parley, c.launchpad, c.locks, c.steward, c.market, c.roles,
-               c.timelock, c.premises, c.renderer];
+               c.timelock, c.premises, c.renderer, c.keepsake, c.journal];
+        w.bazaar = c.bazaar;
+        w.bridges = c.bridges;
+        w.studio = c.studio;
+        w.agora = c.agora;
+        w.seaport = c.seaport;
     }
 
     function _world(uint256 id) private view returns (World memory w) {
@@ -1418,22 +1684,30 @@ contract Catalog {
         w.engine = ENGINE;
         w.agentCard = AGENTCARD;
         w.nameplate = NAMEPLATE;
-        w.h = [REACH_IMPL, GRIP_IMPL, POOL, PARLEY, LAUNCHPAD, LOCKS, STEWARD, MARKET, ROLES, TIMELOCK, PREMISES, RENDERER];
+        w.h = [REACH_IMPL, GRIP_IMPL, POOL, PARLEY, LAUNCHPAD, LOCKS, STEWARD, MARKET, ROLES, TIMELOCK, PREMISES, RENDERER,
+               KEEPSAKE, JOURNAL];
+        w.bazaar = BAZAAR;
+        w.bridges = BRIDGES;
+        w.studio = STUDIO;
+        w.agora = AGORA;
+        w.seaport = SEAPORT;
     }
 
     /// @notice Whether the hub pinned what this Catalog was told it would:
     ///         every address and the band bounds, one loop over the hub's
     ///         getters. `which` is the first getter that disagreed, or empty.
     function agrees() external view returns (bool ok, bytes4 which) {
-        bytes4[15] memory S = [IIntact.REACH_IMPL.selector, IIntact.GRIP_IMPL.selector, IIntact.POOL.selector,
+        bytes4[17] memory S = [IIntact.REACH_IMPL.selector, IIntact.GRIP_IMPL.selector, IIntact.POOL.selector,
                                IIntact.PARLEY.selector, IIntact.LAUNCHPAD.selector, IIntact.LOCKS.selector,
                                IIntact.STEWARD.selector, IIntact.MARKET.selector, IIntact.ROLES.selector,
                                IIntact.TIMELOCK.selector, IIntact.PREMISES.selector, IIntact.RENDERER.selector,
-                               IIntact.CATALOG.selector, IIntact.BAND_LO.selector, IIntact.BAND_HI.selector];
-        address[12] memory h = _world(0).h;
-        for (uint256 i; i < 15; ++i) {
+                               IIntact.CATALOG.selector, IIntact.BAND_LO.selector, IIntact.BAND_HI.selector,
+                               IIntact.KEEPSAKE.selector, IIntact.JOURNAL.selector];
+        address[14] memory h = _world(0).h;
+        for (uint256 i; i < 17; ++i) {
             (bool got, bytes memory ret) = _probe(HUB, abi.encodeWithSelector(S[i]), 32);
-            uint256 want = i < 12 ? uint160(h[i]) : i == 12 ? uint160(address(this)) : i == 13 ? BAND_LO : BAND_HI;
+            uint256 want = i < 12 ? uint160(h[i]) : i == 12 ? uint160(address(this)) : i == 13 ? BAND_LO
+                         : i == 14 ? BAND_HI : uint160(h[i - 3]);
             if (!got || uint256(bytes32(ret)) != want) return (false, S[i]);
         }
         return (true, 0);
@@ -1476,21 +1750,30 @@ contract Catalog {
             s.reported |= BIT_POOL;
         }
 
-        /*  The rest answer a shape or nothing; one loop, one call site. A
-            selector that takes no argument (`HUB()`) is sent one anyway —
-            the ABI ignores calldata past what a function reads.         */
-        address[11] memory T = [PARLEY, POSTAGE, LOCKS, LAUNCHPAD, STEWARD, ROUTER, MARKET, ROLES, KEYS, NAMEPLATE, AGENTCARD];
-        bytes4[11] memory F = [IParley.stateOf.selector, IPostage.inboxOf.selector, ILocks.lockCountOf.selector,
+        /*  The rest answer a shape or nothing; one loop, one call site.
+            Every probe is sent its argument and then the id: a function of
+            one argument (or none, `HUB()`) ignores calldata past what it
+            reads. The V2 six continue the bits after the agent card's 4096
+            and are asked their cheapest word, an immutable (`HUB()`, and
+            Bridges' `TIMELOCK()`): the state block carries no V2 datum,
+            only whether each answered, and every face that reads stateOf
+            pays for these six, so none of them loads a slot.            */
+        address[17] memory T = [PARLEY, POSTAGE, LOCKS, LAUNCHPAD, STEWARD, ROUTER, MARKET, ROLES, KEYS, NAMEPLATE, AGENTCARD,
+                                KEEPSAKE, JOURNAL, BAZAAR, STUDIO, AGORA, BRIDGES];
+        bytes4[17] memory F = [IParley.stateOf.selector, IPostage.inboxOf.selector, ILocks.lockCountOf.selector,
                                ILaunchpad.launchRoot.selector, ISteward.wouldPass.selector, IRouter.HUB.selector,
                                IMarket.listingOf.selector, IRoles.liveRoleCount.selector, IKeyRegistry.keyIdOf.selector,
-                               INameplateProbe.APEX.selector, IAgentCard.manifestHash.selector];
-        uint256[11] memory G = [uint256(keccak256(abi.encodePacked(uint8(3), id))), id, uint256(uint160(s.reach)), id, id,
-                                0, id, id, uint256(uint160(s.owner)), 0, id];
-        uint8[11] memory L = [17, 5, 1, 1, 1, 1, 7, 1, 1, 1, 1];
+                               INameplateProbe.APEX.selector, IAgentCard.manifestHash.selector,
+                               IKeepsake.HUB.selector, IJournal.HUB.selector, IBazaar.HUB.selector,
+                               IStudio.HUB.selector, IAgora.HUB.selector, IBridges.TIMELOCK.selector];
+        uint256[17] memory G = [uint256(keccak256(abi.encodePacked(uint8(3), id))), id, uint256(uint160(s.reach)), id, id,
+                                0, id, id, uint256(uint160(s.owner)), 0, id,
+                                0, 0, 0, 0, 0, 0];
+        uint8[17] memory L = [17, 5, 1, 1, 1, 1, 7, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
         uint32 bit = BIT_PARLEY;
-        for (uint256 i; i < 11; ++i) {
+        for (uint256 i; i < 17; ++i) {
             if (T[i].code.length == 0) s.absent |= bit;
-            (ok, ) = _probe(T[i], abi.encodeWithSelector(F[i], G[i]), uint256(L[i]) * 32);
+            (ok, ) = _probe(T[i], abi.encodeWithSelector(F[i], G[i], id), uint256(L[i]) * 32);
             if (ok) s.reported |= bit;
             bit <<= 1;
         }

@@ -37,7 +37,7 @@ import { Chain, warp, BLOCK, encodeParams, enc, decAddr, decUint, decBool } from
 import { compile, shipRule, artifact } from "./compile.mjs";
 import { ROOT, adapt, deployIntact, predictCreate3, saltOf, SALTED, PLACEHOLDERS, RECORD_KEYS, PINS, DEPLOY_ORDER,
          PROXY_INITCODE_HASH, bandOf, assertTiles, BANDS, COLLECTION, kec, parseArgs, readDist, atomicWrite, CLI_OPTIONS, decWords,
-         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite } from "./deploy.mjs";
+         SATELLITES, SATELLITE_ORDER, deploySatellite, admitsSatellite, V2_SALTED, RECORD_SCHEMA, VENUES, SEAPORT_KEYS } from "./deploy.mjs";
 import { recover } from "./recover-record.mjs";
 import { predictCreate, PANELS } from "./site.mjs";
 
@@ -106,6 +106,21 @@ ok("every salted address is CREATE3(factory, keccak('intact.v1.<key>'))",
    SALTED.filter((k) => rec.contracts[k]).every((k) => low(rec.contracts[k]) === low(predictCreate3(rec.factory, saltOf(k)))));
 ok("the three post-MVB pins are predicted and codeless", PLACEHOLDERS.every((k) => rec.placeholders[k] === predictCreate3(rec.factory, saltOf(k))) &&
    (await Promise.all(PLACEHOLDERS.map((k) => ad1.codeAt(rec.placeholders[k])))).every((c) => c === "0x"));
+/* V2 (wave 2, W6): the six V2 satellites are placeholders of their own namespace */
+ok("the six V2 satellites are predicted under keccak('intact.v2.<key>'), codeless, and the record carries their salts",
+   V2_SALTED.length === 6 && V2_SALTED.every((k) => PLACEHOLDERS.includes(k) && rec.salts[k] === kec(Buffer.from("intact.v2." + k, "utf8")) &&
+     rec.placeholders[k] === predictCreate3(rec.factory, rec.salts[k])) &&
+   (await Promise.all(V2_SALTED.map((k) => ad1.codeAt(rec.placeholders[k])))).every((c) => c === "0x"));
+{
+  const readAddr = async (at, sig) => low(decAddr(await ad1.read(at, sig)));
+  eq("the hub pins the Keepsake and the Journal at those predictions",
+     `${await readAddr(rec.contracts.hub, "KEEPSAKE()")} ${await readAddr(rec.contracts.hub, "JOURNAL()")}`,
+     `${low(rec.placeholders.keepsake)} ${low(rec.placeholders.journal)}`);
+  eq("and the Catalog names all six there, with Seaport as zero on a chain with no venue row",
+     (await Promise.all(["KEEPSAKE()", "JOURNAL()", "BAZAAR()", "BRIDGES()", "STUDIO()", "AGORA()", "SEAPORT()"].map((g) => readAddr(rec.contracts.catalog, g)))).join(","),
+     [...V2_SALTED.map((k) => low(rec.placeholders[k])), "0x" + "00".repeat(20)].join(","));
+  eq("the third row table is a salted key of the record, under intact.v1 like every MVB table", rec.salts.catalogRowsV2, kec(Buffer.from("intact.v1.catalogRowsV2", "utf8")));
+}
 ok("the record holds a codehash for every contract", Object.keys(rec.contracts).every((k) => /^0x[0-9a-f]{64}$/.test(rec.codehashes[k])));
 ok("the no-immutable contracts reproduce from source; the pinned ones (the factory included, since its gate is two immutables) do not",
    rec.reproducible.engine && rec.reproducible.crest && rec.reproducible.reachImpl && !rec.reproducible.factory &&
@@ -348,12 +363,37 @@ for (const k of ["schema", "chainId", "band", "deployer", "factory", "factoryVia
                  "shipBuild", "engine", "catalogHash", "coinTemplate", "registry", "price", "timelock", "venues", "gas", "gasTotal", "toolchain", "writtenAt", "block"]) {
   ok(`has ${k}`, k in rec);
 }
-eq("schema", rec.schema, "intact.deployment/2");
+eq("schema", rec.schema, "intact.deployment/" + RECORD_SCHEMA);
+eq("and the schema this tree writes is 3, V2's", RECORD_SCHEMA, 3);
 {
+  /*  A row that starts at schema N is skipped for an older record: one check
+      against the record, and a second, the contradiction, when its target
+      is a salted key whose factory prediction the walk read (venueSeaport
+      is a venue, not a salt).                                             */
+  const skipped = (schema) => PINS.filter((row) => row[3] && row[3] > schema)
+    .reduce((n, row) => n + 1 + (rec.salts[row[2]] ? 1 : 0), 0);
   /* a record of the schema before the Catalog's Nameplate pin is recovered without that pin: its Catalog has no such getter */
   const r1s = await recover(ad1, { ...rec, schema: "intact.deployment/1" }, { out });
-  /* the one row is two checks: its drift against the record and its contradiction with factory.predict(salts.nameplate) */
-  ok("a schema-1 record is recovered without the pin its Catalog predates, and still agrees", r1s.disagreements.length === 0 && r1.checked - r1s.checked === 2, `${r1s.checked} vs ${r1.checked}, ${r1s.disagreements.length} disagreeing`);
+  /* the one row is two checks: its drift against the record and its contradiction with factory.predict(salts.nameplate); V2's rows are skipped with it */
+  ok("a schema-1 record is recovered without the pin its Catalog predates, and still agrees", r1s.disagreements.length === 0 && r1.checked - r1s.checked === skipped(1) && skipped(1) - skipped(2) === 2, `${r1s.checked} vs ${r1.checked}, ${r1s.disagreements.length} disagreeing`);
+  /* a record of schema 2 (the console round, before V2) predates the hub's KEEPSAKE and JOURNAL, the Catalog's V2 world and its third table */
+  const r2s = await recover(ad1, { ...rec, schema: "intact.deployment/2" }, { out });
+  ok("a schema-2 record is recovered without the pins its hub and Catalog predate (V2's ten), and still agrees",
+     r2s.disagreements.length === 0 && PINS.filter((row) => row[3] === 3).length === 10 && r1.checked - r2s.checked === skipped(2),
+     `${r2s.checked} vs ${r1.checked}, ${r2s.disagreements.length} disagreeing`);
+}
+{
+  /* the Seaport row the venue table carries for Base Sepolia (V2, W6): the probe the fixture recorded, and the claims checkVenues makes over a wire */
+  const fx = JSON.parse(fs.readFileSync(path.join(ROOT, "tools/fixtures/seaport-1.6/probe.json"), "utf8"));
+  const row = VENUES[84532];
+  ok("the venue table's Base Sepolia row names Seaport 1.6, its ConduitController and OpenSea's conduit as tools/fixtures/seaport-1.6/probe.json recorded them",
+     low(row.seaport) === low(fx.address) && low(row.conduitController) === low(fx.conduitController.address) &&
+     low(row.openseaConduit) === low(fx.opensea.conduit) && low(row.openseaConduitKey) === low(fx.opensea.conduitKey));
+  ok("with the probe's own date, block and codehashes as its evidence",
+     row.seaportProbed.on === fx.probed && row.seaportProbed.block === fx.block && low(row.seaportProbed.blockHash) === low(fx.blockHash) &&
+     low(row.seaportProbed.codehashes.seaport) === low(fx.codehash) && low(row.seaportProbed.codehashes.conduitController) === low(fx.conduitController.codehash) &&
+     low(row.seaportProbed.codehashes.openseaConduit) === low(fx.opensea.codehash) && SEAPORT_KEYS.join(",") === "seaport,conduitController,openseaConduit");
+  ok("and Sepolia's row names no Seaport (not probed there)", !VENUES[11155111].seaport);
 }
 const written = JSON.parse(fs.readFileSync(recordPath, "utf8"));
 eq("the file on disk is the record (minus the path it was written to)", JSON.stringify({ ...written }), JSON.stringify((({ path: _p, ...r }) => r)(rec)));

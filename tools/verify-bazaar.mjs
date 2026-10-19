@@ -37,13 +37,19 @@
       in ether inside the fill that acts on its Reach from its own
       receive() is refused by validateOrder after the transfers, and the
       same fill with nothing done inside it lands;
+    · (V2 wave 2, W6) the zone reads the hub's own `residueOf` after the
+      transfers, so a seller who writes a trait or a memory, or launches a
+      coin from the token, inside the fill is refused the same way, and a
+      memory written after publishing moves the fingerprint the pin holds;
     · a plain MockERC721 listing with no zone is published and filled;
     · Bridges is written through the real Timelock (queue, seven days,
       execute) and read back, and a direct call is NotTimelock.
 
   It compiles src + test/mocks (the full site: minutes cold, cached by
-  input) and runs tools/build-app.mjs for the shards. The last line is
-  "  N passed, M failed"; the exit code follows it.
+  input) and runs tools/build-app.mjs for the shards. The site comes from
+  tools/site.mjs `deploySite` with its V2 options (W6): the Journal pinned
+  by the hub, the Bazaar on Seaport's probed runtime, Bridges on the
+  Timelock. The last line is "  N passed, M failed"; the exit code follows it.
 
     node tools/verify-bazaar.mjs
 ───────────────────────────────────────────────────────────────────────────*/
@@ -236,7 +242,7 @@ async function main() {
   const A = (f, n) => artifact(out, f, n);
   const c = await Chain.open({ chainId: fx.probe.chainId });
   const me = c.from.toString();
-  const site = await deploySite(c, out, { plan });
+  const site = await deploySite(c, out, { plan, deployJournal: true, deployBazaar: true, deployBridges: true });
   const hub = site.hub;
   ok((await c.codeSize(hub)) > 0, `the real site is deployed: the diamond at ${hub}, the Pool at ${site.pool}, the Timelock at ${site.timelock}`);
 
@@ -257,15 +263,18 @@ async function main() {
 
   /*──────────── the Bazaar and Bridges ────────────*/
   head("the Bazaar and Bridges");
-  const bz = await c.send({ data: A("src/Bazaar.sol", "Bazaar").bytecode + encodeParams("address,address,address", [SEAPORT, hub, site.pool]), label: "Bazaar" });
-  const bazaar = bz.address;
+  const bazaar = site.bazaar;
   const bazaarBytes = (A("src/Bazaar.sol", "Bazaar").deployed.length - 2) / 2;
   const bridgesBytes = (A("src/Bridges.sol", "Bridges").deployed.length - 2) / 2;
-  ok(bz.logs.some((l) => "0x" + Buffer.from(l[1][0]).toString("hex") === TOPIC.deployed),
+  ok(c.getLogs({ address: bazaar, topics: [TOPIC.deployed] }).length === 1,
      `the Bazaar (runtime ${bazaarBytes} B) emits SIP-5's SeaportCompatibleContractDeployed at construction`);
   eq(low(decAddr(await c.read(bazaar, "POOL()", []))), low(decAddr(await c.read(hub, "POOL()", []))), "the Bazaar's POOL is the hub's POOL");
-  const bridges = await c.deploy(A("src/Bridges.sol", "Bridges").bytecode + encodeParams("address", [site.timelock]), "", "Bridges");
-  ok(bridges.length === 42, `Bridges (runtime ${bridgesBytes} B) is deployed against the site's Timelock`);
+  ok(low(decAddr(await c.read(bazaar, "SEAPORT()", []))) === low(SEAPORT) && low(decAddr(await c.read(bazaar, "HUB()", []))) === low(hub),
+     "deploySite's Bazaar names Seaport's canonical address and the site's hub");
+  const bridges = site.bridges;
+  ok(low(decAddr(await c.read(bridges, "TIMELOCK()", []))) === low(site.timelock), `Bridges (runtime ${bridgesBytes} B) is deployed against the site's Timelock`);
+  const journal = site.journal;
+  eq(low(decAddr(await c.read(hub, "JOURNAL()", []))), low(journal), "the hub pins the Journal deploySite put beside it, whose root its residue reads");
 
   /*──────────── the Timelock: the royalty and the door ────────────*/
   head("the Timelock writes the royalty and the door");
@@ -343,6 +352,14 @@ async function main() {
   const end = now + 30n * DAY;
   const idA = await sealed(seller, end);
   const reachA = await reachOf(idA);
+  {
+    /* V2 (W6): the Catalog's probes on a site that landed three of the six V2 satellites (TokenState words 13 and 14) */
+    const st = await c.read(site.catalog, "stateOf(uint256)", [idA]);
+    const rep = decUint(st, 13), abs = decUint(st, 14), landed = 16384n | 32768n | 262144n, unlanded = 8192n | 65536n | 131072n;
+    ok((rep & landed) === landed && (abs & landed) === 0n && (abs & unlanded) === unlanded && (rep & unlanded) === 0n,
+       "Catalog.stateOf reports the Journal, the Bazaar and Bridges this site landed (bits 16384, 32768, 262144) and names the Keepsake, the Studio and Agora absent",
+       `reported ${rep} absent ${abs}`);
+  }
   await relayer.send({ to: reachA, value: ETH });
   const floorsA = [{ asset: ZERO, min: ETH }];
   const pinA = await pinOf(idA, floorsA);
@@ -538,9 +555,58 @@ async function main() {
   ok(threw && (await ownerOf(idW)) === low(sellerC) && decUint(await c.read(coin, "allowance(address,address)", [reachW, attacker])) === 0n,
      "and nothing moved: the token is the seller's and no approval survives");
   await c.exec(sellerC, "arm(address,bytes)", ["0x000000000000000000000000000000000000d1e5", "0x"]);
+  const residueW = await c.read(hub, "residueOf(uint256)", [idW]);
   const fillW = await buyer.send({ to: SEAPORT, data: fillData(oW), value: PRICE, label: "fill (INTACT, through a conduit)" });
   eq(await ownerOf(idW), low(B), "the same fill through the real conduit, with nothing done inside it, lands");
   ok(decBool(await c.read(sellerC, "attempted()", [])), "the seller was called while the fill was under way");
+  eq(await c.read(hub, "residueOf(uint256)", [idW]), residueW, "and the sale moved no term of the hub's residueOf, which validateOrder compared after the transfers");
+
+  /*──────────── V2 (W6): a trait, a memory, a launch, inside the fill ────────────*/
+  head("the hub's residue, read after the transfers: a trait, a memory or a launch inside the fill");
+  const KILN_LAUNCH = "launch(uint256,string,string,uint8,uint256,bytes32,uint256)";
+  const INSCRIBE = "inscribe(address,uint256,uint8,bytes,bytes32)";
+  const inFill = async (salt, act) => {
+    const sc = await c.deploy(A("test/mocks/BazaarFixtures.sol", "BazaarSeller").bytecode, "", "BazaarSeller");
+    const { id } = await mint(c, site, sc);
+    const runX = (to, data) => c.exec(sc, "run(address,uint256,bytes)", [to, 0, data]);
+    await runX(hub, enc("setApprovalForAll(address,bool)", [conduit, true]));
+    await runX(await reachOf(id), enc("seal(uint64)", [end]));
+    const pinX = await pinOf(id);
+    const oX = etherListing({ token: hub, id, seller: sc, price: PRICE, royalty: ROY, receiver, zone: bazaar, zoneHash: pinX.zh, start: now, end, salt, conduitKey });
+    await runX(SEAPORT, enc(SIG.validate, [[orderOf(oX)]]));
+    await relayer.send({ to: bazaar, data: enc(SIG.publish, [orderOf(oX), []]), label: "publish (INTACT, pre-validated)" });
+    const [to, data] = act(id);
+    await c.exec(sc, "arm(address,bytes)", [to, data]);
+    const r = await refusal(oX, "0x", PRICE);
+    let sent = false;
+    try { await buyer.send({ to: SEAPORT, data: fillData(oX), value: PRICE }); sent = true; } catch { /* refused, as simulated */ }
+    return { id, sc, refused: !r.ok && r.data.startsWith(fmSel) && low("0x" + r.data.slice(10, 74)) === low(pinX.fp) && !sent, data: r.data };
+  };
+  const nameWord = "0x" + Buffer.from("renamed inside the fill").toString("hex").padEnd(64, "0");
+  const tr = await inFill(20n, (id) => [hub, enc("setTrait(uint256,bytes32,bytes32)", [id, NAME, nameWord])]);
+  ok(tr.refused, "a seller whose receive() writes a trait inside a conduit fill is refused by validateOrder after the transfers", tr.data);
+  const mm = await inFill(21n, (id) => [journal, enc(INSCRIBE, [hub, id, 0, "0x" + Buffer.from("written inside the fill").toString("hex"), ZERO32])]);
+  ok(mm.refused, "a seller whose receive() writes a memory inside a conduit fill is refused by validateOrder after the transfers", mm.data);
+  const ln = await inFill(22n, (id) => [site.kiln, enc(KILN_LAUNCH, [id, "Inside", "INSIDE", 18, 10n ** 24n, word32(id), 0])]);
+  ok(ln.refused, "a seller whose receive() launches a coin from the token inside a conduit fill is refused by validateOrder after the transfers", ln.data);
+  const untouched = await Promise.all([tr, mm, ln].map(async (x) => (await ownerOf(x.id)) === low(x.sc)));
+  ok(untouched.every(Boolean) &&
+     decUint(await c.read(hub, "getTraitValue(uint256,bytes32)", [tr.id, NAME])) === 0n &&
+     decUint(await c.read(journal, "countOf(address,uint256)", [hub, mm.id])) === 0n &&
+     decUint(await c.read(site.launchpad, "launchRoot(uint256)", [ln.id])) === 0n,
+     "and nothing moved in any of the three: each token is its seller's, with no trait, memory or launch written");
+  {
+    // the memory term at authorizeOrder: written after publishing, it moves the fingerprint the pin holds
+    const idJ = await sealed(seller, end);
+    const pinJ = await pinOf(idJ);
+    const oJ = etherListing({ token: hub, id: idJ, seller: S, price: PRICE, royalty: ROY, receiver, zone: bazaar, zoneHash: pinJ.zh, start: now, end, salt: 23n });
+    const sJ = await signed(seller, oJ);
+    await relayer.send({ to: bazaar, data: enc(SIG.publish, [orderOf(sJ.o, sJ.sig), []]), label: "publish (INTACT, a memory after)" });
+    await seller.exec(journal, INSCRIBE, [hub, idJ, 0, "0x" + Buffer.from("written after the listing").toString("hex"), ZERO32]);
+    const rJ = await refusal(oJ, sJ.sig, PRICE);
+    ok(!rJ.ok && rJ.data === err("FingerprintMoved(bytes32,bytes32)", pinJ.fp, await fpOf(idJ)),
+       "a listing whose holder wrote a memory after publishing is refused at the fill with FingerprintMoved(pinned, live): the Journal's root is in the fingerprint", rJ.data);
+  }
 
   /*──────────── any NFT ────────────*/
   head("a plain NFT, no zone");
@@ -562,7 +628,7 @@ async function main() {
   note(`gas (transactions): publish INTACT ${avg(published.intact)} average over ${published.intact.length}, publish plain ${avg(published.plain)}, ` +
        `fill INTACT ${fillA.gas}, fill INTACT with an open sealed market ${c.gas["fill (INTACT, open market)"]}, ` +
        `fill INTACT through a conduit ${fillW.gas}, fill plain ${fillP.gas}, ` +
-       `accept a bid ${c.gas["accept a bid (INTACT)"]}, Bazaar deploy ${bz.gas}, the door's execute ${set.gas}`);
+       `accept a bid ${c.gas["accept a bid (INTACT)"]}, Bazaar deploy ${c.gas.Bazaar}, the door's execute ${set.gas}`);
   note(`gas (the zone alone, execution, one floor): authorizeOrder ${auth.gas}, validateOrder ${vald.gas}`);
   ok(published.intact.length === 9 && published.plain.length === 1, "nine INTACT orders and one plain order were published in this run");
 

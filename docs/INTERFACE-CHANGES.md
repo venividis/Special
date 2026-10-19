@@ -257,3 +257,51 @@ Declined:
 - `src/lib/Rights.sol` reading an over-wide `ownerOf` word as no holder:
   every V1 satellite compiles this library, so the change would move their
   codehashes against the live records, and the write is refused either way.
+
+## V2 wave 2 — W6: the hub's two V2 terms, `residueOf`, the Bazaar's interface rows (additive)
+
+docs/v2/INTEGRATION.md rows H1, H2, I1 and I2; the unit's report is
+docs/v2/W6-hub.md. Every row below adds; nothing frozen is renamed or
+removed, and the Bazaar's compiled ABI is the same set of entries before
+and after (its two local declarations moved into the interface).
+
+| File | Change | Why | Where it came from |
+|---|---|---|---|
+| `IIntact.sol` | `function residueOf(uint256 id) external view returns (bytes32);` | keccak of every fingerprint term a sale does not move — Core's `lockCount`, `transferSealUntil`, `createdAt`, `launchCount`, `curve`, `nameHash`; the Reach's `state`, `sealedUntil`, `openApprovalsRoot`; `Pool.marketHash(id)`; `Locks.commitmentOf(reach)`; `Launchpad.launchRoot(id)`; `Keepsake.commitmentOf(reach)`; `Journal.rootOf(hub, id)`, in that order, the eight satellite words read once for both hashes. A zone compares it after a sale's transfers; reverts `NoSuchToken` for an unminted id. Served by SiteFacet. | H2 (W3 §8 request 3) |
+| `IIntact.sol` | `function KEEPSAKE() external view returns (address);`, `function JOURNAL() external view returns (address);` | the two new pins, read back like every other (`tools/deploy.mjs` PINS, from record schema 3). Served by CoreFacet. IIntact now declares 96 functions. | H1 |
+| `IBazaar.sol` (`IBazaarEvents`) | `error Unpriced();`, `event SeaportCompatibleContractDeployed();` | were declared in `src/Bazaar.sol` (the Market's `ZeroAddress` precedent); moved, so the interface carries what the contract's ABI already did | I1 (W3 §8 request 1) |
+| `ISeaport.sol` | `interface ISeaportZoneInterface is IERC165` — Seaport 1.6's own `ZoneInterface` mirrored, with `supportsInterface` re-declared, ERC-165 id `0x39dd6933` (computed by solc, asserted in test/Bazaar.t.sol), beside `ISeaportZone` (`0x3822a094`) | the id a Seaport integrator computes; the Bazaar answers both and now names this one from the interface instead of its local copy | I2 (W3 §8 request 2) |
+
+Outside `src/interfaces/`, recorded because a deployer and a reader meet them:
+
+- **`IntactConfig`** (`src/hub/IntactBase.sol`) appends `address keepsake;
+  address journal;` after `timelock`, and `_CONFIG_HASH` covers both: the
+  facets' and the monolith's constructor tuple is 18 fields
+  (`tools/hub.mjs`, `tools/site.mjs` `CONFIG_TYPE`). A V2 hub is a new
+  deployment; no V1 record's hub is touched.
+- **`getStateFingerprint`** appends two terms after `planHash`, each through
+  the existing guarded read: `Keepsake.commitmentOf(account(id))` and
+  `Journal.rootOf(address(this), id)`. An absent satellite contributes zero.
+- **The Bazaar** stores `residueOf(id)` in the pin at `publish` and requires
+  it unchanged in `validateOrder` (after the transfers), beside every floor
+  again; its own two-term `_residue` is gone.
+- **The Catalog** (not an interface; `tools/verify.mjs` holds it to the
+  ABIs): a third rows contract, `CatalogRowsV2(address[7])`, rendered in its
+  own transaction under the letters V keepsake, J journal, B bazaar,
+  b bridges, Z studio, c a collection, F agora; `CatalogText(rows, post, v2)`
+  and its `ROWS_V2()`; `CatalogConfig` appends `keepsake, journal, bazaar,
+  bridges, studio, agora, seaport`; the Catalog's getters of the same names;
+  `World.h` grows to fourteen (KEEPSAKE 12, JOURNAL 13) and `World` gains the
+  other five; `agrees()` reads the hub's two new pins; `stateOf` probes the
+  six satellites under bits 8192 keepsake, 16384 journal, 32768 bazaar,
+  65536 studio, 131072 agora, 262144 bridges (`TokenState.reported` and
+  `absent` are uint32 and hold them); the state block's world names all
+  seven addresses (seaport, a venue, has no bit). `CatalogRows` and
+  `CatalogRowsPost` keep their runtime bytes exactly and render the same
+  shards; `RowTable._index` and `word` are now virtual so the third table
+  names its own letters. The shared hex writer (`Templated._writeHex`)
+  writes an address or a word sixteen bytes at a time, which makes every
+  table's construction cheaper and the state block's world about half
+  what it cost; `CatalogText` joins the three `sel` maps once, at
+  construction, and `services()` no longer copies the rows into a joined
+  buffer first. The documents' bytes are unchanged by both.

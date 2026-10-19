@@ -76,6 +76,10 @@ abstract contract IntactFixture is Test {
     address catalog = address(0xCA7A106);
     address premises = address(0x93E3155);
     address parley = address(0x9A31E7);
+    /// @dev V2 (W6): the hub's Keepsake and Journal pins, codeless here; a
+    ///      suite that needs them real deploys them at predictions (Fingerprint).
+    address keepsake = address(0xC0FFEE5A6E);
+    address journal = address(0x70A2A1);
 
     address alice = address(0xA11CE);
     address bob = address(0xB0B);
@@ -109,7 +113,8 @@ abstract contract IntactFixture is Test {
             band: BAND, bandLo: LO, bandHi: HI,
             steward: address(steward), market: market, roles: address(roles), pool: address(pool),
             parley: parley, launchpad: address(launchpad), locks: address(locks),
-            renderer: address(renderer), catalog: catalog, premises: premises, timelock: timelock
+            renderer: address(renderer), catalog: catalog, premises: premises, timelock: timelock,
+            keepsake: keepsake, journal: journal
         });
     }
 
@@ -138,7 +143,7 @@ abstract contract IntactFixture is Test {
     /*═══════════════════ the partition (DESIGN §3 rows 2–5) ═══════════════════*/
 
     function coreSelectors() internal pure returns (bytes4[] memory s) {
-        s = new bytes4[](51);
+        s = new bytes4[](53);
         uint256 i;
         s[i++] = IIntact.supportsInterface.selector;
         s[i++] = IIntact.name.selector;
@@ -190,6 +195,8 @@ abstract contract IntactFixture is Test {
         s[i++] = IIntact.CATALOG.selector;
         s[i++] = IIntact.PREMISES.selector;
         s[i++] = IIntact.TIMELOCK.selector;
+        s[i++] = IIntact.KEEPSAKE.selector;          // V2 (W6)
+        s[i++] = IIntact.JOURNAL.selector;           // V2 (W6)
         s[i++] = IIntact.intactConfigHash.selector;
         require(i == s.length, "core count");
     }
@@ -234,7 +241,7 @@ abstract contract IntactFixture is Test {
     }
 
     function siteSelectors() internal pure returns (bytes4[] memory s) {
-        s = new bytes4[](15);
+        s = new bytes4[](16);
         uint256 i;
         s[i++] = IIntact.tokenURI.selector;
         s[i++] = IIntact.tokenURIAt.selector;
@@ -250,11 +257,13 @@ abstract contract IntactFixture is Test {
         s[i++] = IIntact.getTraitMetadataURI.selector;
         s[i++] = IIntact.setTrait.selector;
         s[i++] = IIntact.getStateFingerprint.selector;
+        s[i++] = IIntact.residueOf.selector;         // V2 (W6)
         s[i++] = IIntact.coreOf.selector;
         require(i == s.length, "site count");
     }
 
-    /// @dev Every selector of IIntact, in cut order: 93.
+    /// @dev Every selector of IIntact, in cut order: 96 (V2 W6 added
+    ///      KEEPSAKE, JOURNAL and residueOf to the 93).
     function allSelectors() internal pure returns (bytes4[] memory all) {
         bytes4[][4] memory parts = [coreSelectors(), rightsSelectors(), mintSelectors(), siteSelectors()];
         uint256 n;
@@ -391,7 +400,8 @@ abstract contract BundleFixture is IntactFixture {
             band: BAND, bandLo: LO, bandHi: HI,
             steward: address(theSteward), market: address(0), roles: address(0), pool: address(thePool),
             parley: address(theParley), launchpad: address(theLaunchpad), locks: address(theLocks),
-            renderer: address(renderer), catalog: address(0), premises: address(0), timelock: address(theTimelock)
+            renderer: address(renderer), catalog: address(0), premises: address(0), timelock: address(theTimelock),
+            keepsake: address(0), journal: address(0)
         });
     }
 

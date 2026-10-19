@@ -163,11 +163,25 @@ interface ISeaport is ISeaportEvents {
     function name() external view returns (string memory contractName);
 }
 
-/// @notice Seaport 1.6's `ZoneInterface`.
+/// @notice Seaport 1.6's `ZoneInterface`, as frozen in V2 wave 0 (ERC-165 id
+///         0x3822a094: `supportsInterface` is inherited, so not counted).
 interface ISeaportZone is IERC165 {
     /// @notice Before any transfer. Returns `this.authorizeOrder.selector` to admit.
     function authorizeOrder(ZoneParameters calldata zoneParameters) external returns (bytes4 authorizedOrderMagicValue);
     /// @notice After every transfer. Returns `this.validateOrder.selector` to admit.
     function validateOrder(ZoneParameters calldata zoneParameters) external returns (bytes4 validOrderMagicValue);
     function getSeaportMetadata() external view returns (string memory name, Schema[] memory schemas);
+}
+
+/// @notice Seaport 1.6's own `ZoneInterface` (seaport-types 1.6.3,
+///         src/interfaces/ZoneInterface.sol), mirrored: it re-declares
+///         `supportsInterface` inside the interface, so the id a Seaport
+///         integrator computes from it is ISeaportZone's XOR 0x01ffc9a7,
+///         0x39dd6933. Declared so the compiler computes that id rather than
+///         a document stating it. V2 wave 2 (W6), additive.
+interface ISeaportZoneInterface is IERC165 {
+    function authorizeOrder(ZoneParameters calldata zoneParameters) external returns (bytes4 authorizedOrderMagicValue);
+    function validateOrder(ZoneParameters calldata zoneParameters) external returns (bytes4 validOrderMagicValue);
+    function getSeaportMetadata() external view returns (string memory name, Schema[] memory schemas);
+    function supportsInterface(bytes4 interfaceId) external view override returns (bool);
 }
