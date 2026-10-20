@@ -75,7 +75,10 @@
   "kiln": "0xfcfde341ef1e45c0cdc200803ea2c9ccf4e09a52",
   "launchpad": "0x0a99303c4de615cb43cad94db034a19974f9b596",
   "steward": "0xcc699b7e19e26a488f88c43b4dee1f76bdf2dc2d",
-  "premises": "0x379a3d18f5a92063b154705bbdfbefd260a07079"
+  "premises": "0x379a3d18f5a92063b154705bbdfbefd260a07079",
+  "agentCard": "0xb9b6706bb88bc7b3d536ded096c57a92339d1327",
+  "market": "0xd36146d58fedd39e9deac8c4b338617c36819e74",
+  "roles": "0x0fae61cea349b28b7c0557709f594c37cf5dd8dd"
  },
  "codehashes": {
   "factory": "0x338e86d9e93d6db6cd139f63e66df30621ec2d5a267ada4b434c929da6b56298",
@@ -104,7 +107,10 @@
   "kiln": "0x14ba82e8ba6c274cf8c35bf16badb8746df43ea0a307448598b1eea55fad6ab9",
   "launchpad": "0x3977955034d305dc50473b6adb1f0a6d25cd31da45a04bc69b01e78a183d610a",
   "steward": "0x8479a9b12a71ab624106b7f36e8a5146a4fe07567dfc69cdb56e75bf35205704",
-  "premises": "0xebf0c009df34d7d8d2e9c8751a13daad63f27b8fbbff4990bbcf510ef37a1024"
+  "premises": "0xebf0c009df34d7d8d2e9c8751a13daad63f27b8fbbff4990bbcf510ef37a1024",
+  "agentCard": "0x171a3663dd4d9545a98d62120ef8ff2b7b06a186598e2a4a8740585a0c8254e6",
+  "market": "0x1efa21c42970cac1bf0cac4d4b5025ae76e400440ad7cb3fbafcf3008badf5c9",
+  "roles": "0x0ad0b98bce7ef25745174427138c6243ebe53554f2d775a269762b2a9de5a66d"
  },
  "reproducible": {
   "factory": false,
@@ -133,7 +139,10 @@
   "kiln": false,
   "launchpad": false,
   "steward": false,
-  "premises": false
+  "premises": false,
+  "agentCard": false,
+  "market": false,
+  "roles": false
  },
  "placeholders": {
   "market": "0xd36146d58fedd39e9deac8c4b338617c36819e74",
@@ -478,8 +487,8 @@
   "disposition": "the burner holds the admin; rotation or renunciation only through the Timelock's own 7-day queue"
  },
  "burner": {
-  "nonceAfter": "37",
-  "balanceAfter": "29192888289141019"
+  "nonceAfter": "65",
+  "balanceAfter": "2431522259307108"
  },
  "venues": null,
  "gas": {
@@ -515,11 +524,11 @@
   "loadPanel": "10066920",
   "setEngineHash": "68557",
   "freeze": "57857",
-  "agentCard": "456590",
-  "market": "268260",
-  "roles": "243390"
+  "agentCard": "3152954",
+  "market": "1712682",
+  "roles": "1579675"
  },
- "gasTotal": "90647309",
+ "gasTotal": "96124380",
  "gasThisRun": "89679069",
  "toolchain": {
   "solc": "0.8.36+commit.8a079791.Emscripten.clang",
@@ -531,10 +540,10 @@
  },
  "confirmToken": "DEPLOY_INTACT_TO_BASE_SEPOLIA",
  "journal": "../../../../tmp/claude-0/-home-user-Special/fea042d8-0a8c-55df-998e-e398826870e6/scratchpad/run2/84532.journal.json",
- "writtenAt": "2026-10-13T23:11:48.676Z",
- "block": "48082395",
+ "writtenAt": "2026-10-20T23:19:13.167Z",
+ "block": "48385032",
  "recovered": {
-  "checked": 362,
+  "checked": 383,
   "disagreeing": 0
  },
  "satellites": {
@@ -548,7 +557,12 @@
     "by": "0x528203e3775ccb9b0abcb7246fdf6e226a037175"
    },
    "eta": "1792537900",
-   "executed": null
+   "executed": {
+    "tx": "0x45731b9ddbf8f1d7b23bc053e6c756c81cd49b84b39f6f04fdd65eecd4093879",
+    "block": "48385007",
+    "gas": "2696364",
+    "by": "0xc79e8f31d50727a6c5ca30e297964874f2598f02"
+   }
   },
   "market": {
    "via": "timelock",
@@ -560,7 +574,12 @@
     "by": "0x528203e3775ccb9b0abcb7246fdf6e226a037175"
    },
    "eta": "1792537904",
-   "executed": null
+   "executed": {
+    "tx": "0x40a0535d1242c1232eee235b32856ce0a9ccafca03fa75ed086c5d4a850a5f4d",
+    "block": "48385019",
+    "gas": "1444422",
+    "by": "0xc79e8f31d50727a6c5ca30e297964874f2598f02"
+   }
   },
   "roles": {
    "via": "timelock",
@@ -572,7 +591,12 @@
     "by": "0x528203e3775ccb9b0abcb7246fdf6e226a037175"
    },
    "eta": "1792537908",
-   "executed": null
+   "executed": {
+    "tx": "0x314b5866b8d2a2375285cbe05383f3a01d2ce513a3cb42ce8241797ce8d6b2e2",
+    "block": "48385032",
+    "gas": "1336285",
+    "by": "0xc79e8f31d50727a6c5ca30e297964874f2598f02"
+   }
   }
  }
 }

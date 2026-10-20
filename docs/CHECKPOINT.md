@@ -49,6 +49,7 @@ after f93cee9.
 | The Catalog (W6, W15) | `Catalog` 16,840 · `CatalogState` 17,775 · `CatalogRowsV2` 2,819 (71 rows under V J B b Z c F s e; 8.19 M gas to build, 48.8 % of the cap) | `tools/verify.mjs` 258: the drift gate holds each row to its contract's interface, and every one of `/services.json`'s 273 selectors recomputes from its signature |
 | The console (W7–W14, W16, W17) | the shell 22,441 B gzip of 24,000; seven panels of 12,288: swap 11,650 · social 12,114 · launch 12,233 · vault 12,217 · identity 8,350 · agent 4,883 · gallery 12,233 | `tools/verify-site.mjs` 825 through the DOM shim; `tools/verify-console.mjs` 241 in Chromium 141, twelve groups (the light's own among them) |
 | The deployer (W15) | `tools/deploy.mjs`: V2's seven through the Timelock or by the burner (`--v2`); `tools/gas.mjs` in two shapes; `engine/sitepage.mjs`, the Studio's one default site | `tools/verify-recover.mjs` 282; a fork of Base Sepolia, 112 passed, the V2 journey on the chain's own Seaport (5,460,770 gas) |
+| V1's satellites on Base Sepolia | the card `0xb9b6…1327`, the Market `0xd361…9e74` and the Roles `0x0fae…d8dd`, landed on 2026-10-20 at 23:19 UTC through the Timelock's queue, from the worktree pinned at fd18df4 (a queued op is the hash of that tree's initcode), by a separate funded key `0xc79e…8f02`: 2,696,364, 1,444,422 and 1,336,285 gas, 0.000049 ETH | `deployments/84532.json`, 30 contracts, recovered in-run after each landing (383 fields at the last, 0 disagreeing) |
 
 ## The battery
 
@@ -181,16 +182,12 @@ holds every request and its state. The ones that shape the whole:
     - From the worktree pinned at fd18df4, with its source compiled: 362 fields checked, 0 disagreeing,
       0 missing.
 
-    The deployed Engine is V1's and reproduces from fd18df4, where the record was written.
+    The deployed Engine is V1's and reproduces from fd18df4, where the record was written. After the
+    landing the same two readings are 384 fields with the same one drift and one missing, and 383 fields
+    with 0 disagreeing.
 
 ## What remains
 
-- **Landing V1's three queued satellites on Base Sepolia** (the card, the Market, the Roles). A scheduled
-  task fires at 2026-10-20 23:15 UTC from the worktree pinned at fd18df4 (`/home/user/Special-land`). The
-  pin matters because a Timelock op is the hash of the initcode, and the admin key that queued them is
-  destroyed. The landing key (0xc79e8f31d50727a6c5ca30e297964874f2598f02) held 0.002 Base Sepolia ETH at
-  2026-10-20 03:26 UTC. On the chain, the Timelock holds the three ops ready from 23:11:40, 23:11:44 and
-  23:11:48 UTC that day, and the window closes 2026-11-03 23:11 UTC. The ops reproduce from the pinned tree.
 - **A live V2 deployment** needs a fresh nonce-0 burner (`tools/deploy.mjs --v2`, or the rehearsal with
   `tools/testnet.mjs --v2`), funded per the preflight (the deploy budget is 140 M gas with V2).
 - **Open requests**: L14 (`tools/mutations.mjs` adopting a JavaScript mode, W17's driver as its shape) and

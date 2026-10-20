@@ -232,10 +232,15 @@ integration tree (`docs/DEPLOYMENT.md`, "Measured"), the second live run
 and the complete one: the 27 MVB contracts from block 48,082,395 under the
 burner `0x5282…7175` (hub `0x1928…e03e`, Premises `0x379a…7079`, Timelock
 `0xae53…53fb`), recovered in-run with 362 fields and 0 disagreeing;
-`satellites` carries the card, the Market and the Roles QUEUED on the
-Timelock (`queued`, `op`, `eta`; no `executed` yet) — executable from Unix
-time 1,792,537,900, by anyone with `tools/deploy.mjs --chain 84532
---satellite all`, which writes `executed` and recovers the record. Its
+`satellites` carries the card, the Market and the Roles, queued on the
+Timelock that day (`queued`, `op`, `eta`) and landed on 2026-10-20
+(`executed`: the transaction, its block and gas, and the key that sent
+it). The landing ran `tools/deploy.mjs --chain 84532 --satellite all` from
+the tree pinned at fd18df4, whose initcode the ops hash, under a separate
+funded key `0xc79e…8f02`, since anyone may execute a ripe op. The record
+names 30 contracts and recovered in-run with 383 fields and 0 disagreeing.
+From a later head the Engine reads as not reproducible, because the
+deployed Engine is V1's (docs/CHECKPOINT.md, observation 12). Its
 campaign record beside it walks all forty steps (5,816,607 gas; the two
 steward refusals proved by their selectors, since a public chain's clock
 cannot be moved). The burner was destroyed when the run completed, as
