@@ -909,6 +909,24 @@ real wire: `npx hardhat node` (chain 31337, cancun), `tools/deploy.mjs`'s
 CREATE3 run, `tools/gateway.mjs` serving the bytes, and a wallet whose Node
 side signs with a dev key and sends `eth_sendRawTransaction` to the node.
 
+**The twelfth group, `light` (W16).** verify-console's `light` group holds
+the light's own promises in Chromium, with the cast of W7's report:
+- the soul (`#soul`) never starts before `ready`;
+- the soul is a still on the battery's SwiftShader and under reduced
+  motion, and absent without WebGL;
+- nothing loops without `html.alive`;
+- a landing celebrates (`html.landed`, `#spark`) and a revert does not;
+- a Tab walk at 390×844, forward and back, through every room and both
+  sheets, never leaves a control wholly hidden under the bars;
+- the dock's `aria-current` and `tabindex=-1` hold.
+
+This headless Chromium never hides a page, so the hidden-tab sentence
+tells the page it is hidden (`document.hidden`, `visibilityState`, one
+`visibilitychange`), which is everything the shell reads (INVARIANTS
+F9–F13). The viewer's sweep presses each lane's own buttons, counted again
+before each press, so a sheet's ✕ no longer costs a 30 s wait (W7-6). The
+battery's Chromium run is 241 sentences in twelve groups (W16's run).
+
 ## 18. The living-light shell (V2 W7)
 
 V2's shell (docs/V2.md §2; docs/v2/W7-shell.md has every decision) keeps
@@ -926,7 +944,7 @@ pass unchanged but for the ceiling's number. What it adds:
 | `#soul` | the sky: a canvas, created only where WebGL exists and only after `ready`; its palette is the crest's hues and its flow is seeded by the token's fingerprint |
 | `#spark` | the celebration's canvas, created at the first landing |
 | `body[data-room=home\|room\|sheet]` | which surface is in front |
-| `html.alive` | set exactly while the sky's loop runs; never on a software rasteriser, under reduced motion or in a hidden tab. Nothing loops without it (CLAUDE.md) |
+| `html.alive` | set exactly while the sky's loop runs; never on a software rasteriser, under reduced motion or in a hidden tab (the battery tells the page it is hidden, since its Chromium never hides one; §17). Nothing loops without it (CLAUDE.md) |
 | `html.landed` | set during a celebration |
 | `#facts details` | "the proof": `id chain reach grip fingerprint engine catalog block` sit inside it; the glance above it keeps holder, epoch, status, locked, seal, market and name |
 

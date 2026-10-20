@@ -311,6 +311,12 @@ after wave 0: a change is additive only and goes in
   fields keep their client rects, so a box test calls them visible.
   verify-console's `visible()` asks `checkVisibility()` and walks the
   ancestors.
+- **This headless Chromium never hides a page.** A minimised window and a
+  background tab in the same window both stay *visible* and fire nothing,
+  with or without Playwright's anti-backgrounding switches, and CDP has no
+  visibility emulation. A sentence about a hidden tab tells the page:
+  override `document.hidden` and `visibilityState`, and dispatch one
+  `visibilitychange` (W16's light group).
 - **Playwright's service-worker block throws in a sandboxed frame.**
   `serviceWorkers: "block"` installs an init script that reads
   `navigator.serviceWorker` in every frame, and a frame sandboxed without

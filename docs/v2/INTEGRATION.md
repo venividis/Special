@@ -191,6 +191,19 @@ From W17's requests, in the integration:
 - **L14 (request 6).** A JavaScript mode for `tools/mutations.mjs` stays
   open. W17's driver is the shape to adopt.
 
+W16, the light's own sentences, merged as 64b8ee5 (W16-light.md):
+- verify-console gains a twelfth group, `light`, with 15 sentences for
+  F9–F13.
+- 26 one-token mutants of engine/app.html and app.css ran over six
+  passes; every one was killed, and every light sentence fails under at
+  least one single-character mutant.
+- The viewer's sweep presses each lane's own buttons, without the 30 s
+  wait (W7-6).
+- W17's two Chromium items are in: the orb sentence, and the copy
+  button's wait made soft.
+- The unit's run: verify-console 241 passed, 0 failed (344 s).
+- Its walk measured two gaps inside the sheets, now L21 and L22.
+
 Requests from the lanes:
 
 | # | Request | From | Decision | State |
@@ -216,6 +229,8 @@ Requests from the lanes:
 | W12-8 | One source for the Studio's default site, read by build-app and verify-studio | W12 | yes: W15 builds `engine/sitepage.mjs` and build-app's optional inline marker; the integrator makes the three edits that must land together (launch.js carries the marker, verify-studio imports the module, verify-site's launch group reads it) at W15's merge | done: W15 (252996c) and f93cee9. The launch panel is the same bytes (12,233 B, keccak 0x3e1070f2…); verify-studio 47 passed; verify-site's launch group 116 passed |
 | L19 | `tools/verify-bazaar-fork.mjs` spawns its fork on 8549, the port W15's testnet fork used: give it `--port`, or move it, so the two cannot collide | W15 | yes, with the next touch of W3's file | open |
 | L20 | The lanes declare the rows W15 added with `ui.rows` instead of computing selectors or hashing keys themselves (the vault's `keepsake.*`, social's seven Agora reads, launch's `collection.*`, the gallery's `seaport.*` and `erc721.*`) | W15 | yes, with the next fix to each lane | open |
+| L21 | Inside a sheet Tab reaches the dock's Home and room links under it: 24 focuses across both sheets, forward and back, at 390×844. Hide them while a sheet is open (`visibility:hidden` leaves the tab order, measured) | W16 | yes, with the next shell fix: it moves the tab order, so it wants its own sentence in the light group | open |
+| L22 | Inside a sheet a control near the foot takes focus under the ticker: 6 focuses. Give the sheet its own `scroll-padding-bottom`, as html has one; the drawer from 760 px wants measuring too | W16 | yes, with L21 | open |
 | W7-7 | the Grip's copy button in a `data:` frame | W7 | yes | done in W10 |
 | W7-5 | a seventh panel | W7 | yes | done in W8: the Engine holds up to eight |
 
@@ -262,10 +277,10 @@ The shell (W7, merged d2838bd):
 |---|---|---|---|---|
 | W7-1 | `CONSOLE.md`: the new shell ids, the dock, the slab's order, the landing sentence, the footer, the numbers | W7 | yes | done: §18 |
 | W7-2 | `CLAUDE.md`: ceilings 24,000 / 12,288; the soul in the battery; nothing loops without `html.alive`; Home outside `#lanes`; `scroll-padding` | W7 | yes | done |
-| W7-3 | INVARIANTS F2 rewritten from W7's derivation; six rows for the light | W7 | yes | done: F2 live with the new figures; F9–F14 pending (W7) |
+| W7-3 | INVARIANTS F2 rewritten from W7's derivation; six rows for the light | W7 | yes | done: F2 live with the new figures; F9–F13 cite W16's light group since 64b8ee5, pending until the battery runs it; F14 cites the suites |
 | W7-4 | DESIGN §5.5: the ceilings | W7 | yes | done |
 | W7-5 | A seventh panel (the Engine's `PANELS = 6`, Premises' and the Catalog's loops, the panel lists in build-app, site and gas) | W7 | yes, with the Gallery lane | done: W8 |
-| W7-6 | `verify-console.mjs` B′: `textContent()` without a timeout waits 30 s after a sheet's ✕ closes it | W7 | yes | open |
+| W7-6 | `verify-console.mjs` B′: `textContent()` without a timeout waits 30 s after a sheet's ✕ closes it | W7 | yes | done: W16. The sweep presses each lane's own buttons, counted again before each press; the viewer group falls from 43.1 s to 11.5 s |
 | W7-7 | `vault.js`: the Grip's copy button throws in a `data:` frame (no `navigator.clipboard`) | W7 | yes, with the Vault lane | done: W10 (row K32, pending) |
 | W7-8 | Lanes: an endless animation waits for `html.alive` | W7 | yes: in every lane's brief | done: in every lane's brief; the battery's sentence for it is F10's, pending |
 
