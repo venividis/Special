@@ -96,9 +96,12 @@ tree:
   selftest 60.
 - Each item's sentence failed with the item undone in a scratch copy.
 
-Re-run on the merged head, before the documents: build-app (the same
-bytes), selftest 60 passed, verify 253 passed, static-audit passed,
-invariants-check 225 passed.
+Re-run on the merged head (a0a6c7f), before the documents:
+- build-app: the same bytes;
+- selftest 60 passed; verify 253 passed;
+- verify-site **818 passed, 0 failed**;
+- verify-console **225 passed, 0 failed** (Chromium 141);
+- static-audit passed; invariants-check 225 passed.
 
 Requests from the lanes:
 
