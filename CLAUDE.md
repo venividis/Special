@@ -240,8 +240,10 @@ after wave 0: a change is additive only and goes in
   size limit lifted, so the gate is `compile.mjs`, not the test runner.
 - **A mutated `src/` poisons every compile in the tree.** `tools/mutations.mjs`
   writes over `src/Parley.sol`/`src/Postage.sol` and restores them in a
-  `finally` and on SIGINT; run nothing else that compiles in that checkout
-  while it runs, or run it in a copy (see below).
+  `finally`, on SIGINT and on SIGTERM. A SIGKILL, or a container restart,
+  restores nothing. Run nothing else that compiles in that checkout while
+  it runs, or run it in a copy (see below). A scratch driver of your own
+  restores on SIGTERM too, and proves the restore by sha256 (W17).
 - **The compile cache is keyed by the whole input.** A one-character change
   anywhere under `src/` or `test/` is a full recompile; the forge runner's
   input (`src` + `test` + `lib/forge-std/src`) is the twenty-minute one.

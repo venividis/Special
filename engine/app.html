@@ -502,7 +502,9 @@ window.INTACT.$lib = { keccak256, khex, kbytes, selector, checksum, encodeCall, 
   const decSeq = (ts, h, base) => { let p = base; return ts.map(t => { const dyn = isDyn(t), v = decVal(t, h, dyn ? base + Number(W(h, p)) : p); p += dyn ? 32 : size(t); return v; }); };
   function decVal(t, h, at) {
     const m = arr(t);
-    if (m) { const n = m[2] ? +m[2] : Number(W(h, at)); return decSeq(Array(n).fill(m[1]), h, m[2] ? at : at + 32); }
+    /* a length word is a claim the bytes must hold: an array longer than what follows it is no answer, never an
+       array of that length (W17: a decode at a wrong offset asked for one and ran out of memory) */
+    if (m) { const n = m[2] ? +m[2] : Number(W(h, at)); if (!m[2] && n * (isDyn(m[1]) ? 32 : size(m[1])) > h.length / 2 - at - 32) throw Error("an array longer than its bytes"); return decSeq(Array(n).fill(m[1]), h, m[2] ? at : at + 32); }
     if (t[0] === "(") return decSeq(inner(t), h, at);
     if (t === "bytes" || t === "string") { const b = h.substr(at * 2 + 64, Number(W(h, at)) * 2); return t === "bytes" ? "0x" + b : new TextDecoder().decode(L.fromHex(b)); }
     const w = h.substr(at * 2, 64).padEnd(64, "0"), v = BigInt("0x" + w);

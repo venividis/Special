@@ -308,7 +308,7 @@ export async function run(t, ctx0) {
     const js = Buffer.from("javascript:alert(1)").toString();
     W.answer(MOCK, sel("tokenURI(uint256)"), () => "0x" + encodeParams("string", ["data:application/json," + encodeURIComponent(JSON.stringify({ name: "<b>bold</b>", image: js, animation_url: js }))]));
     await repaint(page);
-    t.ok(T(page, "#gallery-name") === "<b>bold</b>" && !L(page, "#gallery-name b") && !LL(page, "#lane-gallery a").some((x) => /^javascript:/i.test(x.getAttribute("href") || "")) && !L(page, "#gallery-art img"),
+    t.ok(T(page, "#gallery-name") === "<b>bold</b>" && !L(page, "#gallery-name b") && !LL(page, "a").some((x) => /^javascript:/i.test(x.getAttribute("href") || "")) && !L(page, "#gallery-art img"),
       "a hostile name is text and a javascript: image is neither drawn nor linked", T(page, "#gallery-art"));
     /* W17: the sentence above looks for a javascript: anchor under `#lane-gallery #lane-gallery a`, a selector no element
        matches, and a lane that printed the hostile URI and linked it as well passed it. This one reads the lane itself */

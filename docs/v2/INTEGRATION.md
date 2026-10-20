@@ -161,6 +161,36 @@ Pending, each for a named reason:
 
 `node tools/invariants-check.mjs`: 309 passed, 0 failed.
 
+W17, the mutation evidence, merged as f855d1d (W17-mutants.md):
+- 100 distinct one-token mutants of the console, run in three scratch
+  copies, all killed on the suites as committed.
+- The five first-pass survivors and a sixth from the third pass each gave
+  a sentence the claim lacked, in the Gallery's and the Trade lane's
+  groups.
+- Every pending console row now has a mutant that fails a sentence it
+  cites, by name, and the ledger records them.
+- The rows flip when the battery runs W17's sentences.
+- The unit's runs: verify-site 824 passed, verify-console's gallery group
+  8, invariants 225, 0 failed.
+
+From W17's requests, in the integration:
+- **The decoder bound (request 3).** The shell's `decVal` refuses a
+  dynamic array whose length word claims more than the bytes after it
+  hold. The boot group's new sentence *"a calldata whose array claims more
+  elements than its bytes hold draws no argument row, and the slab still
+  opens"* holds it, row F28. The bound skipped for dynamic arrays in a
+  copy fails it: 139 passed, 1 failed. Shell bytes: 22,441 of 24,000.
+- **E3's selector (request 4).** The check now reads the lane's anchors,
+  `LL(page, "a")`, where it matched nothing. The gallery group reads 55
+  passed.
+- **SIGTERM (request 5).** `tools/mutations.mjs` already restores on it;
+  CLAUDE.md's trap now says so, and says a SIGKILL restores nothing.
+- **W16's file (request 2).** The orb in Chromium, and a soft wait before
+  F25's first sentence, are put to W16, which still owns
+  `tools/verify-console.mjs`.
+- **L14 (request 6).** A JavaScript mode for `tools/mutations.mjs` stays
+  open. W17's driver is the shape to adopt.
+
 Requests from the lanes:
 
 | # | Request | From | Decision | State |

@@ -912,6 +912,16 @@ export async function run(t, ctx) {
     await ui.propose({ to: weth, key: "erc20.transfer", args: [site.pool, 1n], sentence: "x" }); await page.settle();
     const r2 = !slabOpen() && /erc20\.transfer: not declared by this panel/.test(tick());
     t.ok(r1 && r2, "a signature that does not name the bytes is a panel bug", tick());
+    /* the integration, after W17 §6.2: a slab's rows are decoded from its calldata, and a length word that claims more
+       elements than the bytes hold is no row, never an array of that length (a decode at a wrong offset once asked
+       the shell for one and ran node out of memory) */
+    const LONG = "f(uint256[])";
+    /* the promise resolves when the slab closes, so it is held, the slab read, Not now pressed, and then awaited */
+    const longSlab = ui.propose({ to: weth, data: sel(LONG) + encodeParams("uint256,uint256", [32n, 1n << 20n]), sig: LONG, lines: [["Claims", "a million numbers"]], sentence: "x" });
+    await page.until(() => slabOpen() && !!page.$("#cslab [data-gas]") && page.text("#cslab [data-gas]") !== "estimating…", 80);
+    const longRows = page.$$("#cslab [data-arg]").length, longOpen = slabOpen();
+    page.click(page.$("[data-no]")); await page.settle(); await longSlab;
+    t.ok(longOpen && longRows === 0, "a calldata whose array claims more elements than its bytes hold draws no argument row, and the slab still opens", `open ${longOpen} rows ${longRows}`);
     t.ok(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML, by anybody, all run — and no script threw (end of the boot group)", page.errors.map((e) => e.message).join("; "));
     page.close();
   }
