@@ -154,7 +154,7 @@ export async function run(t, ctx0) {
     a((await GET([".well-known", "nothing.json"])).status === 404 && (await GET(["llms.txt", "x"])).status === 404 && (await GET(["token", "4000", "llms.txt"])).status === 404,
       "A12 the agent routes still 404 for nonsense: an unknown well-known file, a second segment on llms.txt, an unminted token's llms");
     const st = await c.read(site.catalog, "stateOf(uint256)", [1]);
-    a((decUint(st, 13) & 4096n) !== 0n && (decUint(st, 14) & 4096n) === 0n, "A13 Catalog.stateOf reports the card (bit 4096 set, not absent): manifestHash answered", `reported ${decUint(st, 13)} absent ${decUint(st, 14)}`);
+    a((decUint(st, 13) & 4096n) !== 0n && (decUint(st, 14) & 4096n) === 0n, "A13 Catalog.stateOf reports the card (bit 4096 set, not absent): its HUB() answered", `reported ${decUint(st, 13)} absent ${decUint(st, 14)}`);
     /* the hash moves with the facts an agent must re-read: a pause flips active */
     const h1 = await mHash(1);
     await c.exec(hub, "pause(uint256)", [1], { label: "pause" });

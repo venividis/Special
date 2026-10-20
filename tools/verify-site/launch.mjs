@@ -903,8 +903,8 @@ export async function run(t, ctx) {
     await mint(vc, vs, ME2); await mint(vc, vs, ME2);
     const P1 = (BigInt(HUBA) << 96n) | 1n, P2 = (BigInt(HUBA) << 96n) | 2n, PRICE = WAD / 100n;
     const vtopic = (s) => kec(Buffer.from(s, "utf8"));
-    /* W4's own default site, read out of tools/verify-studio.mjs and run apart from the panel, so "lifted byte for byte" is a comparison */
-    const W4 = vm.runInNewContext("(" + ctx.fs.readFileSync(ctx.path.join(ctx.ROOT, "tools/verify-studio.mjs"), "utf8").match(/\nfunction sitePage\(name\) \{[\s\S]*?\n\}\n/)[0].trim() + ")");
+    /* W4's default site, read out of engine/sitepage.mjs (the one source build-app inlines into the panel and verify-studio imports) and run apart from the panel, so "lifted byte for byte" is a comparison */
+    const W4 = vm.runInNewContext("(" + ctx.fs.readFileSync(ctx.path.join(ctx.ROOT, "engine/sitepage.mjs"), "utf8").match(/\nexport function sitePage\(name\) \{[\s\S]*?\n\}\n/)[0].trim().replace(/^export /, "") + ")");
     const saltOf = (name, T) => "0x" + Buffer.from(name, "utf8").toString("hex").slice(0, 48).padEnd(48, "0") + BigInt(T).toString(16).padStart(16, "0");
     const predict = async (name, T) => decAddr(await vc.read(ST, "predict(uint256,bytes32)", [P1, saltOf(name, T)]));
     const F = (page, n) => L(page, `#launch-collection-form [name=${n}]`);
