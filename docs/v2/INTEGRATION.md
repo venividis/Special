@@ -204,6 +204,81 @@ W16, the light's own sentences, merged as 64b8ee5 (W16-light.md):
 - The unit's run: verify-console 241 passed, 0 failed (344 s).
 - Its walk measured two gaps inside the sheets, now L21 and L22.
 
+The battery on the final head, `node tools/check.mjs --keep-going` on
+e0341e3 (W16 and W17 merged, the decoder bound, E3's selector and the
+documents): **check: green — all 33 steps passed in 25 m 47 s**. No
+Solidity changed after f93cee9, so the compile cache answered both forge
+steps.
+
+| Step | Passed | Step | Passed |
+|---|---|---|---|
+| compile | 46 | verify:steward | 91 |
+| facets | 96 | verify:timelock | 35 |
+| facets:selftest | 8 | verify:premises | 64 |
+| selftest | 60 | verify:plate | 228 |
+| build | 22,441 B of 24,000 | verify:keepsake | 81 |
+| forge:monolith | 643 (4 m 25 s) | verify:journal | 48 |
+| forge:diamond | 643 (5 m 23 s) | verify:bazaar | 67 |
+| gas | 124 probes | verify:studio | 47 |
+| gas:selftest | 45.60 M over 16.78 M | verify:agora | 53 |
+| verify | 258 | fuzz | 11 properties |
+| verify:site | 825 | verify:findings | 36 |
+| mcp | 29 | agents | 6,813 (seed 465384428) |
+| verify:pool | 144 | static-audit | 14 |
+| verify:vault | 184 | static-audit:selftest | 5 |
+| verify:parley | 81 | verify:recover | 282 |
+| verify:launch | 307 | verify:console | 241 |
+| | | invariants | 309 |
+
+0 failed in every step.
+
+On that battery the ledger flips its last 34 rows:
+- W16's F9–F13, each behind the one-character mutants of `engine/app.html`
+  and `app.css` its status names (W16 §2);
+- W17's F20–F25, K29, K31, S24, S26–S28, N18 and Y1–Y11, each behind the
+  one-token mutants its status names (W17 §3), F25 behind W10's c1 as well;
+- the integration's F28, behind the decoder bound skipped in a copy;
+- F14 and F16–F18, behind the integration's own mutants below.
+
+F14 and F16–F18 had no mutant aimed at them. The integration ran seven
+one-token mutants in scratch copies of e0341e3, each written over its file,
+run, and restored byte for byte (sha256). The forge runs used a copy
+pruned to `test/Premises.t.sol`; the rest used full copies.
+- **S1** (F14), `engine/app.html`: `e !== open.epoch` → `e < open.epoch`,
+  the epoch re-read before Sign letting a moved epoch through.
+  - The shim's swap group fails *"the epoch is re-read immediately before
+    Sign, and a changed epoch closes the slab unsent"* (38 passed, 2 failed).
+  - Chromium's fails *"the epoch is re-read immediately before Sign, and a
+    sale landed under the open slab closes it unsent"* (18 passed, 3 failed).
+- **S2** (F14), `engine/app.html`: the footer's live check `!==` → `===`.
+  The boot group fails *"the console verifies against the chain, and names
+  the engine"*, *"a chain that names another hash is told so in red"* and
+  *"the address you opened anchors the sentence"* (137 passed, 3 failed).
+- **E1** (F16), `src/Engine.sol`: freeze's gap walk `i < PANELS` → `i < n`.
+  It fails `test_theEngineHoldsEightLanesAndFreezesOnlyAPrefixWithoutAGap`
+  (16 passed, 1 failed).
+- **C1** (F17), `src/Catalog.sol`: the panel map's `i < n` → `i < 6`.
+  - verify.mjs fails *"the state's panel map names exactly the lanes the
+    Engine holds, in slot order (the Gallery seventh)"* and *"panels.gallery
+    is the pinned hash"* (256 passed, 2 failed).
+  - The suite fails both Gallery tests (15 passed, 2 failed).
+- **P1** (F17), `src/Premises.sol`: the manifest's `i < np` → `i < 6`.
+  - verify.mjs fails *"the panel route hashes the 7 lanes' pins together, in
+    slot order"* and *"panelHashes"* (256 passed, 2 failed).
+  - The suite fails `test_theGalleryIsTheSeventhLaneAndIsServedLikeTheRest`
+    (16 passed, 1 failed).
+- **R1** (F17), `src/Premises.sol`: the panel router's `i < n` → `i < 6`.
+  - verify.mjs ends at `/panel/gallery.js`, whose 404 body is no gzip
+    (exit 1, no summary: its panel loop gunzips before it reads the status).
+- **J1** (F18), `tools/recover-record.mjs`: `i < lanes.length` → `i < 7`,
+  the recovery walking seven lanes whatever the record lists. verify-recover
+  exits 1 at the six-lane band: the deployer runs the same recovery before
+  it publishes, and refuses, naming `engine.panelHashes.undefined`.
+
+`node tools/invariants-check.mjs` on the flipped ledger: 377 passed, 0
+failed. All 182 lettered rows and the twelve foundation paragraphs are
+live.
+
 Requests from the lanes:
 
 | # | Request | From | Decision | State |

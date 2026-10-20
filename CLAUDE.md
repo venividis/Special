@@ -19,7 +19,7 @@ npm run forge                         # tools/forge.mjs: test/*.t.sol on @ethere
 node tools/forge.mjs --match Parley   # one suite (or one test, or one file) while iterating
 INTACT_IMPL=diamond node tools/forge.mjs   # the suite on the other hub build (monolith is the default)
 node tools/verify-site.mjs --group vault   # one console lane through the DOM shim, ≈ 30 s
-npm run check                         # tools/check.mjs: the whole battery, DESIGN §13's order, ≈ 20–40 min on 4 cores
+npm run check                         # tools/check.mjs: the whole battery, DESIGN §13's order, ≈ 26 min warm, ≈ 65 min cold, on 4 cores
 node tools/check.mjs --only verify:pool,invariants   # a PARTIAL run (never called green)
 npm run mutations                     # tools/mutations.mjs: the E1/E3 mutation gate (not in check; minutes per mutation)
 npm run drive                         # tools/testnet-drive.mjs: the console journey over a wire (hardhat on 8546, the gateway on 8081)
@@ -209,8 +209,8 @@ after wave 0: a change is additive only and goes in
   standing; the Bazaar's zone compares it after a fill's transfers, so a
   seller paid inside a fill cannot move the token's state. Records are at
   schema 3, and the V2 pins skip an older record.
-- **The shell is 1,600 B under its gzip ceiling** (22,400 of 24,000,
-  measured on the merged head after W14, a0a6c7f). Of the panels' 12,288
+- **The shell is 1,559 B under its gzip ceiling** (22,441 of 24,000,
+  measured in the final battery on e0341e3, after the decoder bound). Of the panels' 12,288
   each, launch and gallery are at 12,233 (55 B under), vault 12,217, social
   12,114, swap 11,650, identity 8,350 and agent 4,883. Any fix to launch,
   gallery or vault pays in cuts first. In a panel that repeats `function(`
