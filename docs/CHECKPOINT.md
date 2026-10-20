@@ -130,7 +130,8 @@ holds every request and its state. The ones that shape the whole:
   questions).
 - **Off-chain art is a link, never fetched.** The console contacts no host; a token's own HTML runs in a
   sandbox of `allow-scripts` alone under a CSP that refuses every request.
-- **`src/lib/Rights.sol` is unchanged**, so V1's deployed codehashes still reproduce.
+- **`src/lib/Rights.sol` is unchanged**, so the deployed Reach and Grip still reproduce from this tree. The
+  deployed V1 Engine does not, since W8 gave the Engine eight lanes (observation 12).
 - **A third rows table, nine letters.** V2's rows live in `CatalogRowsV2`, its own transaction. Every capital
   letter is a contract now, so a new family takes a lower case beside what it resembles.
 - **The Engine holds up to eight lanes** as a loaded prefix; the Gallery is the seventh.
@@ -173,14 +174,23 @@ holds every request and its state. The ones that shape the whole:
     record ends the run at the six-lane deploy, by the field's name (the integration's J1).
 11. **The sheets' focus walk** measured two gaps inside the sheets, L21 and L22. Outside the sheets no focused
     control is ever partly covered (F12).
+12. **A V1 record is recovered from the tree that wrote it.** Base Sepolia's live record, read on
+    2026-10-20 at 03:30 UTC, gives two results:
+    - From this head: 363 fields checked, 1 disagreeing (`reproducible.engine: record true · chain false`),
+      1 missing (`catalogRowsV2`, which the tool calls not fatal: a chain may predate a contract).
+    - From the worktree pinned at fd18df4, with its source compiled: 362 fields checked, 0 disagreeing,
+      0 missing.
+
+    The deployed Engine is V1's and reproduces from fd18df4, where the record was written.
 
 ## What remains
 
 - **Landing V1's three queued satellites on Base Sepolia** (the card, the Market, the Roles). A scheduled
   task fires at 2026-10-20 23:15 UTC from the worktree pinned at fd18df4 (`/home/user/Special-land`). The
   pin matters because a Timelock op is the hash of the initcode, and the admin key that queued them is
-  destroyed. The landing key (0xc79e8f31d50727a6c5ca30e297964874f2598f02) needs about 0.001 Base Sepolia
-  ETH, and the window closes 2026-11-03 23:11 UTC.
+  destroyed. The landing key (0xc79e8f31d50727a6c5ca30e297964874f2598f02) held 0.002 Base Sepolia ETH at
+  2026-10-20 03:26 UTC. On the chain, the Timelock holds the three ops ready from 23:11:40, 23:11:44 and
+  23:11:48 UTC that day, and the window closes 2026-11-03 23:11 UTC. The ops reproduce from the pinned tree.
 - **A live V2 deployment** needs a fresh nonce-0 burner (`tools/deploy.mjs --v2`, or the rehearsal with
   `tools/testnet.mjs --v2`), funded per the preflight (the deploy budget is 140 M gas with V2).
 - **Open requests**: L14 (`tools/mutations.mjs` adopting a JavaScript mode, W17's driver as its shape) and
