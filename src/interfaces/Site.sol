@@ -38,7 +38,9 @@ struct TokenState {
     bytes32 fingerprint;
     /// @dev bit per satellite actually answered: 1 reach, 2 pool, 4 parley,
     ///      8 postage, 16 locks, 32 launchpad, 64 steward, 128 router,
-    ///      256 market, 512 roles, 1024 keys, 2048 nameplate, 4096 agentcard
+    ///      256 market, 512 roles, 1024 keys, 2048 nameplate, 4096 agentcard,
+    ///      and V2's six (W6): 8192 keepsake, 16384 journal, 32768 bazaar,
+    ///      65536 studio, 131072 agora, 262144 bridges
     uint32  reported;
     /// @dev U7 addition, appended: the same bits, set where `extcodesize`
     ///      was zero. `reported` clear and `absent` clear is a contract that
@@ -52,7 +54,10 @@ interface IEngine {
     function bodyBytes() external view returns (bytes memory);
     function panel(uint256 i) external view returns (bytes memory);          // gzip bytes of panel i
     function panelHash(uint256 i) external view returns (bytes32);           // keccak of the inflated panel
-    function panelCount() external pure returns (uint256);                   // 6
+    /// @dev The loaded prefix: six in V1, seven with V2's Gallery, at most
+    ///      the Engine's PANELS (8). `view` since the integration (L8): the
+    ///      Engine counts the slots it holds, which is a read of its storage.
+    function panelCount() external view returns (uint256);
     function inflatedSize() external view returns (uint32);
     function engineHash() external view returns (bytes32);                   // keccak of the inflated shell
     function frozen() external view returns (bool);

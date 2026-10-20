@@ -83,8 +83,8 @@ const ARTIFACT = {
   keys: "KeyRegistry", roster: "Roster", postage: "Postage", parley: "Parley", locks: "Locks", pool: "Pool", kiln: "Kiln",
   launchpad: "Launchpad", router: "Router", steward: "Steward", premises: "Premises",
   market: "Market", roles: "Roles", agentCard: "AgentCard", nameplate: "Nameplate", custodian: "LPCustodian",
-  /// V2 (W6): placeholders from schema 3, recovered by code once each lands
-  keepsake: "Keepsake", journal: "Journal", bazaar: "Bazaar", bridges: "Bridges", studio: "Studio", agora: "Agora"
+  /// V2 (W6): placeholders from schema 3, recovered by code once each lands; and (W15) the Keepsake's art
+  keepsake: "Keepsake", journal: "Journal", bazaar: "Bazaar", bridges: "Bridges", studio: "Studio", agora: "Agora", keepsakeArt: "KeepsakeArt"
 };
 
 /**
@@ -125,7 +125,9 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
       say(`reproducible.${key}`, rec.reproducible?.[key] ?? "(unrecorded)", same);
     }
   }
-  const missing = RECORD_KEYS.filter((k) => !C[k] && !(k === "router" && !rec.venues) && !(k.endsWith("Facet") && rec.shipBuild?.build === "monolith"));
+  /// the Router is expected where the venue row names a Uniswap venue (a row may name only Seaport, W15)
+  const routed = Boolean(rec.venues && (rec.venues.swapRouter02 || rec.venues.poolManager));
+  const missing = RECORD_KEYS.filter((k) => !C[k] && !(k === "router" && !routed) && !(k.endsWith("Facet") && rec.shipBuild?.build === "monolith"));
 
   /*── the factory, its gate, and every salt three ways ──*/
   if (rec.factoryVia?.create) say("factory = CREATE(deployer, nonce)", rec.factory, predictCreate(rec.deployer, rec.factoryVia.create.nonce));
@@ -140,7 +142,10 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
   /*── a satellite that landed after the MVB (deploy.mjs `deploySatellite`):
        the record carries the Timelock op that queued it and the transaction
        that landed it; the queue must be clear now, and the factory's own
-       `Deployed` event at the recorded block must name this address ──*/
+       `Deployed` event at the recorded block must name this address. A V2
+       contract the burner landed in a fresh deployment (`--v2`, W15) is
+       recorded `via: "burner"` with no op: its evidence is the same event at
+       the block of the transaction that made it ──*/
   const satelliteEvidence = async (key, salt, predicted) => {
     const s = rec.satellites?.[key];
     if (!s) { checked++; D.push({ field: `satellites.${key}`, want: "the queue op and the transaction that landed it", have: "(unrecorded)", kind: "drift" }); return; }
@@ -153,6 +158,9 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
       } catch { logs = null; }
       const named = (logs || []).map((l) => "0x" + String(l.topics[2]).slice(26).toLowerCase());
       say(`satellites.${key}.executed.block: the factory's Deployed event names it`, predicted, named.length === 1 ? named[0] : named.length ? `(${named.length} events)` : NO);
+    } else {
+      /// a burner landing has no op to check (W15): without its block nothing would hold it to the factory's event
+      checked++; D.push({ field: `satellites.${key}.executed.block`, want: "the block of the transaction that landed it", have: "(unrecorded)", kind: "drift" });
     }
   };
   for (const key of [...SALTED, ...PLACEHOLDERS]) {

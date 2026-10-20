@@ -20,7 +20,7 @@ import {IBazaar} from "./interfaces/IBazaar.sol";
 import {IBridges} from "./interfaces/IBridges.sol";
 import {IStudio} from "./interfaces/IStudio.sol";
 import {IAgora} from "./interfaces/IAgora.sol";
-import {IEngine, IAgentCard, TokenState} from "./interfaces/Site.sol";
+import {IEngine, TokenState} from "./interfaces/Site.sol";
 import {SSTORE2} from "./lib/SSTORE2.sol";
 import {LibNum} from "./lib/LibNum.sol";
 import {Web} from "./lib/Web.sol";
@@ -30,6 +30,16 @@ import {Web} from "./lib/Web.sol";
 ///      in `src/interfaces/` because nothing else asks it.
 interface INameplateProbe {
     function APEX() external view returns (bytes32);
+}
+
+/// @dev The question the Catalog asks the agent card (U17, `src/AgentCard.sol`)
+///      since the integration (W15): its `HUB()`, an immutable, which answers
+///      whether the card is there exactly as `manifestHash(id)` did — the card
+///      reads the hub and the catalog through guarded calls and never reverts
+///      — without rendering the registration to say so. Declared here because
+///      `IAgentCard` (Site.sol) does not carry the getter and nothing else asks.
+interface IAgentCardProbe {
+    function HUB() external view returns (address);
 }
 
 /*═══════════════════════════════════════════════════════════════════════════
@@ -124,7 +134,15 @@ interface INameplateProbe {
   collection (a per-address family, as C is a coin, zero in the table's
   addresses), F agora (the forum). B, F, J, V and Z were the free capitals
   of HPRYTSKNLCOWXEGQMDAUI; the two lower-case letters extend the
-  alphabet, and `word()` names every letter of both.
+  alphabet, and `word()` names every letter of both. The integration (W15)
+  adds the reads the lanes asked for and two more lower-case letters:
+  s Seaport, a venue whose rows carry the venue table's address, and e any
+  ERC-721, a per-address family as E is (docs/v2/W15-deploy.md).
+
+  The agent card's probe is its `HUB()` since the integration too, an
+  immutable like the V2 six: `manifestHash(id)` rendered the whole
+  registration to say the card answers, and every face that reads stateOf
+  paid for it.
 
   ── the escaping rule ──
 
@@ -448,7 +466,8 @@ abstract contract RowTable is Templated {
         M market, D roles, A the agent card, U the LP custodian, I the
         nameplate; and, in V2 (rendered by the third table, CatalogRowsV2,
         which names them), V keepsake, J journal, B bazaar, b bridges,
-        Z studio, c a collection, F agora. Kind: r read, w write, p payable. Via: d
+        Z studio, c a collection, F agora, s Seaport (a venue, at the
+        venue table's address) and e any ERC-721. Kind: r read, w write, p payable. Via: d
         direct from the holder's wallet, a `acts` (holder or the token's
         Reach), r the Reach only. The selector is keccak'd from the
         signature at construction; nothing hex is written by hand.
@@ -869,9 +888,17 @@ contract CatalogRowsPost is RowTable {
 ///
 ///         Its letters are its own (`_index`): V keepsake, J journal,
 ///         B bazaar, b bridges, Z studio, c a collection — a per-address
-///         family like C, pinned as address(0) — and F agora; `word` names
-///         them and, through RowTable's, every letter of the two tables
-///         above, so it is total over the whole alphabet.
+///         family like C, pinned as address(0) — F agora, and, since the
+///         integration (W15), s Seaport and e any ERC-721. Seaport is a
+///         venue, not a satellite: its rows carry the venue table's address,
+///         the one the Catalog's world names as `seaport`, and zero where the
+///         table names none, as the Router's rows carry zero on a band with
+///         no Router; e is a per-address family like E, pinned as address(0).
+///         All twenty-six capitals were taken, so both take a lower case
+///         beside what they resemble, as b and c did: s the venue's initial,
+///         e beside E's any ERC-20. `word` names them and, through
+///         RowTable's, every letter of the two tables above, so it is total
+///         over the whole alphabet.
 contract CatalogRowsV2 is RowTable {
     string internal constant SERVICES =
         "wrap|V|wrap(((address,uint256)[],(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))|p|d|value is the ETH asset exactly, 0 when none - each ERC-20 needs an exact approval to the Keepsake - a drip only when to is you;"
@@ -921,19 +948,49 @@ contract CatalogRowsV2 is RowTable {
         "stateOf|F|stateOf(uint256)|r|d|opened 0 is a room that never came into being - kind 4 is a collection room;"
         "keyOf|F|keyOf(uint256)|r|d|zero the moment the stamp moves;"
         "heads|F|heads(uint256[])|r|d|the one-call poll;"
-        "roomsOf|F|roomsOf(uint256)|r|d|every room the token took a seat in - member says whether its holder holds it now;";
+        "roomsOf|F|roomsOf(uint256)|r|d|every room the token took a seat in - member says whether its holder holds it now;"
+        /*  Integration (W15, INTEGRATION L5): the reads the lanes asked for,
+            each held to its contract's ABI by the drift gate like the rest:
+            the Keepsake as an ERC-721 (W10), Agora's counts and keys (W11),
+            a collection's supply and room (W12), the Seaport calls the
+            Gallery makes and any ERC-721's six (W8).                    */
+        "ownerOf|V|ownerOf(uint256)|r|d|;"
+        "tokenURI|V|tokenURI(uint256)|r|d|the orb and the page, data: URIs;"
+        "followerCount|F|followerCount(uint256)|r|d|keyed by persona;"
+        "followingCount|F|followingCount(uint256)|r|d|keyed by persona;"
+        "follows|F|follows(uint256,uint256)|r|d|whether the first persona follows the second;"
+        "isRegistered|F|isRegistered(address)|r|d|the hub, or a collection this Studio launched - its personas speak in the commons;"
+        "collectionKey|F|collectionKey(address)|r|d|the room of a collection's holders - keccak of 4 and the address;"
+        "homeKey|F|homeKey(uint256)|r|d|a persona's home room - keccak of 3 and the persona;"
+        "persona|F|persona(address,uint256)|r|d|the collection shifted left 96 bits plus the id;"
+        "totalSupply|c|totalSupply()|r|d|minted so far, one read - no log walk;"
+        "room|c|room()|r|d|agora.collectionKey of this collection;"
+        "getCounter|s|getCounter(address)|r|d|an order is hashed at its offerer's live counter - raising it voids every older order;"
+        "getOrderHash|s|getOrderHash((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256))|r|d|the components at the live counter - the hash validate and bazaar.publish index;"
+        "getOrderStatus|s|getOrderStatus(bytes32)|r|d|validated cancelled filled size - fill only a validated order nobody cancelled or filled;"
+        "validate|s|validate(((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),bytes)[])|w|d|from the offerer's wallet with no signature - then bazaar.publish;"
+        "fulfillOrder|s|fulfillOrder(((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),bytes),bytes32)|p|d|value is the listed price exactly for an ether listing - fulfiller conduit key 0;"
+        "cancel|s|cancel((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256)[])|w|d|the offerer - nobody can fill it after;"
+        "ownerOf|e|ownerOf(uint256)|r|d|;"
+        "tokenURI|e|tokenURI(uint256)|r|d|;"
+        "getApproved|e|getApproved(uint256)|r|d|;"
+        "isApprovedForAll|e|isApprovedForAll(address,address)|r|d|;"
+        "approve|e|approve(address,uint256)|w|d|one token - a sale clears it;"
+        "setApprovalForAll|e|setApprovalForAll(address,bool)|w|d|every token of the collection you hold - approve one where you can;";
 
-    /// @dev The seven V2 letters, in the order the constructor takes their addresses.
-    bytes internal constant LETTERS_V2 = "VJBbZcF";
+    /// @dev The nine V2 letters, in the order the constructor takes their addresses.
+    bytes internal constant LETTERS_V2 = "VJBbZcFse";
 
     /// @param byLetter the address for each of LETTERS_V2: the Keepsake, the
     ///        Journal, the Bazaar, Bridges, the Studio, zero for a collection
-    ///        (each is its own address), Agora.
-    constructor(address[7] memory byLetter) RowTable(bytes(SERVICES), _spread(byLetter)) {}
+    ///        (each is its own address), Agora, Seaport — the venue table's
+    ///        address, the Catalog's SEAPORT, zero where the table names none
+    ///        — and zero for any ERC-721, a per-address family as E is.
+    constructor(address[9] memory byLetter) RowTable(bytes(SERVICES), _spread(byLetter)) {}
 
-    /// @dev RowTable's constructor takes twenty-one slots; the V2 letters use the first seven.
-    function _spread(address[7] memory a) private pure returns (address[21] memory b) {
-        for (uint256 i; i < 7; ++i) b[i] = a[i];
+    /// @dev RowTable's constructor takes twenty-one slots; the V2 letters use the first nine.
+    function _spread(address[9] memory a) private pure returns (address[21] memory b) {
+        for (uint256 i; i < 9; ++i) b[i] = a[i];
     }
 
     function _index(bytes1 c) internal pure override returns (uint256) {
@@ -950,6 +1007,8 @@ contract CatalogRowsV2 is RowTable {
         if (c == "Z") return "studio";
         if (c == "c") return "collection";
         if (c == "F") return "agora";
+        if (c == "s") return "seaport";
+        if (c == "e") return "erc721";
         return super.word(c);
     }
 }
@@ -1631,10 +1690,10 @@ contract Catalog {
     ///      (the console round): it is asked `APEX()`, so the identity lane
     ///      can tell band 0's resolver from a codeless pin, and its ENS row
     ///      exists only where the bit says one answered or was there to ask.
-    ///      V2 (W6) continues the run: keepsake 8192 (`commitmentOf(reach)`),
-    ///      journal 16384 (`countOf(hub, id)`), bazaar 32768 (`HUB()`), studio
-    ///      65536 (`collectionsOf(persona)`), agora 131072
-    ///      (`followerCount(persona)`), bridges 262144 (`names()`). Seaport is
+    ///      The agent card's is 4096, asked its `HUB()` (W15; `manifestHash(id)`
+    ///      before). V2 (W6) continues the run, each asked an immutable:
+    ///      keepsake 8192, journal 16384, bazaar 32768, studio 65536 and agora
+    ///      131072 their `HUB()`, bridges 262144 its `TIMELOCK()`. Seaport is
     ///      a venue, not a satellite: the world names it and no bit does.
     uint32 internal constant BIT_REACH     = 1;
     uint32 internal constant BIT_POOL      = 2;
@@ -1792,17 +1851,21 @@ contract Catalog {
             and are asked their cheapest word, an immutable (`HUB()`, and
             Bridges' `TIMELOCK()`): the state block carries no V2 datum,
             only whether each answered, and every face that reads stateOf
-            pays for these six, so none of them loads a slot.            */
+            pays for these six, so none of them loads a slot. The agent
+            card is asked its `HUB()` too (W15): it said whether the card
+            answers by rendering its whole registration (`manifestHash`),
+            the dearest probe of the seventeen, and the state block carries
+            no card datum either.                                          */
         address[17] memory T = [PARLEY, POSTAGE, LOCKS, LAUNCHPAD, STEWARD, ROUTER, MARKET, ROLES, KEYS, NAMEPLATE, AGENTCARD,
                                 KEEPSAKE, JOURNAL, BAZAAR, STUDIO, AGORA, BRIDGES];
         bytes4[17] memory F = [IParley.stateOf.selector, IPostage.inboxOf.selector, ILocks.lockCountOf.selector,
                                ILaunchpad.launchRoot.selector, ISteward.wouldPass.selector, IRouter.HUB.selector,
                                IMarket.listingOf.selector, IRoles.liveRoleCount.selector, IKeyRegistry.keyIdOf.selector,
-                               INameplateProbe.APEX.selector, IAgentCard.manifestHash.selector,
+                               INameplateProbe.APEX.selector, IAgentCardProbe.HUB.selector,
                                IKeepsake.HUB.selector, IJournal.HUB.selector, IBazaar.HUB.selector,
                                IStudio.HUB.selector, IAgora.HUB.selector, IBridges.TIMELOCK.selector];
         uint256[17] memory G = [uint256(keccak256(abi.encodePacked(uint8(3), id))), id, uint256(uint160(s.reach)), id, id,
-                                0, id, id, uint256(uint160(s.owner)), 0, id,
+                                0, id, id, uint256(uint160(s.owner)), 0, 0,
                                 0, 0, 0, 0, 0, 0];
         uint8[17] memory L = [17, 5, 1, 1, 1, 1, 7, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1];
         uint32 bit = BIT_PARLEY;
@@ -1834,8 +1897,7 @@ contract Catalog {
     /// @notice `state(id)` from a TokenState already read: the Renderer reads
     ///         `stateOf(id)` once for face 0's JSON and crest and builds the
     ///         document from the same reading, so every satellite is probed
-    ///         once per tokenURI rather than twice (the card builds its whole
-    ///         registration to answer its probe). The bytes equal `state(id)`'s
+    ///         once per tokenURI rather than twice. The bytes equal `state(id)`'s
     ///         in the same block, which the equality step holds.
     function stateFrom(uint256 id, TokenState calldata s) external view returns (bytes memory) {
         return id == 0 ? _collectionState() : _state(id, s);

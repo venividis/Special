@@ -253,8 +253,12 @@ export async function deploySite(c, out, opts = {}) {
     encodeParams("address[21]", [byLetter]), "CatalogRows");
   const catalogRowsPost = await c.deploy(A("src/Catalog.sol", "CatalogRowsPost").bytecode,
     encodeParams("address[21]", [byLetter]), "CatalogRowsPost");
+  /*  the third table's letters (W15): s is Seaport, the venue the world names
+      (canonical where the Bazaar is deployed, else the caller's, else none),
+      and e any ERC-721, zero as E's any ERC-20 is; one deployment either way,
+      so the Premises keeps its nonce                                     */
   const catalogRowsV2 = await c.deploy(A("src/Catalog.sol", "CatalogRowsV2").bytecode,
-    encodeParams("address[7]", [[keepsake, journal, bazaar, bridges, studio, ZERO, agora]]), "CatalogRowsV2");   // VJBbZcF
+    encodeParams("address[9]", [[keepsake, journal, bazaar, bridges, studio, ZERO, agora, seaport, ZERO]]), "CatalogRowsV2");   // VJBbZcFse
   const catalogText = await c.deploy(A("src/Catalog.sol", "CatalogText").bytecode,
     encodeParams("address,address,address", [catalogRows, catalogRowsPost, catalogRowsV2]), "CatalogText");
   const catalogState = await c.deploy(A("src/Catalog.sol", "CatalogState").bytecode, encodeParams("address", [catalogText]), "CatalogState");
