@@ -192,9 +192,13 @@ after wave 0: a change is additive only and goes in
   standing; the Bazaar's zone compares it after a fill's transfers, so a
   seller paid inside a fill cannot move the token's state. Records are at
   schema 3, and the V2 pins skip an older record.
-- **The shell is 2,051 B under its gzip ceiling** (21,949 of 24,000, the
-  living-light shell, docs/v2/W7-shell.md); the largest panel is 8,187 of
-  12,288. The ceiling follows the gas caps: at a padded 24,000 B,
+- **The shell is 1,600 B under its gzip ceiling** (22,400 of 24,000,
+  measured on the merged head after W14, a0a6c7f). Of the panels' 12,288
+  each, launch and gallery are at 12,233 (55 B under), vault 12,217, social
+  12,114, swap 11,650, identity 8,350 and agent 4,883. Any fix to launch,
+  gallery or vault pays in cuts first. In a panel that repeats `function(`
+  as V1's do, an arrow function costs more gzip than `function` (W12).
+  The shell's ceiling follows the gas caps: at a padded 24,000 B,
   `/token/1/hash` reads 2.333 M of its 2.5 M (29.4 gas per gzip byte,
   INVARIANTS F2), so the hash route is the first cap a bigger shell meets.
 - **The soul runs in the battery.** The battery's Chromium has WebGL
@@ -248,16 +252,28 @@ after wave 0: a change is additive only and goes in
   cores and one process table, so a pattern matches their runs too. One
   `pkill -f "tools/verify-site.mjs"` killed another unit's run (exit 143)
   on 2026-10-19.
-- **The shim's waits throw.** `page.until` (tools/dom-shim.mjs) throws an
+- **The suites' waits throw.** The shim's `page.until`
+  (tools/dom-shim.mjs, W13) and verify-console's `pg.until` (W14) throw an
   `UntilTimeout` naming the group, the lines that waited and the
   condition, and the group stops there. `{ soft: true }` keeps the old
   answer, for a wait whose answer the caller reads or a deliberate pause;
   each soft call says why. A wait raced against another promise must be
   soft: one that loses the race and throws later is an unhandled
   rejection. A `sign` after a transaction that moves the epoch or the
-  wallet's rights (a panic, a buy) ends on "ownership or epoch changed —
-  review again" (CONSOLE §4.7), so the helpers take `moved`
-  (docs/v2/W13-waits.md).
+  wallet's rights (a panic, a buy, a sale) ends on "ownership or epoch
+  changed — review again" (CONSOLE §4.7), so it passes `{ moved: true }`;
+  in Chromium a sign that ends there without it throws, and every sign
+  reads the ticker's log (`window.__ticks`), never one poll of its text
+  (docs/v2/W13-waits.md, docs/v2/W14-polish.md).
+- **A lane's style is the shell's.** A panel writes no `<style>` and no
+  `style` attribute for a rule the shell can carry. The suites read a
+  whole lane's `textContent`, and a stylesheet inside a lane reads as
+  text. The shared rules live in `engine/app.css`: `button[role=switch]`,
+  `.post` and `.qr` (W14, INVARIANTS F21).
+- **jsqr decodes an inverted code.** A dark code on a dark ground still
+  decodes, because jsqr also tries the inverted image. A test that wants
+  a light ground reads the pixels or the computed background, never the
+  decode alone (verify-console's `qrInPlace`).
 - **solc kills a run on any unhandled rejection.**
   `node_modules/solc/soljson.js` registers
   `process.on("unhandledRejection", reason => { throw reason; })`, and every

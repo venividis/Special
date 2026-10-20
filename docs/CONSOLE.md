@@ -277,14 +277,18 @@ What happens, in order:
    (`[data-gas]`), and the clear-signing sentence (`[data-sentence]`) above
    the buttons `[data-go]` ("Sign and send") and `[data-no]` ("Not now").
    **The argument rows are decoded from the calldata**, never copied from
-   the panel's `args`: when every type in `sig` is one `data()` can build
-   (§5 — static types, `bytes`, `string`, `T[]` of a static base) the shell
-   renders one row per argument (`[data-arg=<i>]`: addresses checksummed,
-   numbers decimal, booleans as words, bytes as their length) from
-   `[data-calldata]`, so what is shown is what is signed; when `sig`
-   carries a tuple or a nested array the shell renders **no** `[data-arg]`
-   rows and the panel's `lines` must carry every argument in words (the
-   suite reads those arguments from `[data-calldata]` and from `lines`).
+   the panel's `args`. The shell renders one row per argument
+   (`[data-arg=<i>]`) from `[data-calldata]`, so what is shown is what is
+   signed:
+   - addresses checksummed, numbers decimal, booleans as words, bytes as
+     their length;
+   - since V2 (W14) a tuple or an array of any element type as well, in
+     brackets, field by field in the same words;
+   - bytes that will not decode under `sig` draw no row.
+   The panel's `lines` still carry every argument in words. The suites
+   hold the rows to their own head/tail decoder (`argWords` in
+   `tools/verify-console.mjs`, imported by the verify-site groups), apart
+   from the shell's (INVARIANTS F24).
 3. **`eth_estimateGas`** with `{from, to, data, value}` on the chosen
    provider, before the wallet is ever asked. `[data-go]` is disabled until
    it answers. Success: *"<n> units"* and the slab remembers `n × 125 / 100`
@@ -337,9 +341,11 @@ fin)` reads `allowance(owner, spender)` for each step (`owner` defaults to
 the connected account; a step with `via: "reach"` reads the Reach's
 allowance and proposes `reach.execute(token, 0, approve(spender, amount),
 0)` instead of a wallet approve), and when it is short proposes
-`approve(spender, exactly the amount)` with the lines `Lets · the market
-pull exactly <amount> <symbol>`, `Never · unlimited`, `Then · press the
-same button again`; when every step stands it calls `fin()`. The word
+`approve(spender, exactly the amount)` with the lines `Lets · <who> pull
+exactly <amount> <symbol>`, `Never · unlimited`, `Then · press the same
+button again`; when every step stands it calls `fin()`. A step names its
+spender in words with `who` (*the Keepsake*, *Seaport*); a step without
+one keeps V1's line, *the market* (W14, INVARIANTS F23). The word
 "unlimited" appears in the console only as that refusal.
 
 ## 5. The panel contract
@@ -397,11 +403,11 @@ string; `T[]` is an array.
 | `simulate(to, data, { from, value })` | `eth_call` that returns `{ ok, data, sentence }` with the **full** revert data instead of throwing — for quotes-by-revert: `router.quoteExactIn` always reverts `QuoteResult(uint256 spent, uint256 received, uint160 sqrtPriceAfter)` (`0x5cbe38e7`) and the panel decodes the three words; `sentence` is `errorSentence(data)` when `!ok`, `""` otherwise, so no panel re-implements the decoder |
 | `errorSentence(revertHex)` | the §4.3 sentence for any revert data, from `INTACT.err` |
 | `propose(tx) → Promise<void>` | the slab (§4). `tx = { to, key, args, value?, lines: [[k, v]…], sentence, note?, need?: bits, spend?: bool, recheck?: async () => sentence \| null, then?: (receipt) => void }`; `key`+`args` build the data and the argument rows; a raw `data` is accepted only with `sig` (`selector(sig)` must equal `data.slice(0, 10)`), and its argument rows follow §4.2. Resolves when the slab closes |
-| `approveExactThen(steps, fin)` | `steps = [{ token, spender, amount: BigInt, symbol, decimals, owner?, via?: "reach" }]` — §4, last paragraph |
+| `approveExactThen(steps, fin)` | `steps = [{ token, spender, amount: BigInt, symbol, decimals, owner?, via?: "reach", who? }]` — §4, last paragraph; `who` names the spender in the step's line |
 | `act(parent, name, label, needBits, fn, opts)` | a write button carrying `data-act="<name>"`, rendered only in console mode: when `needBits !== 0`, iff `rights() & needBits`; when `needBits === 0` ("anyone"), iff `account()` is non-null. Otherwise it renders nothing and `gate` prints the sentence once. `opts.spend` marks it `[data-spend]` for the 7702 rule (§3). Never rendered in viewer or session mode |
 | `gate(parent, needBits)` | the sentence for the actual state: not connected / rights unreadable / connected without the bit / renter / guardian / viewer / session; returns the boolean |
 | `delegate()`, `ackDelegate()` | `{ code, name, known, acked } \| null` (§3); `ackDelegate()` sets `acked`, unhides `[data-spend]`, fires `intact:rights` |
-| `qr(text) → SVGElement` | the §13 code; throws `RangeError("payload over 106 bytes")` and the caller prints the link alone |
+| `qr(text) → SVGElement` | the §13 code, `class="qr"`; throws `RangeError("payload over 106 bytes")` and the caller prints the link alone |
 | `el(tag, cls, text)`, `kv(parent, k, v)`, `button(parent, label, grey, fn)`, `field(parent, label, placeholder) → the <input>`, `note(parent, text, cls)`, `chip(parent, label, state)` | the furniture, every text node through `textContent`; `kv` returns the row so `row.lastChild.textContent` can move from *reading…* to the value |
 | `enc.W(v)` word of a BigInt/hex · `enc.A(addr)` · `enc.B4(sel)` · `enc.B32(hex)` (every `bytesN` left-aligned) · `enc.bytes(hex)` (length word + padded body, **no offset word** — the panel places it at its own offset) · `enc.str(s)` (likewise) · `enc.params(types, values)` (a whole head + tail, offsets included) | the low-level coder, for the nested shapes `data()` cannot build (`executeBatch`, `executeTyped`, `grantSession`'s `(address,uint128)[]`, `SwapRequest`, the launchpad's 14-field params) |
 | `fmt(v, decimals, prec)`, `parse(s, decimals)`, `short(addr)`, `checksum(addr)`, `isAddr(s)` | amounts are BigInt in, BigInt out; `parse` throws on anything but `^\d*\.?\d*$`; dust prints `<0.000001`, never `0` |
@@ -495,8 +501,9 @@ table above are unchanged.
 |---|---|
 | gallery | `#gallery-form` (a `details`: `input[name=collection\|id]`, `#gallery-open`, `#gallery-this`), `#gallery-token` (the hero, in order: the art, its name, its price, its facts, its traits, its own page), `#gallery-frame[data-ambient]` (two colours, or `crest`) holding `#gallery-art` (an `img`, an `a.offchain` link, or a note), `#gallery-name`, `#gallery-price` (hidden while no live price stands), `#gallery-what`, `#gallery-about`, `#gallery-meta`, `#gallery-traits .trait[data-trait]`, `#gallery-sitebox` holding `#gallery-site` (`iframe[sandbox=allow-scripts][srcdoc]`), `#gallery-buy` holding `#gallery-market`, `#gallery-market-offer` and `#gallery-listings .listing[data-hash] .state` (*live*, *not validated*, *cancelled*, *filled*, *void*, *not open*, *expired*, *seller moved it*, *refused* or *unpriced*), `#gallery-sell` holding `input[name=price\|days]`, `#gallery-review` and `#gallery-steps .step[data-step=seal\|market\|approve\|validate\|publish][data-done]`, `#gallery-mint` holding `#gallery-spec` and `#gallery-via`, `#gallery-story` holding `#gallery-owners .owner`, `#gallery-memories .memory[data-kind]`, `#gallery-archive`, `#gallery-constellation svg[role=img]` (a halo and a `circle.star[data-kind]` per memory) and `#gallery-sales .sale`, `#gallery-opensea` (the switch, off and disabled, with the sentence of why) and `#gallery-door`, `[data-act=buy\|marketBuy\|cancel\|sealReach\|sealMarket\|approve\|validate\|publish\|mint]` |
 | swap | `#swap-say` (the card's one breath: the sentence the slab opens with, the floor in it), `#swap-lock` (the lock part, or the keepsake chip `.chip[data-state=absent\|unread]`) holding `#swap-lock-on` (`button[role=switch][aria-checked]`, *Lock what I receive*), inputs `name=lockDays\|freeDays`, `#swap-lock-dates`, `#swap-drip-on` (a switch), inputs `name=floor\|most`, `#swap-drip-now`, `#swap-gift-on` (a switch), `input[name=giftTo]`, `textarea[name=giftNote]` and `#swap-lock-why` (the refusal in words, hidden when there is none), `#swap-memory` (the holder's memory part, or the journal chip: `textarea[name=memory]`, `#swap-memory-count`), `#swap-kept` (after a landed swap: `.keepsake[data-id]`, the id from the `Wrapped` log, and the memory's state), `[data-act=inscribe]` (the memory, offered again after *Not now*; need `HOLD`). `#swap-go`'s label gains *Swap and lock* and *Swap and give* beside V1's *Swap* and *Approve …* |
-| vault | `#vault-keepsakes` (the section, or only the chip `.chip[data-state=absent\|unread]` *keepsake: …*), `#vault-keepsakes-status` (*<n> held by this wallet or #<id>'s Reach* / *none held by … yet* / *the keepsakes could not be found on this endpoint: …*), `#vault-keepsakes-list .keepsake[data-id]` (one card: the orb `img`, `p.k`, `p.s` *made by … · held by …* or *a gift from … · held by …*, `p.note`, a `.kv` per coin, `progress[value]`, `p.free`, `p.claimable`, `p.drip`, `[data-act=claim]`, and the holder's `details`: `input[name=more]` with `[data-act=extend]`; `input[name=dsell\|dmkt\|dfloor\|dmax]` with `[data-act=setDrip]` and, while a slow sale is set, `[data-act=clearDrip]`; `input[name=give]` with `[data-act=give]`; `input[name=memory]` with `[data-act=inscribe]`, or the journal's chip), `#vault-make` (`input[name=eth]`, `.coin` rows of `input[name=token\|amount]` with `p.s` *<SYM> · <d> decimals*, `input[name=lock\|over\|to\|note]`, and a `details` of `input[name=dsell\|dmkt\|dfloor\|dmax]`), `#vault-make-add`, `[data-act=wrap]`, `#vault-keepsake-made` (*keepsake #<id> is made[, a gift to 0x… …] · its number from the Wrapped log*). `[data-spend]` sits on `wrap`, on `give` and on every change to a keepsake the Reach holds |
+| vault | `#vault-keepsakes` (the section, or only the chip `.chip[data-state=absent\|unread]` *keepsake: …*), `#vault-keepsakes-status` (*<n> held by this wallet or #<id>'s Reach* / *none held by … yet* / *the keepsakes could not be found on this endpoint: …*), `#vault-keepsakes-list .keepsake[data-id]` (one card: the orb `img`, `p.k`, `p.s` *made by … · held by …* or *a gift from … · held by …*, `p.note`, a `.kv` per coin, `progress[value]`, `p.free`, `p.claimable`, `p.drip`, `[data-act=claim]`, and the holder's `details`: `input[name=more]` with `[data-act=extend]`; `input[name=dsell\|dmkt\|dfloor\|dmax]` with `[data-act=setDrip]` and, while a slow sale is set, `[data-act=clearDrip]`; `input[name=give]` with `[data-act=give]`; `input[name=memory]` with `[data-act=inscribe]`, or the journal's chip), `#vault-make` (`input[name=eth]`, `.coin` rows of `input[name=token\|amount]` with `p.s` *<SYM> · <d> decimals*, `input[name=lock\|over\|to\|note]`, and a `details` of `input[name=dsell\|dmkt\|dfloor\|dmax]`), `#vault-make-add`, `[data-act=wrap]`, `#vault-keepsake-made` (*keepsake #<id> is made[, a gift to 0x… …] · its number from the Wrapped log*). `[data-spend]` sits on `wrap`, on `give` and on every change to a keepsake the Reach holds. The Grip's QR is a `.qr` white card (§13) |
 | social | under Agora: `#social-as-note` (*speaking as #1*, or *not a token yet: …; speaking as #1*; its disclosure holds `#social-as`, the *speak as* field), `#social-tabs button.chip[data-tab=feed\|commons\|collection\|home\|rooms\|dm]` (`.on` and `aria-pressed="true"` on the open one; the collection chip reads *<collection> holders*), `#social-feed .row` (`.who`, `.kind`, `.body`: the joined feed, oldest first, `.kind` one of *word · <room>*, *memory*, *gift*, *sale*), `#social-feed-status` and `#social-feed-miss` (what the feed joined, and every source it could not join), `#social-commons`, `#social-collection`, `#social-home-feed` (`.row`, `.who`, `.body`; each with its `-status`), `#social-react` (`#social-glyph`, `#social-tip`; its line says what a ✦ does now), `#social-follows` (`#social-follow-count`, `#social-followers .token`, `#social-following .token`, the sentence that follows stay with the token, and `#social-follow`), `#social-facts` (the disclosure: persona, custody epoch · stamp, key in Agora), `[data-act=react\|follow\|unfollow\|followThis\|bindKey]`, and `join` for a seat in another token's home |
+| identity | on a band where Agora reports: `#identity-agora-key` (*bound key · Agora*: *no key bound* / *bound at epoch e · P-256 · key 0x…*, read with `agora.keyOf(persona)`) under Parley's `#identity-key`, and `[data-act=agoraBindKey]` (need `HOLD`; `agora.bindKey(persona)`, offered once the registry key is published). A band without Agora draws V1's key section and nothing of Agora's |
 | launch | the Studio: `#launch-mode` (the segmented control, `button.chip` *A collection* and *A coin*, `.on` and `aria-pressed` on the open one; the room opens on *A coin* wherever the Studio does not report), `#launch-collection` (the section, or the `studio` chip in its place), `#launch-collection-form` (`HOLD \| ACCOUNT` only: `input[name=name\|symbol\|about\|supply\|price\|opens\|closes\|limit\|share\|royalty]`, `textarea[name=page\|art]`, the terms and the site behind two `details`), `#launch-collection-at` (where `studio.predict(persona, salt)` says the collection will land, live), `#launch-collections .collection[data-address]` (one per `collectionsOf(persona)`: a heading, name · symbol · price · address, then `.kv` rows keyed *minted*, *owes #<id>*, *mint link*, *room* (`[data-room]` = the key, with `a[href="#social"]`) and *family*; the QR as `svg[role=img]`), `[data-act=collectionLaunch\|collectionMint\|collectionClaim]` (the launch, need `HOLD \| ACCOUNT`; the mint, anyone's, `[data-spend]`; the claim, anyone's, drawn only while something is owed) |
 
 ### 6.3 The "not reported" chip rule
@@ -767,8 +774,11 @@ bytes `qr()` throws `RangeError("payload over 106 bytes")` and the caller
 prints the link alone. Mask pattern 0, format bits computed (`0x77C4` for
 L/0). Rendered as inline SVG `<rect>`s with `shape-rendering="crispEdges"`,
 a 4-module quiet zone, built with `createElementNS` — never a string of
-markup. Two uses: Home (viewer and console) and Vault › Grip
-(`ethereum:0x<grip>@<chainId>`).
+markup. Two uses in V1: Home (viewer and console) and Vault › Grip
+(`ethereum:0x<grip>@<chainId>`); V2 adds a collection's mint link in the
+Studio room. Every code carries `class="qr"`. Its modules have no fill and
+its ground is transparent, so `app.css` makes `.qr` a white 184 px card
+anywhere but Home, where `#qr` is the card itself (W14, INVARIANTS F22).
 
 The namespace literal `"http://www.w3.org/2000/svg"` matches the build's
 host scan (`/https?:\/\/[a-z0-9.-]+\.(?:org|com|io|xyz|net)\b/i` — measured
@@ -865,6 +875,14 @@ printed them; the budgets they are held to stand beside them.
 | the views, cold | `tokenURI` 7.64 M (72,544 B), `/token/1/live` 1.74 M (39,904 B), `/token/1/hash` 2.42 M, `/token/1/raw` 7.78 M; 79 probed cold with a transaction between each, 13.3 s — the `gas` row of the same run | 8 M · 2.5 M · 2.5 M; every view ≤ 16,777,216 | `tools/gas.mjs` |
 | the QR | ≤ 3 KB source, version 5, 106 bytes of capacity (§13) | budget | — |
 
+**V2, measured on the merged head after W14** (a0a6c7f, `node tools/build-app.mjs`):
+- the shell: 22,400 B gzip of 24,000;
+- the seven panels, of 12,288 each: swap 11,650 · social 12,114 · launch
+  12,233 · vault 12,217 · identity 8,350 · agent 4,883 · gallery 12,233.
+
+The ceilings are V2's (docs/V2.md §2); the V1 figures above stand as U12
+measured them.
+
 ## 17. The second prover: the Chromium battery (U11)
 
 Everything above is asserted through `tools/dom-shim.mjs`, a DOM and
@@ -922,6 +940,13 @@ particles, a haptic tick where the device has one) and the ticker reads
 celebrate.
 
 **The footer (§8).** `#verified` sits at the end of the page flow.
+
+**The rooms' lines (W14).** The Studio room's line reads *Launch a
+collection of websites, or a coin.* The lanes' shared rules live in
+`app.css`, and no panel writes a stylesheet (INVARIANTS F21):
+`button[role=switch]` and its knob, `.post`, `.qr`, `#swap-say` and
+`#swap-kept .keepsake::before`. A signing sentence and a row's key break
+anywhere, so a full address wraps in a 390 px sheet (F20).
 
 **Measured (W7's run on its final build).** The shell 21,949 B gzip of
 24,000; the largest panel 8,187 of 12,288; `tokenURI` 4.45 M,
