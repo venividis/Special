@@ -15,7 +15,7 @@ import {KeyRegistry} from "../src/KeyRegistry.sol";
 import {Locks} from "../src/Locks.sol";
 import {Engine} from "../src/Engine.sol";
 import {Crest} from "../src/Crest.sol";
-import {Catalog, CatalogRows, CatalogRowsPost, CatalogText, CatalogState, CatalogConfig} from "../src/Catalog.sol";
+import {Catalog, CatalogRows, CatalogRowsPost, CatalogRowsV2, CatalogText, CatalogState, CatalogConfig} from "../src/Catalog.sol";
 import {Renderer} from "../src/Renderer.sol";
 import {Premises} from "../src/Premises.sol";
 import {LibNum} from "../src/lib/LibNum.sol";
@@ -93,6 +93,7 @@ abstract contract SiteFixture is IntactFixture {
     Locks locksReal;
     CatalogRows rowsC;
     CatalogRowsPost postC;
+    CatalogRowsV2 v2C;
     CatalogText text;
     CatalogState stateC;
     Catalog catalog_;
@@ -114,22 +115,24 @@ abstract contract SiteFixture is IntactFixture {
         engine = new Engine();
         engine.loadHead(bytes(HEAD));
         engine.loadBody(GZ);
-        for (uint256 i; i < 6; ++i) engine.loadPanel(i, GZ, keccak256(abi.encodePacked("panel", i)));
+        // the seven lanes V2 ships: V1's six, then the Gallery (W8)
+        for (uint256 i; i < 7; ++i) engine.loadPanel(i, GZ, keccak256(abi.encodePacked("panel", i)));
         engine.setEngineHash(keccak256(bytes(DOC)), uint32(bytes(DOC).length));
         engine.freeze();
         crest = new Crest();
 
         diamondBuild = keccak256(bytes(vm.envOr("INTACT_IMPL", "monolith"))) == keccak256("diamond");
         // Nonce n is the real Locks (it pins the hub, so the hub must be
-        // predicted first); n+1..n+3 the Catalog's three companions; then
-        // the Catalog, the Renderer, the Premises; then the hub — one
-        // deployment on the monolith, four facets and the diamond on the
-        // other build. The assertEqs below catch a shifted prediction.
+        // predicted first); n+1..n+5 the Catalog's companions (the three
+        // row tables, the text, the state); then the Catalog, the Renderer,
+        // the Premises; then the hub — one deployment on the monolith, four
+        // facets and the diamond on the other build. The assertEqs below
+        // catch a shifted prediction.
         uint256 n = _myNonce();
-        address pCatalog = _create(address(this), n + 5);
-        address pRenderer = _create(address(this), n + 6);
-        address pPremises = _create(address(this), n + 7);
-        predictedHub = _create(address(this), diamondBuild ? n + 12 : n + 8);
+        address pCatalog = _create(address(this), n + 6);
+        address pRenderer = _create(address(this), n + 7);
+        address pPremises = _create(address(this), n + 8);
+        predictedHub = _create(address(this), diamondBuild ? n + 13 : n + 9);
         locksReal = new Locks(predictedHub);
 
         address[21] memory byLetter;                              // HPRYTSKNLCOWXEGQMDAUI
@@ -138,7 +141,9 @@ abstract contract SiteFixture is IntactFixture {
         byLetter[14] = address(engine); byLetter[15] = pCatalog;
         rowsC = new CatalogRows(byLetter);
         postC = new CatalogRowsPost(byLetter);
-        text = new CatalogText(rowsC, postC);
+        address[9] memory v2Letters;                              // VJBbZcFse: no V2 contract and no Seaport on this world
+        v2C = new CatalogRowsV2(v2Letters);
+        text = new CatalogText(rowsC, postC, v2C);
         stateC = new CatalogState(text);
         catalog_ = new Catalog(_catalogConfig(pRenderer, pPremises));
         renderer_ = new Renderer(predictedHub, address(engine), address(crest), address(catalog_), AGENTCARD0);
@@ -468,6 +473,76 @@ contract PremisesTest is SiteFixture {
         e2.freeze();
     }
 
+    /*═══════════════════ the seventh lane (V2, W8) ═══════════════════*/
+
+    function test_theGalleryIsTheSeventhLaneAndIsServedLikeTheRest() public {
+        uint256 id = mintTo(alice);
+        assertEq(engine.panelCount(), 7, "seven lanes: V1's six and the Gallery");
+        bytes32 g = keccak256(abi.encodePacked("panel", uint256(6)));
+        (uint16 status, bytes memory body, KeyValue[] memory h) = get(path2("panel", "gallery.js"));
+        assertEq(uint256(status), 200, "/panel/gallery.js is served");
+        assertEq(body, GZ, "the stored gzip bytes, as stored");
+        assertEq(header(h, "ETag"), string.concat("\"", LibNum.hex32(g), "\""));           // its ETag is the seventh slot's pin
+        assertEq(catalog_.verbWord(8), "gallery");                                    // verb 8 is the Gallery
+        assertEq(catalog_.verbWord(9), "");                                           // and no word names an eighth lane yet
+        bytes memory agentPin = bytes(LibNum.hex32(keccak256(abi.encodePacked("panel", uint256(5)))));
+        assertTrue(has(catalog_.state(id), abi.encodePacked('"agent":"', agentPin, '","gallery":"', bytes(LibNum.hex32(g)), '"},')),
+            "the state gap names the Gallery seventh, after the agent, and nothing after it");
+        (, bytes memory man, ) = get(path1("manifest"));
+        assertTrue(has(man, abi.encodePacked('"gallery":"', bytes(LibNum.hex32(g)), '"}')), "/manifest names its pin last among the panels");
+        bytes memory packed;
+        for (uint256 i; i < 7; ++i) packed = abi.encodePacked(packed, keccak256(abi.encodePacked("panel", i)));
+        assertTrue(has(man, abi.encodePacked('{"template":"/panel/<name>.js","keccak":"', bytes(LibNum.hex32(keccak256(packed))), '"}')),
+            "and the panel route hashes the seven pins together, in slot order");
+    }
+
+    function test_theEngineHoldsEightLanesAndFreezesOnlyAPrefixWithoutAGap() public {
+        Engine e = new Engine();
+        e.loadHead(bytes(HEAD));
+        e.loadBody(GZ);
+        e.setEngineHash(keccak256(bytes(DOC)), uint32(bytes(DOC).length));
+        assertEq(e.PANELS(), 8, "room for eight");
+        vm.expectRevert(Engine.BadPanel.selector);
+        e.loadPanel(8, GZ, bytes32(uint256(1)));
+        e.loadPanel(0, GZ, bytes32(uint256(1)));
+        e.loadPanel(2, GZ, bytes32(uint256(3)));
+        assertEq(e.panelCount(), 1, "the lanes are the loaded prefix: slot 2 behind an empty slot 1 is not one");
+        assertEq(e.shardHashes().length, 3, "and the shard list is the head, the body and that one lane");
+        vm.expectRevert(Engine.BadPanel.selector);
+        e.freeze();
+        e.loadPanel(1, GZ, bytes32(uint256(2)));
+        for (uint256 i = 3; i < 8; ++i) e.loadPanel(i, GZ, bytes32(i + 1));
+        assertEq(e.panelCount(), 8, "eight loaded, eight lanes");
+        assertEq(e.shardHashes().length, 10, "the shard list is the head, the body and the eight panels");
+        e.freeze();
+        assertTrue(e.frozen(), "a prefix without a gap freezes");
+        assertEq(e.panelHash(7), bytes32(uint256(8)), "the eighth slot keeps its pin");
+        vm.expectRevert(Engine.BadPanel.selector);
+        e.panel(8);
+    }
+
+    function test_anEngineOfSixLanesIsNamedSixAndServesNoGallery() public {
+        Engine e6 = new Engine();
+        e6.loadHead(bytes(HEAD));
+        e6.loadBody(GZ);
+        for (uint256 i; i < 6; ++i) e6.loadPanel(i, GZ, keccak256(abi.encodePacked("panel", i)));
+        e6.setEngineHash(keccak256(bytes(DOC)), uint32(bytes(DOC).length));
+        e6.freeze();
+        assertEq(e6.panelCount(), 6, "V1's six");
+        bytes memory agentPin = bytes(LibNum.hex32(keccak256(abi.encodePacked("panel", uint256(5)))));
+        bytes memory t6 = stateC.tail(address(e6), bytes32(0));
+        assertTrue(has(t6, abi.encodePacked('"agent":"', agentPin, '"},')), "the panel map of a six-lane Engine ends at the agent");
+        assertFalse(has(t6, bytes('"gallery"')), "and names no Gallery the Engine does not hold");
+        Premises p6 = new Premises(predictedHub, address(renderer_), address(e6), address(catalog_), address(crest), AGENTCARD0);
+        (uint16 sg, , ) = p6.request(path2("panel", "gallery.js"), new KeyValue[](0));
+        assertEq(uint256(sg), 404, "its router serves no Gallery");
+        (uint16 sa, , ) = p6.request(path2("panel", "agent.js"), new KeyValue[](0));
+        assertEq(uint256(sa), 200, "and serves the six it holds");
+        (, string memory man, ) = p6.request(path1("manifest"), new KeyValue[](0));
+        assertFalse(has(bytes(man), bytes('"gallery"')), "and its manifest names six");
+        assertTrue(has(stateC.tail(address(engine), bytes32(0)), bytes('"gallery":"')), "while this world's seven-lane Engine names the Gallery");
+    }
+
     function test_theCatalogAgreesWithTheHubAndAMispredictionIsVisible() public {
         (bool okAgree, bytes4 which) = catalog_.agrees();
         assertTrue(okAgree, "every pinned address matches the hub's");
@@ -493,6 +568,8 @@ contract PremisesTest is SiteFixture {
         assertTrue(has(st, abi.encodePacked('"', hex4(bytes4(keccak256("Slippage(uint256,uint256)"))), '":"Slippage(uint256,uint256)"')), "err carries the argument list a slab decodes with");
         assertTrue(has(st, abi.encodePacked('"engine.engineHash":"', hex4(bytes4(keccak256("engineHash()"))), '"')), "engine.engineHash");
         assertTrue(has(st, abi.encodePacked('"catalog.knownDelegates":"', hex4(bytes4(keccak256("knownDelegates()"))), '"')), "catalog.knownDelegates");
+        assertTrue(has(st, abi.encodePacked('"journal.inscribe":"', hex4(bytes4(keccak256("inscribe(address,uint256,uint8,bytes,bytes32)"))), '"')), "journal.inscribe, from the third table (V2)");
+        assertTrue(has(st, abi.encodePacked('"', hex4(bytes4(keccak256("Unpriced()"))), '":"Unpriced()"')), "the err table carries the V2 errors");
         assertTrue(has(st, bytes('"ownedMarket":')), "the token's market object is ownedMarket");
         assertTrue(has(st, bytes('"reachLocks":')), "the lock count is reachLocks");
         assertTrue(has(st, bytes('"stewardStatus":')), "wouldPass is stewardStatus");

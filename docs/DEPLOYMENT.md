@@ -45,8 +45,8 @@ oracle.
    (below).
 3. **Funding, from the preflight.** Run the preflight alone first (the
    command is in the next section); it prints one sentence with the
-   whole figure and its parts: the deploy at 120 M gas × the live gas
-   price × 1.5 plus the L1 data term where the OP-stack
+   whole figure and its parts: the deploy at 120 M gas (140 M with
+   `--v2`) × the live gas price × 1.5 plus the L1 data term where the OP-stack
    `GasPriceOracle` predeploy (`0x4200…000F`) has code, plus the campaign
    — the gas the 31337 wire rehearsal measured (`CAMPAIGN_GAS` in
    `tools/testnet.mjs`, 5,902,168 gas; a budget of 30 M until a run had
@@ -57,7 +57,11 @@ oracle.
    preflight ends with "fund `<address>` with at least N ETH more" and
    exits 1 having sent nothing. The mint price is the largest term on a
    cheap chain; `--price <wei>` lowers it for a rehearsal (the preflight
-   prints the new figure).
+   prints the new figure). With `--v2` the deploy is budgeted at 140 M:
+   127.46 M was measured in-process with V2's seven, and 130.12 M on the
+   fork with the Router (W15). A satellite through the Timelock is
+   budgeted at 6.5 M; the Studio measured 6,189,198 for the queue and the
+   landing together.
 4. **An endpoint.** `RPC_URL` is any JSON-RPC endpoint of the chain; the
    tooling routes a non-local URL through the environment's proxy
    (`tools/rpc.mjs`). Base Sepolia's public endpoints
@@ -188,6 +192,31 @@ EVM — the burner queues, nothing lands before the delay, a stranger lands
 it a week later where the hub pinned it, the record follows it and
 recovers, and a tampered codehash, a wrong landing block or a missing
 queue is caught by name.
+
+**V2's seven (W15)** land the same two ways, each at its
+`intact.v2.<key>` placeholder.
+
+Through the Timelock:
+- `--satellite keepsakeArt,keepsake,journal,bazaar,bridges,studio,agora`,
+  or `all` on a schema-3 record, queues and lands each.
+- A queued Keepsake refuses to execute while its art has no code, by
+  name, and stays queued, so the two can be queued in one run and land in
+  order a week later.
+
+By the burner:
+- In a fresh deployment, `--v2` makes the burner land all seven right
+  after the Premises, in `V2_ORDER`: the art, the Keepsake, the Journal,
+  the Bazaar, Bridges, the Studio, Agora.
+- `--v2` beside `--satellite` is refused.
+
+Either way:
+- A record of schema 1 or 2 admits no V2 contract. Its hub pins no
+  Keepsake and its Catalog names none.
+- The Bazaar is admitted only where the record's venue row names Seaport.
+  Over a wire its Seaport half is re-proved before it lands.
+- `tools/verify-recover.mjs` proves both paths in-process: a V2 band
+  deployed whole, and a V2 satellite queued and landed through the
+  Timelock, each recovering with 0 disagreeing.
 
 ### Band 0: the name
 
@@ -359,8 +388,8 @@ change first (59 sentences, 0 failed).
 
 | What | Measured on 31337 | Base Sepolia (84532) | Sepolia (11155111) |
 |---|---|---|---|
-| deploy, in all | 89,680,000 gas (`89.68M` as the run prints it) for the 27 MVB contracts in 45 s, 95,874,720 with the three satellites; the record recovered in-run: 362 fields, 0 disagreeing after the MVB, 383 after the satellites | the same 27 contracts for the same 89.68 M gas in 105 s at 0.006 gwei, from block 48,082,395 (the first run: 91 s from 48,081,889); the record recovered in-run: 362 fields, 0 disagreeing | awaiting a funded burner |
-| satellites, through the Timelock's queue | the card queued for 327,180 and landed for 2,696,364 gas at the address the hub pinned; the Market 203,102 + 1,444,434; the Roles 188,154 + 1,336,285; each landing followed by a recover of the whole record, 0 disagreeing | queued only, as a public chain must: the card (456,590 gas, op `0x72b5b3e0…`), the Market (268,260, op `0x694ffb72…`) and the Roles (243,390, op `0x50f36dd6…`), executable from Unix time 1,792,537,900 (2026-10-20): `node tools/deploy.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA --satellite all` lands them, by any funded key (the first run's three ops, on its own Timelock, ripen twenty minutes earlier) | awaiting a funded burner |
+| deploy, in all | 89,680,000 gas (`89.68M` as the run prints it) for the 27 MVB contracts in 45 s, 95,874,720 with the three satellites; the record recovered in-run: 362 fields, 0 disagreeing after the MVB, 383 after the satellites | the same 27 contracts for the same 89.68 M gas in 105 s at 0.006 gwei, from block 48,082,395 (the first run: 91 s from 48,081,889); the record recovered in-run: 362 fields, 0 disagreeing; 96,124,380 gas in the record once the three satellites were queued and landed (2026-10-20), and 383 fields, 0 disagreeing after them | awaiting a funded burner |
+| satellites, through the Timelock's queue | the card queued for 327,180 and landed for 2,696,364 gas at the address the hub pinned; the Market 203,102 + 1,444,434; the Roles 188,154 + 1,336,285; each landing followed by a recover of the whole record, 0 disagreeing | queued on 2026-10-13 by the burner: the card (456,590 gas, op `0x72b5b3e0…`), the Market (268,260, op `0x694ffb72…`) and the Roles (243,390, op `0x50f36dd6…`). Landed on 2026-10-20 at 23:19 UTC with `--satellite all`, run from the tree pinned at fd18df4 (a queued op is the hash of that tree's initcode) by a separate funded key, `0xc79e…8f02`, since anyone may execute a ripe op: the card for 2,696,364 gas at `0xb9b6…1327` (block 48,385,007), the Market for 1,444,422 at `0xd361…9e74` (48,385,019) and the Roles for 1,336,285 at `0x0fae…d8dd` (48,385,032). That is 5,477,071 gas for 0.000049 ETH at 0.009 gwei, with each landing followed by a recover of the whole record: 371, 378 and 383 fields, 0 disagreeing (the first run's three ops, on its own Timelock, were never executed) | awaiting a funded burner |
 | deploy, the largest steps | catalogRows 15.02 M · loadPanel (six) 10.07 M · catalogRowsPost 5.11 M · catalogText 4.72 M · reachImpl 4.60 M · catalog 3.82 M · launchpad 3.81 M · renderer 3.73 M · catalogState 3.55 M · premises 3.40 M | the same, step for step (the gas is the code's, not the chain's) | — |
 | campaign, in all | 5,907,685 gas over 39 transactions (40 steps, one of them the clock) | 5,816,607 gas over 38 transactions (40 steps: two refusals proved by their selectors and nothing sent; a public chain's clock cannot be moved, so the steward's summon is refused as `StillSpeaking` instead of walked); the second key's share 1,373,166; the lock released when due after a real two-minute wait | awaiting a funded burner |
 | fund (2) | 42,000 | 42,000 | |
@@ -404,6 +433,21 @@ On forks of both rehearsal chains, 2026-10-18, this tree (`--fork`, above):
 | `tokenURI(1)` | estimated at 3,783,343 gas, 78,125 bytes | 3,786,119 gas, 78,137 bytes |
 | the gateway | 240 passed; the tamper fixture 243 | the same |
 
+**V2 on a fork of Base Sepolia, 2026-10-19 (W15).** The command was
+`node tools/testnet.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA
+--fork <url> --v2 --port 8549 --gateway-port 8083`. The records went to
+`out/fork/` only, and neither names an endpoint.
+
+| What | Base Sepolia fork (block 48,341,282) |
+|---|---|
+| sentences | 112 passed, 0 failed, 142 s |
+| the deploy | 130.12 M gas in 76 s: the MVB with the Router, and V2's seven by the burner (keepsakeArt 2,510,809 · keepsake 3,567,875 · journal 558,544 · bazaar 2,611,909, against the venue's Seaport · bridges 527,000 · studio 5,333,183 · agora 2,568,166); 479 fields, 0 disagreeing |
+| the post-MVB four through the Timelock | the card 327,180 + 2,696,364 · the custodian 387,918 + 3,168,445 · the Market 203,102 + 1,444,434 · the Roles 188,154 + 1,336,285; 512 fields, 0 disagreeing |
+| the V2 journey, on the chain's own Seaport | wrap a keepsake 234,786 · inscribe a memory 90,803 · seal token 2's Reach 64,020 · approve Seaport for token 2 53,273 · validate from the seller's wallet, no signature 63,930 · publish through the Bazaar 256,995 · buy for exactly the price 314,755 · launch a Studio collection with the default site 4,077,637 · mint 160,914 · speak in Agora's commons 143,657: 5,460,770 in all |
+| the rest of the campaign | 70 steps, 15,773,376 gas, the router and v4 families included |
+| `tokenURI(1)` | estimated at 5,046,263 gas, 106,677 bytes |
+| the gateway | 248 passed; the tamper fixture 251 |
+
 The hub's `tokenURI` budget in CI is 8,000,000 (`tools/gas.mjs`, 3.62 M
 measured cold in the battery on the landed shape, after the encoder's
 rewrite — DESIGN §15, decision 39); the 3.78 M the node estimates is the
@@ -446,13 +490,14 @@ BUILD-PLAN.md's criterion for waves 0–3, and where each item is proved:
 ## The rollout order (DESIGN §12), and what comes after
 
 Per chain, in this order, every arrow a constructor that inspects code:
-CREATE3 factory → Timelock → Engine (head, body, six panels; `freeze`) →
+CREATE3 factory → Timelock → Engine (head, body, the panels: six in V1, seven with the Gallery; `freeze`) →
 Crest → Reach impl → Grip impl → Catalog (its three companions, then the
 façade) → Renderer → hub (the four facets then `IntactDiamond`, or the
 monolith, by the ship rule) → KeyRegistry → Roster → Postage → Parley →
 Locks → Pool → Coin template check → Kiln → Launchpad → Router (only
-where a probed venue table exists) → Steward → Premises → `recover-record`
-with 0 disagreeing → the record. Then, through the Timelock's seven-day
+where the probed venue row names a Uniswap venue) → Steward → Premises →
+(with `--v2`: KeepsakeArt → Keepsake → Journal → Bazaar → Bridges → Studio
+→ Agora) → `recover-record` with 0 disagreeing → the record. Then, through the Timelock's seven-day
 public queue and only there (`Timelock.execute(factory, 0, deploy(salt,
 code))`, executable by anyone once ripe): AgentCard, the LaunchHook
 template, LPCustodian, Market, Roles, Nameplate (band 0) — each at the

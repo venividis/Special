@@ -44,12 +44,13 @@
   Order (DESIGN §12, every arrow a hard constraint where a constructor
   inspects code): factory → Timelock → Engine (load head, body, six
   panels; setEngineHash; freeze) → Crest → Reach impl → Grip impl →
-  CatalogRows → CatalogRowsPost → CatalogText → CatalogState → Catalog → Renderer → hub (the
+  CatalogRows → CatalogRowsPost → CatalogRowsV2 → CatalogText → CatalogState → Catalog → Renderer → hub (the
   four facets then IntactDiamond, or the monolith, by out/ship.json) →
   KeyRegistry → Roster → Postage → Parley → Locks → Pool → Coin template
-  check → Kiln → Launchpad → Router (only where venues are configured) →
-  Steward → Premises → post-conditions → recover-record in-process → the
-  record is written LAST.
+  check → Kiln → Launchpad → Router (only where the venue row names a
+  Uniswap venue) → Steward → Premises → (with --v2: KeepsakeArt → Keepsake
+  → Journal → Bazaar → Bridges → Studio → Agora) → post-conditions →
+  recover-record in-process → the record is written LAST.
 
   Resume: every step is journaled to deployments/<chainId>.journal.json
   as soon as its receipt is in. A crashed run re-runs the same command;
@@ -74,7 +75,15 @@
 
     node tools/deploy.mjs --chain 31337 --confirm DEPLOY_INTACT_LOCAL
     RPC_URL=… PRIVATE_KEY=0x… node tools/deploy.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA
-      [--rpc URL] [--journal path] [--record path] [--price wei]
+      [--rpc URL] [--journal path] [--record path] [--price wei] [--v2]
+
+  `--v2` (W15) is a switch: the same fresh deployment also lands V2 by the
+  burner, after the Premises and in V2_ORDER — the Keepsake's art, the
+  Keepsake, the Journal, the Bazaar (only where the venue row names
+  Seaport), Bridges, the Studio and Agora — each at the "intact.v2.<key>"
+  placeholder the hub and the Catalog pin, with the constructor arguments
+  `deploySatellite` gives the same contract through the Timelock. Without
+  it they stay placeholders until `--satellite` lands them.
 
   `--record` names where the record is written (default
   deployments/<chainId>.json — a rehearsal that must not overwrite the
@@ -95,10 +104,10 @@ import { createRequire } from "node:module";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
 import { createAddressFromString, hexToBytes, bytesToHex, Account } from "@ethereumjs/util";
 import { compile, artifact, shipRule, LIMIT } from "./compile.mjs";
-import { enc, encodeParams, decAddr, decUint, decBool, TX_GAS_CAP } from "./evm.mjs";
+import { enc, encodeParams, decAddr, decUint, decBool, decString, TX_GAS_CAP } from "./evm.mjs";
 import * as EVM from "./evm.mjs";
 import { hubCut } from "./facets.mjs";
-import { REGISTRY, REGISTRY_RUNTIME, ZERO, PANELS, CONFIG_TYPE, CATALOG_CONFIG_TYPE,
+import { REGISTRY, REGISTRY_RUNTIME, ZERO, CONFIG_TYPE, CATALOG_CONFIG_TYPE,
          predictCreate, encRequest, decResponse } from "./site.mjs";
 /*  A static import, although recover-record.mjs imports this file back:
     ESM resolves a static cycle (each side touches the other's exports only
@@ -166,6 +175,24 @@ export const VENUES = {
         permit2: "0xdcde65555316946c298e4c60c6213eb5c3aeab4354d1f3fac5427236bcbb9ebe",
         weth: "0x83f731a17e6c0cdd04bc6f60b15d3e789e215b71403087b84b48650a1e5cbb21"
       }
+    },
+    /// V2 (wave 2, W6): Seaport 1.6, its ConduitController and OpenSea's
+    /// conduit, from tools/fixtures/seaport-1.6/probe.json — read by
+    /// `node tools/verify-bazaar-fork.mjs --probe` at one pinned block, the
+    /// bytes eth_getCode returned kept beside it; the evidence is the fixture,
+    /// with its own date and block, so it rides apart from the Uniswap probe
+    seaport: "0x0000000000000068F116a894984e2DB1123eB395",
+    conduitController: "0x00000000F9490004C11Cef243f5400493c00Ad63",
+    openseaConduitKey: "0x0000007b02230091a7ed01230072f7006a004d60a8d4e71d599b8104250f0000",
+    openseaConduit: "0x1E0049783F008A0085193E00003D00cd54003c71",
+    seaportProbed: {
+      on: "2026-10-19", block: 48309960, blockHash: "0x0fcc734d8fa39434facf5fccb339994d4fe5a86427bc6f5465a0fe2ce29d01ef",
+      version: "1.6", domainSeparator: "0x4778aa25cd18fc3b8e9d053bb369734ae2ce8511b24dd9b00010466bdb496b45",
+      codehashes: {
+        seaport: "0x7912af42062ec0080cde88360c1429d58984ae16eb3f17af505b815bf6ffc745",
+        conduitController: "0x880348b652e7cce91216153a4d0107e70c77b92192f3d7a127ff1f1351961948",
+        openseaConduit: "0x069efdc9b946a332dce9951324fa197268e3ff0e00e44c6bf36049fc53113a41"
+      }
     }
   },
   11155111: {
@@ -197,22 +224,58 @@ export async function checkVenues(read, row) {
   const say = (sentence, ok, detail) => out.push([sentence, Boolean(ok), detail]);
   const addrOf = (hex) => (hex && hex.length >= 66 ? low("0x" + hex.replace(/^0x/, "").slice(24, 64)) : null);
   const ask = async (to, sig) => { try { return await read.call(to, enc(sig, [])); } catch { return null; } };
-  for (const k of VENUE_KEYS) {
-    const code = row[k] ? await read.codeAt(row[k]) : "0x";
-    const h = code && code !== "0x" ? kecHex(code) : null;
-    const want = row.probed?.codehashes?.[k];
-    say(`the venue ${k} at ${row[k]} holds the code probed on ${row.probed?.on}`, h && want && low(h) === low(want), h ? `codehash ${h}, probed ${want}` : "no code there");
+  /*  A row that names no Uniswap venue (and carries no Uniswap probe) makes
+      no Uniswap claim: the Seaport half alone is what a Bazaar is landed
+      against (W15, `deploySatellite`'s re-proof), and every row in VENUES
+      today names both.                                                   */
+  if (VENUE_KEYS.some((k) => row[k]) || row.probed) {
+    for (const k of VENUE_KEYS) {
+      const code = row[k] ? await read.codeAt(row[k]) : "0x";
+      const h = code && code !== "0x" ? kecHex(code) : null;
+      const want = row.probed?.codehashes?.[k];
+      say(`the venue ${k} at ${row[k]} holds the code probed on ${row.probed?.on}`, h && want && low(h) === low(want), h ? `codehash ${h}, probed ${want}` : "no code there");
+    }
+    const pm = addrOf(await ask(row.positionManager, "poolManager()"));
+    say("the PositionManager names this PoolManager", pm === low(row.poolManager), pm);
+    const p2 = addrOf(await ask(row.positionManager, "permit2()"));
+    say("the PositionManager names this Permit2", p2 === low(row.permit2), p2);
+    const w1 = addrOf(await ask(row.positionManager, "WETH9()")), w2 = addrOf(await ask(row.swapRouter02, "WETH9()"));
+    say("the PositionManager and SwapRouter02 name this WETH", w1 === low(row.weth) && w2 === low(row.weth), `${w1} and ${w2}`);
+    const f = addrOf(await ask(row.swapRouter02, "factory()"));
+    say("SwapRouter02 names the v3 factory the feed names", f === low(row.probed?.v3Factory), f);
   }
-  const pm = addrOf(await ask(row.positionManager, "poolManager()"));
-  say("the PositionManager names this PoolManager", pm === low(row.poolManager), pm);
-  const p2 = addrOf(await ask(row.positionManager, "permit2()"));
-  say("the PositionManager names this Permit2", p2 === low(row.permit2), p2);
-  const w1 = addrOf(await ask(row.positionManager, "WETH9()")), w2 = addrOf(await ask(row.swapRouter02, "WETH9()"));
-  say("the PositionManager and SwapRouter02 name this WETH", w1 === low(row.weth) && w2 === low(row.weth), `${w1} and ${w2}`);
-  const f = addrOf(await ask(row.swapRouter02, "factory()"));
-  say("SwapRouter02 names the v3 factory the feed names", f === low(row.probed?.v3Factory), f);
+  /*  V2 (wave 2, W6): a row that names Seaport carries its own probe, and
+      the claims tools/verify-bazaar-fork.mjs makes of it: the three
+      codehashes, `information()` saying 1.6 and naming this controller,
+      the controller naming this conduit for OpenSea's key, and the
+      conduit's channel to Seaport open. A row without Seaport says nothing. */
+  if (row.seaport) {
+    const P = row.seaportProbed || {};
+    for (const k of SEAPORT_KEYS) {
+      const code = row[k] ? await read.codeAt(row[k]) : "0x";
+      const h = code && code !== "0x" ? kecHex(code) : null;
+      const want = P.codehashes?.[k];
+      say(`the venue ${k} at ${row[k]} holds the code probed on ${P.on}`, h && want && low(h) === low(want), h ? `codehash ${h}, probed ${want}` : "no code there");
+    }
+    const info = await ask(row.seaport, "information()");
+    let version = null, controller = null;
+    try { version = decString(info); controller = addrOf("0x" + info.replace(/^0x/, "").slice(128, 192)); } catch { /* no answer */ }
+    say("Seaport's information() says version 1.6 and names this ConduitController", version === "1.6" && controller === low(row.conduitController), `${version} ${controller}`);
+    let named = null;
+    try { named = addrOf(await read.call(row.conduitController, enc("getConduit(bytes32)", [row.openseaConduitKey]))); } catch { named = null; }
+    say("the ConduitController names this conduit for OpenSea's conduit key", named === low(row.openseaConduit), named);
+    let open = null;
+    try { open = decBool(await read.call(row.conduitController, enc("getChannelStatus(address,address)", [row.openseaConduit, row.seaport]))); } catch { open = null; }
+    say("the conduit's channel to Seaport is open", open === true, String(open));
+  }
   return out;
 }
+/// The Seaport keys a venue row may carry beside the Uniswap ones (V2, W6).
+export const SEAPORT_KEYS = ["seaport", "conduitController", "openseaConduit"];
+/// The Seaport half of a venue row (W15): what the Bazaar is constructed and
+/// re-proved against, apart from the Uniswap venues the Router needs.
+export const seaportRow = (row) => (row?.seaport ? Object.fromEntries(
+  ["seaport", "conduitController", "openseaConduitKey", "openseaConduit", "seaportProbed"].filter((k) => row[k] !== undefined).map((k) => [k, row[k]])) : null);
 
 /// The bands tile the edition exactly once (IPSEITY `assertTiles`, verbatim
 /// in intent): runs at import, throws on a backwards band, an overlap, a
@@ -240,17 +303,35 @@ export function bandOf(chainId) {
 /*═══════════════════ salts and predictions ═══════════════════*/
 
 export const SALT_PREFIX = "intact.v1.";
-export const saltOf = (key) => kec(Buffer.from(SALT_PREFIX + key, "utf8"));
+/// V2 (wave 2, W6): the V2 satellites are predicted under salts of their own
+/// namespace, "intact.v2.<key>"; every other key keeps "intact.v1.<key>".
+export const V2_SALTED = ["keepsake", "journal", "bazaar", "bridges", "studio", "agora"];
+/// The integration (W15): the Keepsake's renderer, `ART()`, is a seventh V2
+/// deployment. Nothing but the Keepsake pins it, so it is not one of the six
+/// the hub and the Catalog name, but it is predicted, salted and landed the
+/// same way, under "intact.v2.keepsakeArt", and it lands before the Keepsake.
+export const V2_ART = "keepsakeArt";
+/// The order V2 lands in, by the burner in a fresh deployment (`--v2`) or
+/// through the Timelock afterwards (`--satellite`): the art before the
+/// Keepsake that pins it, then the Journal, the Bazaar, Bridges, and the
+/// Studio and Agora, each constructed at the other's prediction.
+export const V2_ORDER = [V2_ART, "keepsake", "journal", "bazaar", "bridges", "studio", "agora"];
+export const saltName = (key) => (V2_ORDER.includes(key) ? "intact.v2." : SALT_PREFIX) + key;
+export const saltOf = (key) => kec(Buffer.from(saltName(key), "utf8"));
 
 /// Every record key that is a CREATE3 deployment, in deployment order. The
 /// three post-MVB pins are predicted and codeless on every chain today.
 export const SALTED = [
   "timelock", "crest", "reachImpl", "gripImpl",
-  "catalogRows", "catalogRowsPost", "catalogText", "catalogState", "catalog", "renderer",
+  "catalogRows", "catalogRowsPost", "catalogRowsV2", "catalogText", "catalogState", "catalog", "renderer",
   "coreFacet", "rightsFacet", "mintFacet", "siteFacet", "hub",
   "keys", "roster", "postage", "parley", "locks", "pool", "kiln", "launchpad", "router", "steward", "premises"
 ];
-export const PLACEHOLDERS = ["market", "roles", "agentCard", "nameplate", "custodian"];
+/// From schema 3 (V2, W6) the six V2 satellites are placeholders too: the
+/// hub pins the Keepsake and the Journal, the Catalog's world names all six,
+/// each CREATE3-predicted under its "intact.v2.<key>" salt and codeless until
+/// it lands; and (W15) the Keepsake's art, which only the Keepsake pins.
+export const PLACEHOLDERS = ["market", "roles", "agentCard", "nameplate", "custodian", ...V2_SALTED, V2_ART];
 /// AgentCard, LPCustodian, Market, Roles and the Nameplate land AFTER the
 /// MVB record (DESIGN §12's tail), at the addresses the hub, the Catalog,
 /// the Renderer and the Premises already pin — the same factory, the same
@@ -286,11 +367,41 @@ export const SATELLITES = {
   nameplate: { file: "src/Nameplate.sol", name: "Nameplate", pins: ["hub", "premises"],
                admits: (rec) => (NAME_WRAPPER[Number(rec.chainId)] ? null : `chain ${rec.chainId} has no NameWrapper in tools/ens-name.mjs's table — the Nameplate is band 0's (Ethereum, and Sepolia to rehearse)`),
                args: (w, rec) => encodeParams("address,address,address,address,address,string",
-                 [w.hub, w.premises, ENS_REGISTRY, NAME_WRAPPER[Number(rec.chainId)], ETH_REGISTRAR, "intact"]) }
+                 [w.hub, w.premises, ENS_REGISTRY, NAME_WRAPPER[Number(rec.chainId)], ETH_REGISTRAR, "intact"]) },
+  /*  V2 (W15; W6's request 6, H4). Each lands at its "intact.v2.<key>"
+      placeholder, its constructor arguments from the record: only a record
+      of schema 3 or later has the hub that pins a Keepsake and a Journal and
+      the Catalog that names all six, so an older record admits none of
+      them. `after` names what must have code before this one is executed
+      (the art the Keepsake pins as ART); the Studio and Agora are each
+      constructed at the other's prediction, which neither inspects.     */
+  keepsakeArt: { file: "src/KeepsakeArt.sol", name: "KeepsakeArt", pins: [], admits: (rec) => v2Admits(rec),
+                 args: () => "" },
+  keepsake: { file: "src/Keepsake.sol", name: "Keepsake", pins: ["hub", "pool", V2_ART], after: [V2_ART], admits: (rec) => v2Admits(rec),
+              args: (w) => encodeParams("address,address,address", [w.hub, w.pool, w[V2_ART]]) },
+  journal: { file: "src/Journal.sol", name: "Journal", pins: ["hub"], admits: (rec) => v2Admits(rec),
+             args: (w) => encodeParams("address", [w.hub]) },
+  /// a venue's zone: Seaport 1.6 is the venue table's (`VENUES`, `seaport`, probed
+  /// with its own evidence), never recalled; a record whose row names none is refused
+  bazaar: { file: "src/Bazaar.sol", name: "Bazaar", pins: ["hub", "pool", "venueSeaport"], venue: (rec) => seaportRow(rec.venues),
+            admits: (rec) => v2Admits(rec) || (rec.venues?.seaport ? null
+              : `chain ${rec.chainId}'s record names no Seaport venue (VENUES in tools/deploy.mjs, seaport, probed) — the Bazaar zones Seaport 1.6's orders and lands nowhere without one`),
+            args: (w) => encodeParams("address,address,address", [w.venueSeaport, w.hub, w.pool]) },
+  bridges: { file: "src/Bridges.sol", name: "Bridges", pins: ["timelock"], admits: (rec) => v2Admits(rec),
+             args: (w) => encodeParams("address", [w.timelock]) },
+  studio: { file: "src/Studio.sol", name: "Studio", pins: ["hub", "journal", "agora"], admits: (rec) => v2Admits(rec),
+            args: (w) => encodeParams("address,address,address", [w.hub, w.journal, w.agora]) },
+  agora: { file: "src/Agora.sol", name: "Agora", pins: ["hub", "keys", "studio"], admits: (rec) => v2Admits(rec),
+           args: (w) => encodeParams("address,address,address", [w.hub, w.keys, w.studio]) }
 };
-/// DESIGN §12's post-MVB order. `admits(rec)`, when present, names why a
-/// chain does not take the satellite (null when it does).
-export const SATELLITE_ORDER = ["agentCard", "custodian", "market", "roles", "nameplate"];
+/// A V2 satellite lands only for a record whose hub and Catalog name it: schema 3 or later.
+function v2Admits(rec) {
+  const s = schemaOf(rec);
+  return s >= 3 ? null : `the record is schema ${s || "(none)"}, written before V2 — its hub pins no Keepsake or Journal and its Catalog names no V2 satellite`;
+}
+/// DESIGN §12's post-MVB order, then V2's. `admits(rec)`, when present, names
+/// why a chain does not take the satellite (null when it does).
+export const SATELLITE_ORDER = ["agentCard", "custodian", "market", "roles", "nameplate", ...V2_ORDER];
 export const admitsSatellite = (key, rec) => (SATELLITES[key].admits ? SATELLITES[key].admits(rec) : null);
 /// DESIGN §12's order as one list, asserted against the journal before the
 /// record is written: the factory, the Timelock, the Engine (whose loads
@@ -298,7 +409,10 @@ export const admitsSatellite = (key, rec) => (SATELLITES[key].admits ? SATELLITE
 /// the diamond build and the Router only where a venue table exists, so
 /// the assertion compares the journal with this list FILTERED to what the
 /// run deployed, in this order.
-export const DEPLOY_ORDER = ["factory", "timelock", "engine", ...SALTED.filter((k) => k !== "timelock")];
+/// A fresh deployment run with `--v2` (W15) lands V2 by the burner right
+/// after the Premises, in V2_ORDER, so a journal that holds V2 steps holds
+/// them last.
+export const DEPLOY_ORDER = ["factory", "timelock", "engine", ...SALTED.filter((k) => k !== "timelock"), ...V2_ORDER];
 /// What a complete MVB record contains. `router` is present only where a
 /// venue table exists for the chain; the facets only in the diamond build.
 export const RECORD_KEYS = ["factory", "engine", ...SALTED];
@@ -443,6 +557,11 @@ export const PINS = [
   /// from schema 2 (the console round) the Catalog pins the Nameplate too; a schema-1 record's Catalog predates the getter
   ["catalog", "NAMEPLATE()", "nameplate", 2],
   ["catalogState", "TEXT()", "catalogText"], ["catalogText", "ROWS()", "catalogRows"], ["catalogText", "ROWS_POST()", "catalogRowsPost"],
+  /// from schema 3 (V2, W6): the hub's two V2 pins, the Catalog's V2 world and its third table
+  ["hub", "KEEPSAKE()", "keepsake", 3], ["hub", "JOURNAL()", "journal", 3],
+  ["catalog", "KEEPSAKE()", "keepsake", 3], ["catalog", "JOURNAL()", "journal", 3], ["catalog", "BAZAAR()", "bazaar", 3],
+  ["catalog", "BRIDGES()", "bridges", 3], ["catalog", "STUDIO()", "studio", 3], ["catalog", "AGORA()", "agora", 3],
+  ["catalog", "SEAPORT()", "venueSeaport", 3], ["catalogText", "ROWS_V2()", "catalogRowsV2", 3],
   ["renderer", "HUB()", "hub"], ["renderer", "ENGINE()", "engine"], ["renderer", "CREST()", "crest"],
   ["renderer", "CATALOG()", "catalog"], ["renderer", "AGENTCARD()", "agentCard"],
   ["premises", "HUB()", "hub"], ["premises", "RENDERER()", "renderer"], ["premises", "ENGINE()", "engine"],
@@ -463,13 +582,23 @@ export const PINS = [
   ["agentCard", "HUB()", "hub"], ["agentCard", "CATALOG()", "catalog"], ["agentCard", "PREMISES()", "premises"],
   ["launchpad", "CUSTODIAN()", "custodian"],
   ["custodian", "HUB()", "hub"], ["custodian", "LAUNCHPAD()", "launchpad"], ["custodian", "KILN()", "kiln"],
-  ["custodian", "POOL_MANAGER()", "venuePoolManager"], ["custodian", "POSITION_MANAGER()", "venuePositionManager"], ["custodian", "PERMIT2()", "venuePermit2"]
+  ["custodian", "POOL_MANAGER()", "venuePoolManager"], ["custodian", "POSITION_MANAGER()", "venuePositionManager"], ["custodian", "PERMIT2()", "venuePermit2"],
+  /// V2's own pins (W15), read back the moment each lands — only a schema-3 record can hold one,
+  /// so they need no schema of their own; Studio and Agora are a mutual pair, both ways
+  ["keepsake", "HUB()", "hub"], ["keepsake", "POOL()", "pool"], ["keepsake", "ART()", V2_ART],
+  ["journal", "HUB()", "hub"],
+  ["bazaar", "SEAPORT()", "venueSeaport"], ["bazaar", "HUB()", "hub"], ["bazaar", "POOL()", "pool"],
+  ["bridges", "TIMELOCK()", "timelock"],
+  ["studio", "HUB()", "hub"], ["studio", "JOURNAL()", "journal"], ["studio", "AGORA()", "agora"],
+  ["agora", "HUB()", "hub"], ["agora", "KEYS()", "keys"], ["agora", "STUDIO()", "studio"]
 ];
 /// The record schema this tree writes, and whether a PINS row applies to a
 /// record: a row with a fourth element exists in records of that schema or
 /// later, because its holder's code in an older record has no such getter
-/// (2: the Catalog's NAMEPLATE). Every walker of PINS asks this first.
-export const RECORD_SCHEMA = 2;
+/// (2: the Catalog's NAMEPLATE; 3: V2's — the hub's KEEPSAKE and JOURNAL,
+/// the Catalog's seven V2 addresses, CatalogText's ROWS_V2). Every walker of
+/// PINS asks this first.
+export const RECORD_SCHEMA = 3;
 export const schemaOf = (rec) => Number((String(rec?.schema || "").match(/^intact\.deployment\/(\d+)$/) || [])[1] || 0);
 export const pinApplies = (row, rec) => !row[3] || schemaOf(rec) >= row[3];
 /// The venue table's addresses as PINS targets (`venue*` keys), so the
@@ -478,7 +607,8 @@ export const pinApplies = (row, rec) => !row[3] || schemaOf(rec) >= row[3];
 /// not only by the Router's codehash. Absent venues pin as address(0).
 export const venueTargets = (venues) => ({
   venuePoolManager: venues?.poolManager || ZERO, venueSwapRouter02: venues?.swapRouter02 || ZERO, venueWeth: venues?.weth || ZERO,
-  venuePositionManager: venues?.positionManager || ZERO, venuePermit2: venues?.permit2 || ZERO
+  venuePositionManager: venues?.positionManager || ZERO, venuePermit2: venues?.permit2 || ZERO,
+  venueSeaport: venues?.seaport || ZERO                                   // V2 (W6): the Catalog's SEAPORT
 });
 /// The Router's bytes32 immutables: [getter, what the chain must say given
 /// the record]. POOL_HASH is the Pool's codehash at construction; the two
@@ -525,7 +655,8 @@ export function toolchain() {
  *
  * opts: out, plan, manifest, price, venues, journalPath (null = in memory),
  *       recordPath (null = return only; undefined = deployments/<chainId>.json),
- *       band override, log(line),
+ *       band override, log(line), v2 (W15: land V2 by the burner after the
+ *       Premises, recorded under `satellites` with `via: "burner"`),
  *       mispredict {key: address} — a TEST hook that feeds a wrong prediction
  *       into every constructor that pins `key`, so the refusal can be proved;
  *       crashAfter "<loadHead|loadBody|loadPanel>:<i>" — a TEST hook that
@@ -548,10 +679,14 @@ export async function deployIntact(ad, opts = {}) {
   const hookArt = (() => { try { return artifact(out, "src/LaunchHook.sol", "LaunchHook"); } catch { return null; } })();
   const hookHash = hookArt ? kecHex(hookArt.deployed) : "0x" + "00".repeat(32);
   if (venues && !venues.launchHookCodehash && hookArt) venues = { ...venues, launchHookCodehash: hookHash };
+  /// the Router lands where the row names a Uniswap venue; a row that names
+  /// only Seaport (the Bazaar's venue, W15) is a venue table for the Bazaar
+  /// and none for the Router, whose letter X is then pinned as address(0)
+  const routed = Boolean(venues && (venues.swapRouter02 || venues.poolManager));
   /// over a wire, the venue row is re-proved before anything is sent: a
   /// venue whose code is not the code probed, or a PositionManager naming
   /// another PoolManager, refuses the deploy by name
-  if (venues && !ad.inProcess && venues.probed) {
+  if (venues && !ad.inProcess && (venues.probed || venues.seaportProbed)) {
     const bad = (await checkVenues(ad, venues)).filter(([, ok]) => !ok);
     if (bad.length) throw new Error(`the venue table's row for chain ${chainId} does not hold on this chain — re-probe it (tools/verify-venues.mjs):\n    ${bad.map(([s, , d]) => `${s}: ${d}`).join("\n    ")}`);
   }
@@ -647,7 +782,7 @@ export async function deployIntact(ad, opts = {}) {
   if (gateTimelock !== P.timelock) throw new Error(`the factory's TIMELOCK is ${gateTimelock}, the timelock salt predicts ${P.timelock}`);
   /// what the constructors are TOLD (the test hook may lie here; the chain never does)
   const T = { ...P, ...(opts.mispredict || {}) };
-  if (!venues) { P.router = ZERO; T.router = ZERO; }
+  if (!routed) { P.router = ZERO; T.router = ZERO; }
 
   const got = { factory }; // key → deployed address
   const codehashes = {};  // key → extcodehash
@@ -808,10 +943,10 @@ export async function deployIntact(ad, opts = {}) {
   for (let i = 0; i < plan.panels.length; i++) pointers.panels.push(pointerOf("panel", i) || predictCreate(engine, shardBase + i));
   pointers.head.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, 1 + i))) throw new Error(`head shard ${i} is not at CREATE(engine, ${1 + i})`); });
   pointers.body.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, 1 + plan.head.length + i))) throw new Error(`body shard ${i} is not at CREATE(engine, ${1 + plan.head.length + i})`); });
-  pointers.panels.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, shardBase + i))) throw new Error(`panel ${PANELS[i]} is not at CREATE(engine, ${shardBase + i})`); });
+  pointers.panels.forEach((a, i) => { if (low(a) !== low(predictCreate(engine, shardBase + i))) throw new Error(`panel ${plan.panels[i].name} is not at CREATE(engine, ${shardBase + i})`); });
   for (let i = 0; i < plan.panels.length; i++) {
     const c = await ad.codeAt(pointers.panels[i]);
-    if (kecHex(c.slice(4)) !== low(plan.panels[i].gzipHash)) throw new Error(`panel ${PANELS[i]}'s pointer ${pointers.panels[i]} does not hold its gzip bytes`);
+    if (kecHex(c.slice(4)) !== low(plan.panels[i].gzipHash)) throw new Error(`panel ${plan.panels[i].name}'s pointer ${pointers.panels[i]} does not hold its gzip bytes`);
   }
 
   /*── 4–6. Crest, Reach impl, Grip impl ──*/
@@ -825,12 +960,16 @@ export async function deployIntact(ad, opts = {}) {
                     T.market, T.roles, T.agentCard, ZERO, T.nameplate];                    // HPRYTSKNLCOWXEGQMDAUI
   await create3("catalogRows", "src/Catalog.sol", "CatalogRows", encodeParams("address[21]", [byLetter]));
   await create3("catalogRowsPost", "src/Catalog.sol", "CatalogRowsPost", encodeParams("address[21]", [byLetter]));
-  await create3("catalogText", "src/Catalog.sol", "CatalogText", encodeParams("address,address", [got.catalogRows, got.catalogRowsPost]), [code("catalogRows"), code("catalogRowsPost")]);
+  await create3("catalogRowsV2", "src/Catalog.sol", "CatalogRowsV2",
+    encodeParams("address[9]", [[T.keepsake, T.journal, T.bazaar, T.bridges, T.studio, ZERO, T.agora, venues?.seaport || ZERO, ZERO]]));   // VJBbZcFse
+  await create3("catalogText", "src/Catalog.sol", "CatalogText", encodeParams("address,address,address", [got.catalogRows, got.catalogRowsPost, got.catalogRowsV2]),
+    [code("catalogRows"), code("catalogRowsPost"), code("catalogRowsV2")]);
   await create3("catalogState", "src/Catalog.sol", "CatalogState", encodeParams("address", [got.catalogText]), [code("catalogText")]);
   await create3("catalog", "src/Catalog.sol", "Catalog", encodeParams(CATALOG_CONFIG_TYPE, [[
     T.hub, engine, T.router, T.roster, T.postage, T.keys, T.kiln, T.agentCard,
     got.reachImpl, got.gripImpl, T.pool, T.parley, T.launchpad, T.locks, T.steward, T.market, T.roles,
-    got.timelock, T.premises, T.renderer, band.band, band.first, band.last, got.catalogText, got.catalogState, T.nameplate]]),
+    got.timelock, T.premises, T.renderer, band.band, band.first, band.last, got.catalogText, got.catalogState, T.nameplate,
+    T.keepsake, T.journal, T.bazaar, T.bridges, T.studio, T.agora, venues?.seaport || ZERO]]),
     [code("catalogText"), code("catalogState")]);
 
   /*── 8. Renderer ──*/
@@ -839,7 +978,7 @@ export async function deployIntact(ad, opts = {}) {
 
   /*── 9. the hub, by the ship rule, under one salt either way ──*/
   const config = [got.reachImpl, got.gripImpl, band.band, band.first, band.last, T.steward, T.market, T.roles, T.pool, T.parley,
-                  T.launchpad, T.locks, got.renderer, got.catalog, T.premises, got.timelock];
+                  T.launchpad, T.locks, got.renderer, got.catalog, T.premises, got.timelock, T.keepsake, T.journal];
   const cfg = encodeParams(CONFIG_TYPE, [config]);
   let facets = null, cut = null;
   if (ship.build === "diamond") {
@@ -870,17 +1009,17 @@ export async function deployIntact(ad, opts = {}) {
   if (!A("src/Kiln.sol", "Kiln").deployed.includes(coinCode)) throw new Error("the compiled Coin creation code is not what Kiln.sol carries");
   const coinTemplate = { bytes: coinCode.length / 2, keccak: kecHex(coinCode) };
 
-  await create3("kiln", "src/Kiln.sol", "Kiln", encodeParams("address,address,address", [got.hub, T.launchpad, venues ? venues.poolManager : ZERO]));
+  await create3("kiln", "src/Kiln.sol", "Kiln", encodeParams("address,address,address", [got.hub, T.launchpad, venues?.poolManager || ZERO]));
   await create3("launchpad", "src/Launchpad.sol", "Launchpad", encodeParams("address,address,address,address,address", [got.hub, got.kiln, got.pool, got.locks, T.custodian]));
 
-  /*── 19. Router, only where a probed venue table exists; else pinned zero ──*/
-  if (venues) {
+  /*── 19. Router, only where a probed venue table names a Uniswap venue; else pinned zero ──*/
+  if (routed) {
     await create3("router", "src/Router.sol", "Router",
       encodeParams("address,address,address,address,address,bytes32",
         [got.hub, got.pool, venues.swapRouter02 || ZERO, venues.poolManager || ZERO, venues.weth || ZERO, venues.launchHookCodehash || "0x" + "00".repeat(32)]),
       [code("pool")]);
   } else {
-    log("  router        skipped — no probed venue table for this chain; pinned as address(0)");
+    log(`  router        skipped — ${venues ? "the venue row names no Uniswap venue" : "no probed venue table for this chain"}; pinned as address(0)`);
   }
 
   /*── 20–21. Steward, Premises ──*/
@@ -888,9 +1027,30 @@ export async function deployIntact(ad, opts = {}) {
   await create3("premises", "src/Premises.sol", "Premises",
     encodeParams("address,address,address,address,address,address", [got.hub, got.renderer, engine, got.catalog, got.crest, T.agentCard]));
 
+  /*── 22. V2, by the burner (--v2, W15): each at the placeholder the hub and
+       the Catalog already pin, its constructor arguments the same function
+       of the world `deploySatellite` uses through the Timelock, so the two
+       paths cannot build different contracts. The art lands before the
+       Keepsake that pins it; the Studio and Agora at each other's
+       prediction. A row with no Seaport skips the Bazaar by name, as a
+       chain with no Uniswap venue skips the Router.                      ──*/
+  /// --v2 (W15): the burner lands V2 right after the Premises, as it lands the
+  /// MVB's satellites; the Bazaar only where the row names Seaport. A journal
+  /// that already holds a V2 step is a --v2 run being resumed, flag or not.
+  const v2 = Boolean(opts.v2) || V2_ORDER.some((k) => journal.steps[k]);
+  const v2Keys = v2 ? V2_ORDER.filter((k) => k !== "bazaar" || venues?.seaport) : [];
+  if (v2) {
+    const w2 = { ...P, ...got, ...venueTargets(venues) };
+    for (const key of V2_ORDER) {
+      if (!v2Keys.includes(key)) { log(`  ${key.padEnd(13)} skipped — the venue row names no Seaport; its placeholder stays codeless`); continue; }
+      const sat = SATELLITES[key];
+      await create3(key, sat.file, sat.name, sat.args({ ...w2, ...got }, { chainId, venues }), (sat.after || []).map((k) => code(k)));
+    }
+  }
+
   /*═══════════════════ post-conditions: refuse to publish on any miss ═══════════════════*/
   const world = { ...got, factory, ...Object.fromEntries(PLACEHOLDERS.map((k) => [k, P[k]])), ...venueTargets(venues) };
-  if (!venues) world.router = ZERO;
+  if (!routed) world.router = ZERO;
   const fail = (m) => { throw new Error("refusing to publish: " + m); };
 
   // the order performed is the order declared (DESIGN §12)
@@ -950,9 +1110,14 @@ export async function deployIntact(ad, opts = {}) {
   if (decUint(await ad.read(engine, "inflatedSize()")) !== BigInt(manifest.inflatedSize)) fail("inflatedSize differs from dist/manifest.json");
   const shardHashes = decWords(await ad.read(engine, "shardHashes()"));
   if (JSON.stringify(shardHashes.map(low)) !== JSON.stringify(manifest.shardHashes.map(low))) fail("shardHashes() differ from dist/manifest.json");
-  for (let i = 0; i < PANELS.length; i++) {
-    if (low(await ad.read(engine, "panelHash(uint256)", [i])) !== low(manifest.panelHashes[PANELS[i]])) fail(`panel ${PANELS[i]}'s hash differs from the manifest`);
+  /*  the lanes the plan loaded, in slot order (the Engine holds up to eight, W8): each slot's pin is
+      the manifest's, and the Engine holds nothing past them (panelCount is the loaded prefix) */
+  for (let i = 0; i < plan.panels.length; i++) {
+    const name = plan.panels[i].name;
+    if (low(await ad.read(engine, "panelHash(uint256)", [i])) !== low(manifest.panelHashes[name])) fail(`panel ${name}'s hash differs from the manifest`);
   }
+  const lanes = decUint(await ad.read(engine, "panelCount()"));
+  if (lanes !== BigInt(plan.panels.length)) fail(`the Engine holds ${lanes} lanes and the plan ${plan.panels.length}`);
   const curator = low(decAddr(await ad.read(engine, "curator()")));
 
   // /manifest over ERC-5219 names the same hashes
@@ -981,7 +1146,13 @@ export async function deployIntact(ad, opts = {}) {
   for (const [k, v] of Object.entries(gasOfAll)) gas[k] = v.toString();
   const gasTotal = Object.values(gasOfAll).reduce((a, b) => a + b, 0n);
   const gasThisRun = Object.values(gasOf).reduce((a, b) => a + b, 0n);
-  const contracts = { factory, engine, ...Object.fromEntries(SALTED.filter((k) => got[k]).map((k) => [k, got[k]])) };
+  const contracts = { factory, engine, ...Object.fromEntries([...SALTED, ...V2_ORDER].filter((k) => got[k]).map((k) => [k, got[k]])) };
+  /// a V2 contract the burner landed in this run (--v2) carries the evidence a
+  /// Timelock landing carries, less the queue: the transaction that made it,
+  /// whose block holds the factory's Deployed event recover-record reads
+  const v2Landed = Object.fromEntries(V2_ORDER.filter((k) => got[k]).map((k) => [k, {
+    via: "burner", op: null, queued: null, eta: null,
+    executed: { tx: journal.steps[k].tx, block: journal.steps[k].block, gas: journal.steps[k].gas, by: from } }]));
   /// what the chain says about the admin, not a sentence written in advance:
   /// the burner holds it at the MVB; the record of a later state (rotated
   /// through the queue, or renounced) reads the same field
@@ -994,7 +1165,7 @@ export async function deployIntact(ad, opts = {}) {
     band: { band: band.band, lo: band.first.toString(), hi: band.last.toString(), rehearsal: band.rehearsal },
     deployer: from,
     factory, factoryVia: { create: { from, nonce: journal.factoryNonce ?? "0" } },
-    salts: Object.fromEntries(Object.keys(salts).filter((k) => k !== "router" || venues).map((k) => [k, salts[k]])),
+    salts: Object.fromEntries(Object.keys(salts).filter((k) => k !== "router" || routed).map((k) => [k, salts[k]])),
     contracts,
     codehashes: { factory: journal.steps.factory.codehash, ...codehashes },
     reproducible: { factory: journal.steps.factory.codehash === kecHex(A("src/lib/Create3Factory.sol", "Create3Factory").deployed), ...reproducible },
@@ -1006,7 +1177,7 @@ export async function deployIntact(ad, opts = {}) {
       engineHash: low(manifest.engineHash), inflatedSize: manifest.inflatedSize,
       shardHashes: shardHashes.map(low), panelHashes: manifest.panelHashes,
       head: pointers.head.map(low), body: pointers.body.map(low),
-      panels: PANELS.map((name, i) => ({ name, address: low(pointers.panels[i]), hash: low(manifest.panelHashes[name]), gzipHash: low(plan.panels[i].gzipHash) })),
+      panels: plan.panels.map(({ name, gzipHash }, i) => ({ name, address: low(pointers.panels[i]), hash: low(manifest.panelHashes[name]), gzipHash: low(gzipHash) })),
       storedBytes: plan.storedBytes, placeholder: Boolean(plan.placeholder)
     },
     catalogHash, coinTemplate,
@@ -1015,6 +1186,7 @@ export async function deployIntact(ad, opts = {}) {
     timelock: { admin, delay: "604800", grace: "1209600", disposition },
     burner,
     venues: venues || null,
+    ...(Object.keys(v2Landed).length ? { satellites: v2Landed } : {}),
     gas, gasTotal: gasTotal.toString(), gasThisRun: gasThisRun.toString(),
     toolchain: toolchain(),
     confirmToken: CONFIRM[chainId] || null,
@@ -1068,7 +1240,7 @@ export async function deploySatellite(ad, rec, key, opts = {}) {
   const factory = low(rec.factory);
   const timelock = low(rec.contracts.timelock);
   const salt = low(rec.salts?.[key] || saltOf(key));
-  if (salt !== saltOf(key)) throw new Error(`the record's salt for ${key} is not keccak("intact.v1.${key}"); refusing`);
+  if (salt !== saltOf(key)) throw new Error(`the record's salt for ${key} is not keccak("${saltName(key)}"); refusing`);
   const want = predictCreate3(factory, salt);
   if (rec.placeholders?.[key] && low(rec.placeholders[key]) !== want) throw new Error(`the record's placeholder for ${key} is ${rec.placeholders[key]}, the salt predicts ${want}; refusing`);
   if (rec.contracts?.[key] && low(rec.contracts[key]) !== want) throw new Error(`the record's ${key} is ${rec.contracts[key]}, the salt predicts ${want}; refusing`);
@@ -1084,6 +1256,13 @@ export async function deploySatellite(ad, rec, key, opts = {}) {
     if (target !== key || !rec.contracts?.[holder] || !pinApplies(row, rec)) continue;
     const have = low(decAddr(await ad.read(rec.contracts[holder], getter)));
     if (have !== want) throw new Error(`the ${holder}'s ${getter.replace("()", "")} is ${have}, the ${key} salt predicts ${want}; refusing`);
+  }
+  /// a venue's zone is landed against the venue as probed: over a wire the
+  /// Seaport half of the record's row is re-proved first, by name (W15)
+  if (sat.venue && !ad.inProcess) {
+    const row = sat.venue(rec);
+    const bad = row ? (await checkVenues(ad, row)).filter(([, ok]) => !ok) : [["the record's venue row", false, "names none"]];
+    if (bad.length) throw new Error(`${key}: the venue it is constructed against does not hold on this chain — re-probe it:\n    ${bad.map(([s, , d]) => `${s}: ${d}`).join("\n    ")}`);
   }
   const art = artifact(out, sat.file, sat.name);
   const init = art.bytecode + sat.args(world, rec).replace(/^0x/, "");
@@ -1142,6 +1321,10 @@ export async function deploySatellite(ad, rec, key, opts = {}) {
     }
     const grace = decUint(await ad.read(timelock, "GRACE()"));
     if ((await chainTime(ad)) > eta + grace) throw new Error(`the queued ${key} expired (eta ${eta}, grace ${grace}); the admin must queue it again`);
+    /// what it pins must be there before it lands (W15: the Keepsake's art); the queue may wait beside it
+    for (const k of sat.after || []) {
+      if ((await ad.codeAt(world[k])) === "0x") throw new Error(`${key} pins the ${k} at ${world[k]}, which has no code yet: land ${k} first (--satellite ${k}); ${key} stays queued`);
+    }
     const ex = capped(`execute ${key}`, await ad.exec(timelock, "execute(address,uint256,bytes,bytes32)", [factory, 0, data, salt], { label: `execute ${key}` }));
     await awaitBlock(ad, ex.block);
     const ev = logsBy(ex.logs, factory, DEPLOYED_TOPIC).filter((l) => l.topics[1] === salt);
@@ -1206,12 +1389,18 @@ export function parseArgs(argv) {
 }
 
 export const CLI_OPTIONS = ["chain", "confirm", "rpc", "journal", "record", "price", "satellite"];
+/// Switches, which take no value (W15): `--v2` makes a fresh deployment land
+/// V2's contracts by the burner, right after the Premises (`deployIntact`'s
+/// `v2`), instead of leaving them to the Timelock's queue.
+export const CLI_FLAGS = ["v2"];
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const args = parseArgs(process.argv.slice(2));
   for (const k of Object.keys(args)) {
-    if (!CLI_OPTIONS.includes(k)) { console.error(`unknown option --${k}; the options are ${CLI_OPTIONS.map((o) => "--" + o).join(" ")}`); process.exit(2); }
+    if (!CLI_OPTIONS.includes(k) && !CLI_FLAGS.includes(k)) { console.error(`unknown option --${k}; the options are ${[...CLI_OPTIONS, ...CLI_FLAGS].map((o) => "--" + o).join(" ")}`); process.exit(2); }
+    if (CLI_FLAGS.includes(k) && args[k] !== true) { console.error(`--${k} is a switch and takes no value`); process.exit(2); }
   }
+  if (args.v2 && args.satellite) { console.error("--v2 lands V2 by the burner in a fresh deployment; --satellite lands it through the Timelock for a recorded one — one or the other"); process.exit(2); }
   /*  The confirm token first, before reading a file, opening a socket or
       touching the key (MASTER's rule): a mistyped command costs nothing. */
   const chainId = Number(args.chain);
@@ -1292,7 +1481,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         pass preflight and die after 56 mined transactions). A rollup
         band adds the L1 data fee, asked of the OP-stack oracle when the
         predeploy has code; its absence is said, not assumed.          */
-    const deploymentGas = 120_000_000n;
+    /// with --v2 the burner lands V2's seven too: measured in-process at 127.46 M with them, 109.78 M without (W15)
+    const deploymentGas = args.v2 ? 140_000_000n : 120_000_000n;
     const execution = (deploymentGas * gasPrice * 15n) / 10n;
     let l1 = 0n;
     const ORACLE = "0x420000000000000000000000000000000000000F";
@@ -1305,7 +1495,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log("  preflight: no GasPriceOracle predeploy on this chain — no L1 data term");
     }
     const need = execution + l1;
-    console.log(`  preflight: ${(Number(need) / 1e18).toFixed(4)} ETH needed (120M gas at ${gasPrice} wei ×1.5, plus L1 data)`);
+    console.log(`  preflight: ${(Number(need) / 1e18).toFixed(4)} ETH needed (${Number(deploymentGas / 1_000_000n)}M gas at ${gasPrice} wei ×1.5, plus L1 data)`);
     if (bal < need) { console.error(`  fund the deployer first: it holds ${(Number(bal) / 1e18).toFixed(4)} ETH`); process.exit(2); }
   }
 
@@ -1313,7 +1503,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let record;
   try {
     record = await deployIntact(ad, { out, plan, manifest, journalPath, recordPath, price: args.price ? BigInt(args.price) : undefined,
-                                      log: (s) => console.log(s) });
+                                      v2: Boolean(args.v2), log: (s) => console.log(s) });
   } catch (e) {
     console.error(`\n  \x1b[31m${e.message}\x1b[0m\n  nothing was published; the journal at ${path.relative(ROOT, journalPath)} holds what landed`);
     process.exit(1);

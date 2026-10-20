@@ -63,6 +63,48 @@ admin, venue table and Coin template by name, reports a factory etched
 with a stranger's as a contradiction, and walks a codeless Engine to the
 end.
 
+## Schema 3 (V2, `intact.deployment/3`)
+
+Schema 3 is schema 2 with V2's pins:
+- the hub's `KEEPSAKE()` and `JOURNAL()`;
+- the Catalog's V2 world: `keepsake`, `journal`, `bazaar`, `bridges`,
+  `studio`, `agora` and `seaport`;
+- `contracts.catalogRowsV2`, the third rows table.
+
+The six V2 satellites are salted `intact.v2.<key>` and listed under
+`salts` and `placeholders`, codeless until each lands. A Seaport venue row
+carries `seaport`, `conduitController`, `openseaConduitKey`,
+`openseaConduit` and `seaportProbed`, the probe in
+`tools/fixtures/seaport-1.6/probe.json`.
+
+`tools/deploy.mjs`'s `PINS` names the schema each row starts in, so a
+schema-1 or schema-2 record recovers without the rows its contracts
+predate, and still agrees. `tools/verify-recover.mjs` proves both.
+
+**How a V2 contract lands (W15).** It lands one of two ways:
+- through the Timelock (`--satellite`), as the post-MVB satellites do;
+- by the burner in a fresh deployment (`tools/deploy.mjs --v2`), right
+  after the Premises, in `V2_ORDER`: the Keepsake's art, the Keepsake,
+  the Journal, the Bazaar, Bridges, the Studio, Agora.
+
+The art is a seventh placeholder, salted `intact.v2.keepsakeArt`, which
+only the Keepsake pins (`ART()`).
+
+A burner landing is recorded under `satellites.<key>` as
+`{via: "burner", op: null, queued: null, eta: null, executed: {tx, block,
+gas, by}}`. Recovery holds it to the factory's `Deployed` event at that
+block. A landed satellite whose entry records no block, by either path,
+is a disagreement.
+
+The V2 contracts' own pins are PINS rows of their own: `HUB()`, `POOL()`,
+`ART()`, `SEAPORT()`, `TIMELOCK()`, `JOURNAL()`, `AGORA()`, `KEYS()` and
+`STUDIO()`.
+
+What a record admits:
+- a record of schema 1 or 2 admits no V2 satellite;
+- a record whose venue row names no Seaport admits no Bazaar;
+- a venue row may name only Seaport, and such a record has no Router.
+
 ## The schema (`intact.deployment/2`)
 
 Schema 2 (the console round) is schema 1 with one pin more: the Catalog's `NAMEPLATE()`, band 0's resolver or the codeless placeholder, read back like every other pin. A record of schema 1 (every record written before 2026-10-19: 31337, 84532 and its first run) is recovered without that one row — its Catalog has no such getter — and agrees on everything else; `tools/deploy.mjs`'s `PINS` names the schema a row starts in.
@@ -190,10 +232,15 @@ integration tree (`docs/DEPLOYMENT.md`, "Measured"), the second live run
 and the complete one: the 27 MVB contracts from block 48,082,395 under the
 burner `0x5282…7175` (hub `0x1928…e03e`, Premises `0x379a…7079`, Timelock
 `0xae53…53fb`), recovered in-run with 362 fields and 0 disagreeing;
-`satellites` carries the card, the Market and the Roles QUEUED on the
-Timelock (`queued`, `op`, `eta`; no `executed` yet) — executable from Unix
-time 1,792,537,900, by anyone with `tools/deploy.mjs --chain 84532
---satellite all`, which writes `executed` and recovers the record. Its
+`satellites` carries the card, the Market and the Roles, queued on the
+Timelock that day (`queued`, `op`, `eta`) and landed on 2026-10-20
+(`executed`: the transaction, its block and gas, and the key that sent
+it). The landing ran `tools/deploy.mjs --chain 84532 --satellite all` from
+the tree pinned at fd18df4, whose initcode the ops hash, under a separate
+funded key `0xc79e…8f02`, since anyone may execute a ripe op. The record
+names 30 contracts and recovered in-run with 383 fields and 0 disagreeing.
+From a later head the Engine reads as not reproducible, because the
+deployed Engine is V1's (docs/CHECKPOINT.md, observation 12). Its
 campaign record beside it walks all forty steps (5,816,607 gas; the two
 steward refusals proved by their selectors, since a public chain's clock
 cannot be moved). The burner was destroyed when the run completed, as

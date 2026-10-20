@@ -80,7 +80,20 @@
   There is no W.beforeSend: a race against the epoch re-read is staged by
   landing the competing transaction between the estimate and the press.
 
-  Exports: boot, walletFor, nap, click, fill, textOf, prompts, parse.
+  A wait is an expectation (W13): page.until(cond, tries) settles the page
+  between polls of cond and, when cond is still falsy after `tries`
+  settles, THROWS an UntilTimeout naming the wait — the condition's source
+  cut to one line, the group (setGroup, called by the runner before each
+  group) and the lines of the group file that waited — so a page that never
+  gets where a wait says fails its group by name. Until W13 it returned
+  false, and a dropped result made every wait as good as the assertion
+  after it: W11's mutant W8 survived exactly so (docs/v2/W11-social.md §6).
+  { soft: true } keeps the old answer for the few waits that are a
+  deliberate "give it a moment" — before a negative assertion, or where the
+  caller reads the result itself — and each such call says so in a comment.
+
+  Exports: boot, walletFor, nap, click, fill, textOf, prompts, parse,
+  setGroup, UntilTimeout.
 ───────────────────────────────────────────────────────────────────────────*/
 import vm from "node:vm";
 import zlib from "node:zlib";
@@ -500,6 +513,29 @@ function mkDocument(page) {
   return doc;
 }
 
+/*═══════════════════ the waits ═══════════════════*/
+
+let GROUP = null;
+/// the runner names the group whose pages boot next, so a wait that times out can say where it was
+export const setGroup = (g) => { GROUP = g == null ? null : String(g); };
+/// a source or a sentence on one line, cut to n characters
+const oneLine = (s, n = 200) => { const x = String(s).replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n - 1) + "…" : x; };
+/// the frames of a stack outside this file, as repository paths with their lines: the wait's helper, then its caller
+const callers = (stack) => String(stack).split("\n").slice(1).map((l) => l.trim())
+  .filter((l) => /^at /.test(l) && !l.includes("/dom-shim.mjs") && !/node:internal|\(node:/.test(l))
+  .map((l) => { const m = l.match(/(\/tools\/[^\s():]+):(\d+):\d+\)?$/) || l.match(/([^\s():]+):(\d+):\d+\)?$/); return m ? m[1].replace(/^\//, "") + ":" + m[2] : oneLine(l, 80); })
+  .slice(0, 2);
+/// the error a timed-out wait throws: its message names the condition, the group and the lines that waited
+export class UntilTimeout extends Error {
+  constructor(o) {
+    super(`until timed out after ${o.tries} settles in group ${o.group || "(none: outside the runner's groups)"}` +
+      (o.at.length ? ", waiting at " + o.at.join(" ← ") : "") + ": " + oneLine(o.cond) +
+      (o.tick ? ` · the ticker reads "${oneLine(o.tick, 160)}"` : ""));
+    this.name = "UntilTimeout";
+    Object.assign(this, { cond: oneLine(o.cond), group: o.group, at: o.at, tries: o.tries, last: o.last });
+  }
+}
+
 /*═══════════════════ the window and the page ═══════════════════*/
 
 const PAGES = new Set();
@@ -514,7 +550,7 @@ export async function boot(html, opts = {}) {
   const page = {
     errors: [], fetches: [], appended: [], navigations: [], pending: [],
     innerHTMLWrites: 0, written: "", closes: 0, opaque: !!opts.opaque,
-    scripts: [], consoleLog: []
+    scripts: [], consoleLog: [], group: opts.group || GROUP
   };
   PAGES.add(page);
   const url = opts.url || (opts.opaque ? "about:blank" : "/token/1/live");
@@ -640,7 +676,18 @@ export async function boot(html, opts = {}) {
     await nap(8);
     for (let k = 0; k < 3; k++) await new Promise((r) => setImmediate(r));
   };
-  page.until = async (cond, tries = 200) => { for (let k = 0; k < tries; k++) { if (cond()) return true; await page.settle(); } return cond(); };
+  /*  until(cond, tries = 200, { soft }) — see the header: a wait that times out throws an
+      UntilTimeout naming itself; { soft: true } returns cond()'s last value instead, for a wait
+      whose caller reads the answer or pauses on purpose before a negative assertion. The call
+      site is taken at entry, while the helper that waits (press, sign) is still on the stack. */
+  page.until = async (cond, tries = 200, o = {}) => {
+    const at = o.soft ? null : new Error().stack;
+    for (let k = 0; k < tries; k++) { if (cond()) return true; await page.settle(); }
+    const last = cond();
+    if (last || o.soft) return last;
+    const tick = (doc.querySelector("#tick") || { textContent: "" }).textContent;
+    throw new UntilTimeout({ cond: String(cond), group: page.group, at: callers(at), tries, last, tick });
+  };
   page.click = (el) => { if (!el) throw new Error("click: no element"); return el.click(); };
   page.type = (el, v) => { if (!el) throw new Error("type: no element"); el.value = v; el.dispatchEvent(new ctx.Event("input", { bubbles: true })); el.dispatchEvent(new ctx.Event("change", { bubbles: true })); };
   page.hash = (h) => { loc.hash = h; };

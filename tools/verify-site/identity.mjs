@@ -118,12 +118,15 @@ export async function run(t, ctx) {
   const line = (page, k) => { const r = page.$$("#cslab .kv").find((x) => x.firstChild && x.firstChild.textContent === k); return r ? r.lastChild.textContent : null; };
   const press = async (page, el) => { if (!el) throw new Error("press: no control"); page.click(el); await page.until(() => slabOpen(page) && gasRow(page) !== "estimating…", 120); };
   const dismiss = async (page) => { page.click(page.$("#cslab [data-no]")); await page.settle(); };
-  /// sign the open slab and wait for the receipt, the rights re-read and the repaint it fires
-  const sign = async (page, W, n) => {
+  /// sign the open slab and wait for the receipt, the rights re-read and the repaint it fires. A receipt that
+  /// itself moves the custody epoch or this wallet's rights (a buy) ends, as CONSOLE §4.7 says, on the sentence
+  /// after the landing; such a call passes `moved`, and its wait names that sentence (W13: the landing wait
+  /// timed out there, in silence, until the shim's waits threw)
+  const sign = async (page, W, n, moved = false) => {
     await page.until(() => !page.$("#cslab [data-go]").disabled, 40);
     const before = tick(page);
     page.click(page.$("#cslab [data-go]"));
-    await page.until(() => W.sent() === n && tick(page) !== before && /landed in block|reverted in block/.test(tick(page)), 160);
+    await page.until(() => W.sent() === n && tick(page) !== before && (moved ? tick(page) === "ownership or epoch changed — review again" : /landed in block|reverted in block/.test(tick(page))), 160);
     for (let k = 0; k < 4; k++) await page.settle();
   };
   const repaint = async (page, vctx) => { vctx.dispatchEvent(new vctx.CustomEvent("intact:lane", { detail: { name: "identity" } })); await page.settle(); await page.settle(); };
@@ -154,7 +157,7 @@ export async function run(t, ctx) {
       "M1 the rule is printed verbatim", `"${T(page, "identity-status-rule")}" status ${T(page, "identity-status")}`);
     /* M13 */
     const manifest = page.text("#lane-identity #identity-manifest");
-    t.ok(new RegExp("engine\\s*" + S.engineHash).test(manifest) && new RegExp("catalog\\s*" + S.catalogHash).test(manifest) && Object.keys(S.panels).length === 6 &&
+    t.ok(new RegExp("engine\\s*" + S.engineHash).test(manifest) && new RegExp("catalog\\s*" + S.catalogHash).test(manifest) && Object.keys(S.panels).length === ctx.PANELS.length &&
       Object.entries(S.panels).every(([k, h]) => new RegExp("panel " + k + "\\s*" + h).test(manifest)) && /^0x[0-9a-f]{64}$/.test(S.engineHash),
       "M13 the hash manifest is the state's: the engine hash, the catalog hash and every panel's pin, printed from the block", manifest.slice(0, 200));
     /* M10 */
@@ -514,7 +517,8 @@ export async function run(t, ctx) {
     const { page } = await bootToken(1, { opaque: true, wallet: W });
     await lane(page, "identity");
     await page.until(() => /^(Active|Paused)$/.test(T(page, "identity-status")) && Object.keys(chips(page)).length === 8, 80);
-    t.ok(page.$("body").dataset.mode === "viewer" && page.$("body").dataset.rights === "1" && acts(page).length === 0 && LL(page, "input").length === 1 && onlyOn(page, "HOLD") &&
+    /* W13: the status fact was the wait's alone; "reads every fact" now checks it */
+    t.ok(page.$("body").dataset.mode === "viewer" && page.$("body").dataset.rights === "1" && /^(Active|Paused)$/.test(T(page, "identity-status")) && acts(page).length === 0 && LL(page, "input").length === 1 && onlyOn(page, "HOLD") &&
       (laneText(page).match(/nothing here can sign/g) || []).length === 1 && T(page, "identity-delegate") === "not checked in the viewer" && L(page, "#ack-delegate") === null && W.prompts().length === 0 && T(page, "identity-status-rule") === RULE,
       "the viewer reads every fact and the rights of any address, offers no control, says once that nothing here can sign, and does not pretend to have checked the account's code", `acts ${acts(page).length} inputs ${LL(page, "input").length} delegate "${T(page, "identity-delegate")}"`);
     page.close();
@@ -593,7 +597,9 @@ export async function run(t, ctx) {
     const U = vctx.INTACT.ui;
     await F.lane(page, "identity");
     await page.until(() => T(page, "identity-offer") === "not listed" && !!L(page, "[data-act=list]") && T(page, "identity-role-count") === "0", 80);
+    /* W13: "not listed", "no live role" and the list control were the wait's alone; the sentence now checks them */
     t.ok((S.reported & S.bits.market) && (S.reported & S.bits.roles) && L(page, "#identity-listing .chip") === null && L(page, "#identity-roles .chip") === null &&
+      T(page, "identity-offer") === "not listed" && T(page, "identity-role-count") === "0" && !!L(page, "[data-act=list]") &&
       T(page, "identity-seals") === "the Reach unsealed · the owned market closed" && T(page, "identity-role-user") === "none" &&
       /a role holder reads what the role's data says; the page grants nothing on it/.test(page.text("#lane-identity #identity-roles")) && !!field(page, "price") && field(page, "listDays").value === "7" &&
       L(page, "[data-act=delist]") === null && L(page, "[data-act=buy]") === null,
@@ -645,12 +651,13 @@ export async function run(t, ctx) {
     await b.page.until(() => !b.page.$("#cslab [data-go]").disabled, 40);
     b.page.click(b.page.$("#cslab [data-go]"));
     await b.page.until(() => !slabOpen(b.page) && /review again/.test(tick(b.page)), 60);
-    t.ok(WB.sent() === 0 && tick(b.page) === "the listing or the token moved since it was read — review again" && lower(decAddr(await c2.read(hub2, "ownerOf(uint256)", [1]))) === lower(ME2),
+    /* W13: "the slab closes" was the wait's alone; the sentence now checks it */
+    t.ok(WB.sent() === 0 && !slabOpen(b.page) && tick(b.page) === "the listing or the token moved since it was read — review again" && lower(decAddr(await c2.read(hub2, "ownerOf(uint256)", [1]))) === lower(ME2),
       "a fingerprint that moves between the estimate and Sign is caught by the re-read: nothing is sent and the slab closes", tick(b.page));
     WB.answer(hub2, sel("getStateFingerprint(uint256)"), null);
     const owedBefore = await owedTo(ME2);
     await press(b.page, L(b.page, "[data-act=buy]"));
-    await sign(b.page, WB, 1);
+    await sign(b.page, WB, 1, true);   // the buy moves #1's epoch and the buyer's rights
     const [rcv, roy] = [decAddr(await c2.read(hub2, "royaltyInfo(uint256,uint256)", [1, PRICE]), 0), decUint(await c2.read(hub2, "royaltyInfo(uint256,uint256)", [1, PRICE]), 1)];
     /* the royalty comes out of the price first; were the receiver the seller itself, its ledger would hold both */
     const cut = /^0x0{40}$/i.test(rcv) ? 0n : roy, owed = await owedTo(ME2), want = PRICE - cut + (lower(rcv) === lower(ME2) ? cut : 0n);
@@ -778,5 +785,50 @@ export async function run(t, ctx) {
         "past the registrar's expiry the name resolves to nothing and the lane says the registration lapsed, read on the chain's clock", name(pg));
       pg.close();
     }
+  }
+
+  /*═══════════ H · the key through Agora, on a band where Agora reports (W14, INTEGRATION L6) ═══════════*/
+  t.head("H · the key through Agora: keyOf(persona) read beside Parley's, and bindKey(persona) offered");
+  {
+    /* a band without Agora — this group's own chain — keeps V1's key section: Parley's row and nothing of Agora's */
+    {
+      const { page, S } = await bootToken(1, { wallet: walletFor(c, me) });
+      await lane(page, "identity");
+      await page.until(() => /no key bound|bound at/.test(T(page, "identity-key")) && !!L(page, "[data-act=setEncryptionKey]"), 80);
+      t.ok(!(S.reported & S.bits.agora) && !L(page, "#identity-agora-key") && !acts(page).includes("agoraBindKey") && !!L(page, "#identity-key") && page.errors.length === 0,
+        "on a band without Agora the key section is V1's: Parley's bound key and no Agora row or control", acts(page).join(","));
+      page.close();
+    }
+    const X = await ctx.fresh({ v2: true });
+    const xc = X.c, xs = X.site, xme = X.actors.me, XME = xme.from.toString(), xhub = xs.hub, agora = xs.agora;
+    await X.mint(xc, xs, XME);
+    const P1 = (BigInt(xhub) << 96n) | 1n;
+    const W = X.walletFor(xc, xme);
+    const { page, S } = await X.bootToken(1, { wallet: W });
+    await X.lane(page, "identity");
+    /* soft: the sentence below reads both rows itself, and fails by name when the Agora row is not there */
+    await page.until(() => T(page, "identity-agora-key") === "no key bound" && T(page, "identity-key") === "no key bound" && !!L(page, "[data-act=setEncryptionKey]"), 80, { soft: true });
+    t.ok(!!(S.reported & S.bits.agora) && T(page, "identity-agora-key") === "no key bound" && T(page, "identity-key") === "no key bound" && !L(page, "[data-act=agoraBindKey]") && !L(page, "[data-act=bindKey]") &&
+      (await xc.read(agora, "keyOf(uint256)", [P1])).length === 2 + 64 * 4,
+      "where Agora reports, the lane reads the token's key there too, under its persona: no key bound beside Parley's, and no binding offered before a key is published",
+      `agora "${T(page, "identity-agora-key")}" parley "${T(page, "identity-key")}" acts ${acts(page).join(",")}`);
+    /* the registry key, published from the chain by the holder's wallet, as block A publishes it from the page */
+    const mine = await sealKey(xme, S.chainId, xhub);
+    for (let k = 0; k < 3; k++) await page.settle();   // the page quiet before the suite writes (W11: a read in flight and a write share a nonce)
+    await xme.exec(xs.keys, "setEncryptionKey(uint16,bytes)", [3, mine.pk], { label: "setEncryptionKey" });
+    await repaint(page, page.ctx);
+    await page.until(() => !!L(page, "[data-act=agoraBindKey]") && !!L(page, "[data-act=bindKey]"), 60);
+    await press(page, L(page, "[data-act=agoraBindKey]"));
+    const cd = slabCd(page);
+    t.ok(fn(page) === "bindKey(uint256)" && lower(page.text("#cslab [data-to]")) === lower(agora) && word(cd, 0) === P1 &&
+      page.text("#cslab [data-sentence]") === "binds this wallet's registry key to #1 in Agora at custody epoch 1; a sale or a panic unbinds it" && /^\d+ units$/.test(gasRow(page)) && W.sent() === 0,
+      "the Agora binding is bindKey(#1's persona) to Agora, stamped with custody epoch 1 in its sentence, beside Parley's bindKey(1)", `to ${page.text("#cslab [data-to]")} w0 ${word(cd, 0)} "${page.text("#cslab [data-sentence]")}"`);
+    await sign(page, W, 1);
+    await page.until(() => /^bound at epoch 1/.test(T(page, "identity-agora-key")), 60);
+    const ko = await xc.read(agora, "keyOf(uint256)", [P1]);
+    t.ok(/^bound at epoch 1 · P-256 · key 0x[0-9a-f]{8}…$/.test(T(page, "identity-agora-key")) && T(page, "identity-agora-key").includes(("0x" + ko.slice(66, 130)).slice(0, 10)) && decUint(ko, 0) === 3n &&
+      lower("0x" + ko.slice(2 + 64 * 4, 2 + 64 * 4 + 130)) === lower(mine.pk) && T(page, "identity-key") === "no key bound" && page.errors.length === 0,
+      "Sign → Agora's keyOf(persona) answers (3, keccak(pk), pk) and the lane reads bound at epoch 1 under Agora, Parley's still unbound", `agora "${T(page, "identity-agora-key")}" parley "${T(page, "identity-key")}"`);
+    page.close();
   }
 }

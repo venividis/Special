@@ -46,12 +46,25 @@
   The sizes 0, 1, 2 and 9 wei and 2^64 and 2^112 are in the generator's
   edge set, so a quarter of every draw is one of them.
 
+  ── the keepsake's drip (V2, INVARIANTS K7) ──
+
+  Live, against the real Keepsake selling a wrapped asset slowly into those
+  same markets, with or without a trade just before that moves the price
+  against it:
+
+   10  a drip never sells below its floor, never more than has freed or
+       than its most, and is paid exactly what the market quoted; a refused
+       drip moves nothing
+   11  property 10 drew both outcomes, so it held on each side: drips that
+       landed and drips that were refused
+
     node tools/fuzz.mjs                 256 runs per property
     node tools/fuzz.mjs --runs 2000     more
     node tools/fuzz.mjs --seed 12345    reproduce a reported failure
 ───────────────────────────────────────────────────────────────────────────*/
 import { compile, artifact } from "./compile.mjs";
-import { Chain, decUint, encodeAddressArg, encodeParams } from "./evm.mjs";
+import { Chain, decUint, decAddr, encodeAddressArg, encodeParams, warp } from "./evm.mjs";
+import * as EVM from "./evm.mjs";
 
 /*──────────────── the dice ────────────────*/
 
@@ -450,6 +463,102 @@ await property("9  the pool never pays out more than it holds, and never another
     if (poolAfter < (await reserved(tokOut))) return "the balance fell below the books";
     return true;
   }, Math.max(24, Math.floor(RUNS / 4)));
+
+/*═══════════════════ the keepsake's drip ═══════════════════*/
+head("the keepsake's drip");
+
+/*  A drip is anyone's to press, so its floor is the whole price guard: the
+    Keepsake asks the Pool for at least ceil(sold × floor / 1e18) and checks
+    again what arrived. Each run wraps one asset of a market drawn from the
+    five above, sets a floor around what the market would pay for the most
+    one drip sells (the generator's mid-point is exactly that price, where
+    the rounding decides), lets part of the schedule pass on the chain's
+    clock, sometimes sells the same asset into the market first to move the
+    price against the drip, and then a keeper presses drip. What lands is
+    held to the floor, the freed amount, the most, the quote and the books;
+    what is refused is held to having moved nothing.                     */
+const art = await c.deploy(A("src/KeepsakeArt.sol", "KeepsakeArt").bytecode);
+const ks = await c.deploy(A("src/Keepsake.sol", "Keepsake").bytecode, encodeParams("address,address,address", [hub, pool, art]));
+for (const t of [BASE, QUOTE]) await c.exec(t, "approve(address,uint256)", [ks, MAX]);
+const keeper = await c.as("0x" + "4e".repeat(32));
+const WRAP = "wrap(((address,uint256)[],(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))";
+const DAY = 86_400n;
+/// `claimable(id)`: the freed amounts, then the proceeds, each `(address,uint256)[]`.
+const claimable = async (id) => {
+  const h = (await c.read(ks, "claimable(uint256)", [id])).replace(/^0x/, "");
+  const arr = (i) => {
+    const at = Number(decUint(h, i) / 32n), n = Number(decUint(h, at));
+    return Array.from({ length: n }, (_, k) => ({ token: decAddr(h, at + 1 + 2 * k).toLowerCase(), amount: decUint(h, at + 2 + 2 * k) }));
+  };
+  return { freed: arr(0), proceeds: arr(1) };
+};
+const owedIn = (list, token) => (list.find((x) => x.token === token.toLowerCase()) || { amount: 0n }).amount;
+const quoteOf = (id, baseIn, amt) => amt === 0n ? Promise.resolve(null)
+  : c.read(pool, "quote(uint256,bool,uint256)", [id, baseIn, amt]).then(decUint, () => null);
+let landed = 0, refusedDrips = 0;
+
+await property("10  a drip never sells below its floor, never more than has freed or than its most, and is paid exactly what the market quoted",
+  () => [next() % 5n, bool(), rand256(), rand256(), pick(1, 400n * DAY), pick(0, 12_000), pick(1, 20_000), bool(), rand256()],
+  async ([mi, baseSide, aSeed, mSeed, term, frac, floorBps, pre, pSeed]) => {
+    const { id, native } = MARKETS[Number(mi % 5n)];
+    const quoteTok = native ? ZERO : QUOTE;
+    const tokenIn = baseSide ? BASE : quoteTok, tokenOut = baseSide ? quoteTok : BASE;
+    const m = await market(id);
+    const rIn = baseSide ? m.rb : m.rq;
+    if (rIn === 0n) return true;
+    const amount = 1n + aSeed % (rIn * 2n);
+    const most = 1n + mSeed % amount;
+    // the floor: floorBps of what the market pays per 1e18 for `most` now
+    const q = await quoteOf(id, baseSide, most);
+    const per = q !== null ? q * WAD / most
+      : (baseSide ? decUint(await c.read(pool, "spot(uint256)", [id])) : WAD * WAD / (decUint(await c.read(pool, "spot(uint256)", [id])) || 1n));
+    const floor = per * BigInt(floorBps) / BPS || 1n;
+    const now = EVM.BLOCK.header.timestamp;
+    let kid;
+    try {
+      const r = await c.exec(ks, WRAP, [[[[tokenIn, amount]], [0, 0, now + BigInt(term)], me, "", [0, id, floor, most]]],
+        { value: tokenIn === ZERO ? amount : 0n });
+      kid = decUint(r.ret);
+    } catch { return true; }                         // nothing wrapped, nothing to drip
+    const elapsed = BigInt(term) * BigInt(frac) / BPS;
+    warp(now + (elapsed > 0n ? elapsed : 1n));
+    if (pre) {                                       // the sandwich's first leg: sell the same asset first
+      const size = 1n + BigInt(pSeed) % (rIn / 3n + 1n);
+      try { await c.exec(pool, SWAP_IN, [id, baseSide, size, 0, me, FOREVER], { value: tokenIn === ZERO ? size : 0n }); } catch { /* a refused trade is a legal draw */ }
+    }
+    const before = await claimable(kid);
+    const avail = before.freed[0].amount;
+    const wantSold = avail < most ? avail : most;
+    const quoted = await quoteOf(id, baseSide, wantSold);
+    const [in0, out0] = [await bal(tokenIn, ks), await bal(tokenOut, ks)];
+    let sold, got;
+    try {
+      const r = await keeper.exec(ks, "drip(uint256)", [kid]);
+      sold = decUint(r.ret, 0); got = decUint(r.ret, 1);
+    } catch {
+      refusedDrips++;
+      const after = await claimable(kid);
+      if (after.freed[0].amount !== avail || owedIn(after.proceeds, tokenOut) !== owedIn(before.proceeds, tokenOut)) return "a refused drip still moved the keepsake's books";
+      if (await bal(tokenIn, ks) !== in0 || await bal(tokenOut, ks) !== out0) return "a refused drip still moved the Keepsake's balances";
+      return true;
+    }
+    landed++;
+    const minOut = (sold * floor + WAD - 1n) / WAD;
+    if (got < minOut) return `sold ${sold} for ${got}, below the floor's ceil(sold x ${floor} / 1e18) = ${minOut}`;
+    if (sold !== wantSold) return `sold ${sold}, but ${avail} had freed and the most is ${most}`;
+    if (quoted !== null && got !== quoted) return `the market quoted ${quoted} for ${sold} and the keepsake received ${got}`;
+    if (await bal(tokenIn, ks) !== in0 - sold) return "the Keepsake's balance of what it sold did not fall by exactly what was sold";
+    if (await bal(tokenOut, ks) !== out0 + got) return "the Keepsake's balance of the proceeds did not rise by exactly what arrived";
+    const after = await claimable(kid);
+    if (after.freed[0].amount !== avail - sold) return "what had freed did not fall by what was sold";
+    if (owedIn(after.proceeds, tokenOut) !== owedIn(before.proceeds, tokenOut) + got) return "the proceeds owed to the holder did not rise by what arrived";
+    return true;
+  }, Math.max(24, Math.floor(RUNS / 4)));
+
+await property(`11  property 10 drew both outcomes, so it held on each side: drips that landed and drips that were refused`,
+  () => [],
+  async () => landed > 0 && refusedDrips > 0 ? true : `${landed} landed and ${refusedDrips} were refused`, 1);
+console.log(`  \x1b[2m${landed} drips landed and ${refusedDrips} were refused\x1b[0m`);
 
 /*──────────────── the tally ────────────────*/
 console.log(`\n  ${fail === 0 ? "\x1b[32m" : "\x1b[31m"}${pass} properties held, ${fail} broken\x1b[0m`);
