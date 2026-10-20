@@ -910,6 +910,12 @@ export async function lockAndMemory(t, ctx) {
     t.ok(!page.$("#swap-style") && page.$$("style").length === 1 && /button\[role=switch\]\{display:flex/.test(DIST) && /\[role=switch\]\[aria-checked=true\]::after\{/.test(DIST) &&
       /#swap-say\{font-size:17px\}/.test(DIST) && /#swap-kept \.keepsake::before\{/.test(DIST),
       "the lane writes no stylesheet of its own: the switch's knob, the one breath and the keepsake's orb are rules of the shell's", `#swap-style ${!!page.$("#swap-style")} · ${page.$$("style").length} style element(s)`);
+    /* W17: the sentence above finds each moved rule by its selector, and an orb shrunk to 4 px passed it and Chromium's
+       too; the orb's values are the shell's as they moved, so its rule is held whole in the shipped stylesheet */
+    const ORB = '#swap-kept .keepsake::before{content:"";float:left;width:46px;height:46px;margin-right:12px;border-radius:50%;' +
+      "background:radial-gradient(circle at 38% 34%,#fff,hsl(var(--h2) 90% 70%) 40%,hsl(var(--h) 80% 30%));box-shadow:0 0 24px hsl(var(--h2) 90% 70%)}";
+    t.ok(DIST.includes(ORB), "the keepsake's orb is the shell's rule as it moved, whole: a 46 px circle, white into the token's two hues, glowing in the second",
+      (DIST.match(/#swap-kept \.keepsake::before\{[^}]*\}/) || ["no such rule"])[0]);
     /* friendlier: the fee in percent beside its bps, the sniper countdown in minutes and seconds, the rate both ways */
     page.click(L(page, "#swap-flip")); await page.settle();
     await quote(page, "0.5");

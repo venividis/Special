@@ -19,10 +19,12 @@
   MockERC721 whose metadata lives off chain, shown as a link only; F an
   INTACT listing sealed, approved, validated and published from the lane
   and bought by a second account, the royalty paid, the sale in its story;
-  G a moved fingerprint refused in words; H a plain NFT listed and bought;
+  G a moved fingerprint refused in words; G2 (W17) a listing that outlives
+  its Reach's seal, refused at its end; H a plain NFT listed and bought;
   I the INTACT Market's own listing bought; J "include OpenSea": the door
   printed beside a switch that stays off; K the chips on a band with no V2;
-  L the viewer reads and offers nothing; M the hygiene of the whole run.
+  L the viewer reads and offers nothing, the holder's own wallet included
+  (W17); M the hygiene of the whole run.
 
   Elements this group reads from its panel (every selector scoped to
   #lane-gallery): #gallery-form (summary, input[name=collection|id]), #gallery-open,
@@ -150,6 +152,20 @@ export async function run(t, ctx0) {
       "an on-chain SVG token is drawn from its own data: URI: the image is face 1's, decoded in place, and its name is the metadata's", `${src.slice(0, 40)} name "${T(page, "#gallery-name")}"`);
     t.ok(ambient.length === 2 && ambient.every((a) => painted.includes(a)),
       "its frame is lit by the colours its own fills and strokes paint with, sampled from the SVG", `ambient ${ambient.join(" | ")} painted ${[...new Set(painted)].slice(0, 6).join(" | ")}`);
+    /* W17: the sentence above holds that the frame's colours are the art's own, and a light() that returned one colour
+       twice passed it. This one holds the two most vivid the art paints with, distinct, the most vivid first, each by
+       its chroma: (1 − |2L − 1|) × S for an hsl(), (max − min) / 255 for a hex */
+    const chroma = (p) => {
+      let m = /^hsla?\(([\d.]+),([\d.]+)%,([\d.]+)%/.exec(p);
+      if (m) return (1 - Math.abs(2 * m[3] / 100 - 1)) * m[2] / 100;
+      m = /^#([0-9a-f]{6}|[0-9a-f]{3})$/i.exec(p);
+      if (!m) return -1;
+      const x = m[1].length === 3 ? m[1].replace(/./g, "$&$&") : m[1], q = [0, 2, 4].map((k) => parseInt(x.substr(k, 2), 16));
+      return (Math.max(...q) - Math.min(...q)) / 255;
+    };
+    const vivid = [...new Set(painted)].filter((p) => chroma(p) >= 0).sort((a, b) => chroma(b) - chroma(a));
+    t.ok(ambient.length === 2 && ambient[0] !== ambient[1] && ambient[0] === vivid[0] && ambient[1] === vivid[1],
+      "its frame is lit by two distinct colours, the two most vivid its art paints with, the most vivid first", `ambient ${ambient.join(" | ")} · by chroma ${vivid.slice(0, 3).map((p) => p + " " + chroma(p).toFixed(2)).join(" | ")}`);
     const traits = LL(page, "#gallery-traits .trait").map((ch) => ch.textContent);
     t.ok(face1.attributes.length > 0 && face1.attributes.every((a) => traits.includes(String(a.trait_type) + ": " + String(a.value))),
       "its attributes are chips, one per trait, each as the metadata spells it", traits.slice(0, 4).join(" | "));
@@ -201,6 +217,11 @@ export async function run(t, ctx0) {
       LL(page, "#gallery-constellation svg circle").length === 6 &&
       L(page, "#gallery-constellation svg").getAttribute("role") === "img" && !L(page, "#gallery-constellation svg animate"),
       "the constellation draws one star per memory, the sealed one dim, the archive's line between them, and nothing in it loops", `${stars.length} stars`);
+    /* W17: the sentence above counts one dim star and finds the sealed memory third; a constellation that dimmed the
+       milestone and lit the sealed one passed it. This one holds which star is dim: the sealed memory's and no other */
+    t.ok(stars.length === 3 && stars.every((s) => (s.dataset.kind === "4") === (s.getAttribute("fill-opacity") === ".3")) &&
+      stars.filter((s) => s.dataset.kind !== "4").every((s) => s.getAttribute("fill-opacity") === "1"),
+      "the dim star is the sealed memory's and no other: the note and the milestone shine at full strength", stars.map((s) => "kind " + s.dataset.kind + " at " + s.getAttribute("fill-opacity")).join(" · "));
     t.ok(mems.length === 3 && /— a sealed memory —/.test(mems[2].textContent) && /a year of holding/.test(mems[1].textContent) && /a milestone/.test(mems[1].textContent),
       "plain memories are printed as text and a sealed one as a sealed memory, never opened", mems.map((m) => m.textContent.slice(0, 50)).join(" | "));
     W.answer(journal, sel("rootOf(address,uint256)"), () => w32(0xbad));
@@ -289,6 +310,11 @@ export async function run(t, ctx0) {
     await repaint(page);
     t.ok(T(page, "#gallery-name") === "<b>bold</b>" && !L(page, "#gallery-name b") && !LL(page, "#lane-gallery a").some((x) => /^javascript:/i.test(x.getAttribute("href") || "")) && !L(page, "#gallery-art img"),
       "a hostile name is text and a javascript: image is neither drawn nor linked", T(page, "#gallery-art"));
+    /* W17: the sentence above looks for a javascript: anchor under `#lane-gallery #lane-gallery a`, a selector no element
+       matches, and a lane that printed the hostile URI and linked it as well passed it. This one reads the lane itself */
+    const lane = page.$("#lane-gallery"), hrefs = lane ? Array.from(lane.querySelectorAll("a")).map((x) => x.getAttribute("href") || "") : [];
+    t.ok(!!lane && !hrefs.some((h) => /^javascript:/i.test(h)) && page.text("#lane-gallery").includes(js),
+      "no link the lane draws carries a javascript: URI: the hostile token's animation is printed as text, never an anchor", `hrefs ${hrefs.join(" | ").slice(0, 200)}`);
   }
 
   /*═══════════ F · an INTACT listing: sealed, approved, validated and published from the lane, then bought ═══════════*/
@@ -381,6 +407,31 @@ export async function run(t, ctx0) {
     t.ok(T(page, "#gallery-listings .listing .state") === "refused" && /refused by the zone: FingerprintMoved — the token changed since it was listed/.test(T(page, "#gallery-listings")) &&
       !L(page, "#gallery-listings [data-act=buy]") && check.startsWith(sel("FingerprintMoved(bytes32,bytes32)")) && WB.count("eth_estimateGas") === 0,
       "a moved fingerprint is refused in words: bazaar.check names FingerprintMoved, the lane says the token changed since it was listed, and offers no buy", T(page, "#gallery-listings").slice(0, 200));
+  }
+
+  /*═══════════ G2 · a listing that outlives its Reach's seal, held to the zone at its end (W17) ═══════════*/
+  t.head("G2 · a listing whose Reach's seal lapses before the listing ends is refused in words, with no buy");
+  {
+    /* W17: every listing above was sealed past its end or had moved, so a lane asking bazaar.check at a listing's start
+       passed them all. #2 here, the buyer's since B, is sealed past now and short of the listing's end: only the
+       question asked at the end refuses it, as the zone refuses a fill (the seal must outlast the order) */
+    const id = 2n, start = now(), sealEnd = start + 10n * DAY, end = start + 30n * DAY;
+    await buyer.exec(await reachOf(id), "seal(uint64)", [sealEnd]);
+    await buyer.exec(hub, "approve(address,uint256)", [SEAPORT, id]);
+    const zh = pinHashOf(bazaar, id, await fpOf(id), []);
+    const o = etherListing({ token: hub, id, seller: BUYER, price: WAD / 4n, royalty: WAD / 4n * 500n / 10_000n, receiver: RECEIVER, zone: bazaar, zoneHash: zh, start, end, salt: 35n });
+    await buyer.exec(SEAPORT, SIG.validate, [[orderOf(o)]]);
+    await buyer.exec(bazaar, SIG.publish, [orderOf(o), []]);
+    const W = walletFor(c, me);
+    const { page } = keep(await gallery(ctx, 1, { wallet: W }));
+    await open(page, hub, id);
+    await page.until(() => /^(refused|live)$/.test(T(page, "#gallery-listings .listing .state")), 80);
+    const asked = W.callsTo(bazaar, sel("check(bytes32,uint256)")).filter((x) => lower(x.params[0].data).slice(10, 74) === lower(zh).slice(2)).map((x) => word(x.params[0].data, 1));
+    const atEnd = await c.read(bazaar, "check(bytes32,uint256)", [zh, end]), atStart = await c.read(bazaar, "check(bytes32,uint256)", [zh, start]);
+    t.ok(T(page, "#gallery-listings .listing .state") === "refused" && /refused by the zone: ReachSealShort — its Reach's seal ends before the listing does/.test(T(page, "#gallery-listings")) &&
+      !L(page, "#gallery-listings [data-act=buy]") && asked.length >= 1 && asked.every((x) => x === end) && atEnd.startsWith(sel("ReachSealShort(uint64,uint256)")) && BigInt(atStart) === 0n && W.count("eth_estimateGas") === 0,
+      "a listing that outlives its Reach's seal is refused in words: bazaar.check is asked at the listing's end and names ReachSealShort, though the seal stands now, and no buy is offered",
+      `${T(page, "#gallery-listings").slice(0, 160)} · asked at ${asked.join(",")}, the end ${end}`);
   }
 
   /*═══════════ H · a plain NFT, listed and bought ═══════════*/
@@ -498,6 +549,15 @@ export async function run(t, ctx0) {
     t.ok(page.$("body").dataset.mode === "viewer" && !!L(page, "#gallery-art img") && /the archive/.test(T(page, "#gallery-archive")) &&
       actsOf(page).length === 0 && W.prompts().length === 0 && /nothing here can sign/.test(T(page, ".gate")) && !L(page, "#gallery-sell"),
       "the viewer draws the gallery and its story from the chain, prompts nothing and renders no control that signs", `acts ${actsOf(page)} prompts ${W.prompts().length}`);
+    /* W17: #1 is the buyer's since F, so the wallet above holds nothing here, and a lane that offered the viewer its
+       sale form passed the sentence above. The holder's own wallet, read quietly in the viewer, is offered no sale */
+    const WH = walletFor(c, buyer);
+    const { page: ph } = keep(await gallery(ctx, 1, { wallet: WH, opaque: true }));
+    await ph.until(() => !!L(ph, "#gallery-art img") && /the archive/.test(T(ph, "#gallery-archive")), 80);
+    ph.$$("#lane-gallery button").forEach((b) => ph.click(b)); await ph.settle();
+    t.ok(ph.$("body").dataset.mode === "viewer" && await ownerOf(hub, 1) === lower(BUYER) && !L(ph, "#gallery-sell") && LL(ph, "input[name=price]").length === 0 &&
+      actsOf(ph).length === 0 && WH.prompts().length === 0,
+      "the holder's own wallet in the viewer is offered no sale: no sell form, no control, and nothing prompts", `sell ${!!L(ph, "#gallery-sell")} acts ${actsOf(ph)} prompts ${WH.prompts().length}`);
   }
 
   /*═══════════ M · hygiene ═══════════*/
