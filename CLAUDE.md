@@ -179,12 +179,29 @@ after wave 0: a change is additive only and goes in
   under their own letters (`M` market, `D` roles, `A` the agent card, `U`
   the custodian, `I` the nameplate). V2's rows go in a third table,
   `CatalogRowsV2.SERVICES`, again its own transaction, under `V` keepsake,
-  `J` journal, `B` bazaar, `b` bridges, `Z` studio, `c` a collection and
-  `F` agora (construction measured at 14.53 M, 4.95 M and 5.62 M gas,
-  docs/v2/W6-hub.md). The text layer serves all three as one `sel` map
+  `J` journal, `B` bazaar, `b` bridges, `Z` studio, `c` a collection, `F`
+  agora, `s` Seaport and `e` any ERC-721. Seaport is a venue, so its rows
+  carry the venue row's address, or zero. Any ERC-721's rows carry zero,
+  as a coin's do. The three tables' construction measured 14.53 M, 4.95 M
+  and 8.19 M gas: the third holds 71 rows since W15, 48.8 % of the cap.
+  Every capital letter is a contract now; a new family takes a lower case
+  beside what it resembles. The text layer serves all three as one `sel` map
   and one `services` array, and the drift gate in `tools/verify.mjs`
   holds a row to its contract's interface until the contract lands, then
   to both.
+- **`/services.json` is at 89 % of its 1 M cap** (890,502 gas for
+  86,816 B, in both shapes; `tools/gas.mjs` after W15). Every row the
+  Catalog adds makes it dearer, at about 13 gas per rendered byte, and a
+  tuple signature is rendered twice, in `sig` and in `args`. It is the
+  view the next rows meet first.
+- **The burner may land V2 itself.** `tools/deploy.mjs --v2` lands V2's
+  seven right after the Premises in a fresh deployment. A journal that
+  holds a V2 step resumes as a `--v2` run, with or without the flag, or a
+  resume would record a placeholder that has code. `--v2` beside
+  `--satellite` is refused.
+- **Two forks never share a port.** `tools/testnet.mjs` takes `--port` and
+  `--gateway-port`, and `tools/verify-bazaar-fork.mjs` spawns on 8549
+  too: run one fork at a time, or move the other.
 - **The fingerprint has two V2 terms, appended after `planHash`.** They
   are `Keepsake.commitmentOf(account(id))` and `Journal.rootOf(hub, id)`,
   read through the hub's `KEEPSAKE`/`JOURNAL` pins, guarded like every

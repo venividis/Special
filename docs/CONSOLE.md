@@ -966,10 +966,24 @@ of a core.
   8192, `journal` 16384, `bazaar` 32768, `studio` 65536, `agora` 131072,
   `bridges` 262144. Home draws a chip per bit, so a band without V2 shows
   six *not deployed on this chain* chips.
-- **Rows, under seven word prefixes in `sel`:** `keepsake.*`, `journal.*`,
+- **Rows, under nine word prefixes in `sel`:** `keepsake.*`, `journal.*`,
   `bazaar.*`, `bridges.*`, `studio.*`, `collection.*` (a per-collection
-  family, as `coin.*` is) and `agora.*`, 48 keys. A lane declares them
-  with `ui.rows`, which holds each to its selector as it does every row.
+  family, as `coin.*` is), `agora.*`, and since W15 `seaport.*` and
+  `erc721.*`, 71 keys. A lane declares them with `ui.rows`, which holds
+  each to its selector as it does every row.
+  - `seaport.*` holds the six calls the Gallery makes (`getCounter`,
+    `getOrderHash`, `getOrderStatus`, `validate`, `fulfillOrder`,
+    `cancel`), at the venue row's Seaport, or zero where the table names
+    none.
+  - `erc721.*` holds any ERC-721's six (`ownerOf`, `tokenURI`,
+    `getApproved`, `isApprovedForAll`, `setApprovalForAll`, `approve`), a
+    per-collection family.
+  - W15 also adds the Keepsake's `ownerOf` and `tokenURI`, seven Agora
+    reads (`followerCount`, `followingCount`, `follows`, `isRegistered`,
+    `collectionKey`, `homeKey`, `persona`), and a collection's
+    `totalSupply` and `room`.
+  - The lanes still compute these selectors themselves. Declaring the
+    rows instead is L20 in docs/v2/INTEGRATION.md.
 - **Panels:** `panels` names the Engine's loaded prefix in slot order:
   seven keys where the Engine holds the Gallery, six on a V1 band (W8;
   INVARIANTS F16, F17).

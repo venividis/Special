@@ -45,8 +45,8 @@ oracle.
    (below).
 3. **Funding, from the preflight.** Run the preflight alone first (the
    command is in the next section); it prints one sentence with the
-   whole figure and its parts: the deploy at 120 M gas × the live gas
-   price × 1.5 plus the L1 data term where the OP-stack
+   whole figure and its parts: the deploy at 120 M gas (140 M with
+   `--v2`) × the live gas price × 1.5 plus the L1 data term where the OP-stack
    `GasPriceOracle` predeploy (`0x4200…000F`) has code, plus the campaign
    — the gas the 31337 wire rehearsal measured (`CAMPAIGN_GAS` in
    `tools/testnet.mjs`, 5,902,168 gas; a budget of 30 M until a run had
@@ -57,7 +57,11 @@ oracle.
    preflight ends with "fund `<address>` with at least N ETH more" and
    exits 1 having sent nothing. The mint price is the largest term on a
    cheap chain; `--price <wei>` lowers it for a rehearsal (the preflight
-   prints the new figure).
+   prints the new figure). With `--v2` the deploy is budgeted at 140 M:
+   127.46 M was measured in-process with V2's seven, and 130.12 M on the
+   fork with the Router (W15). A satellite through the Timelock is
+   budgeted at 6.5 M; the Studio measured 6,189,198 for the queue and the
+   landing together.
 4. **An endpoint.** `RPC_URL` is any JSON-RPC endpoint of the chain; the
    tooling routes a non-local URL through the environment's proxy
    (`tools/rpc.mjs`). Base Sepolia's public endpoints
@@ -188,6 +192,31 @@ EVM — the burner queues, nothing lands before the delay, a stranger lands
 it a week later where the hub pinned it, the record follows it and
 recovers, and a tampered codehash, a wrong landing block or a missing
 queue is caught by name.
+
+**V2's seven (W15)** land the same two ways, each at its
+`intact.v2.<key>` placeholder.
+
+Through the Timelock:
+- `--satellite keepsakeArt,keepsake,journal,bazaar,bridges,studio,agora`,
+  or `all` on a schema-3 record, queues and lands each.
+- A queued Keepsake refuses to execute while its art has no code, by
+  name, and stays queued, so the two can be queued in one run and land in
+  order a week later.
+
+By the burner:
+- In a fresh deployment, `--v2` makes the burner land all seven right
+  after the Premises, in `V2_ORDER`: the art, the Keepsake, the Journal,
+  the Bazaar, Bridges, the Studio, Agora.
+- `--v2` beside `--satellite` is refused.
+
+Either way:
+- A record of schema 1 or 2 admits no V2 contract. Its hub pins no
+  Keepsake and its Catalog names none.
+- The Bazaar is admitted only where the record's venue row names Seaport.
+  Over a wire its Seaport half is re-proved before it lands.
+- `tools/verify-recover.mjs` proves both paths in-process: a V2 band
+  deployed whole, and a V2 satellite queued and landed through the
+  Timelock, each recovering with 0 disagreeing.
 
 ### Band 0: the name
 
@@ -404,6 +433,21 @@ On forks of both rehearsal chains, 2026-10-18, this tree (`--fork`, above):
 | `tokenURI(1)` | estimated at 3,783,343 gas, 78,125 bytes | 3,786,119 gas, 78,137 bytes |
 | the gateway | 240 passed; the tamper fixture 243 | the same |
 
+**V2 on a fork of Base Sepolia, 2026-10-19 (W15).** The command was
+`node tools/testnet.mjs --chain 84532 --confirm DEPLOY_INTACT_TO_BASE_SEPOLIA
+--fork <url> --v2 --port 8549 --gateway-port 8083`. The records went to
+`out/fork/` only, and neither names an endpoint.
+
+| What | Base Sepolia fork (block 48,341,282) |
+|---|---|
+| sentences | 112 passed, 0 failed, 142 s |
+| the deploy | 130.12 M gas in 76 s: the MVB with the Router, and V2's seven by the burner (keepsakeArt 2,510,809 · keepsake 3,567,875 · journal 558,544 · bazaar 2,611,909, against the venue's Seaport · bridges 527,000 · studio 5,333,183 · agora 2,568,166); 479 fields, 0 disagreeing |
+| the post-MVB four through the Timelock | the card 327,180 + 2,696,364 · the custodian 387,918 + 3,168,445 · the Market 203,102 + 1,444,434 · the Roles 188,154 + 1,336,285; 512 fields, 0 disagreeing |
+| the V2 journey, on the chain's own Seaport | wrap a keepsake 234,786 · inscribe a memory 90,803 · seal token 2's Reach 64,020 · approve Seaport for token 2 53,273 · validate from the seller's wallet, no signature 63,930 · publish through the Bazaar 256,995 · buy for exactly the price 314,755 · launch a Studio collection with the default site 4,077,637 · mint 160,914 · speak in Agora's commons 143,657: 5,460,770 in all |
+| the rest of the campaign | 70 steps, 15,773,376 gas, the router and v4 families included |
+| `tokenURI(1)` | estimated at 5,046,263 gas, 106,677 bytes |
+| the gateway | 248 passed; the tamper fixture 251 |
+
 The hub's `tokenURI` budget in CI is 8,000,000 (`tools/gas.mjs`, 3.62 M
 measured cold in the battery on the landed shape, after the encoder's
 rewrite — DESIGN §15, decision 39); the 3.78 M the node estimates is the
@@ -446,13 +490,14 @@ BUILD-PLAN.md's criterion for waves 0–3, and where each item is proved:
 ## The rollout order (DESIGN §12), and what comes after
 
 Per chain, in this order, every arrow a constructor that inspects code:
-CREATE3 factory → Timelock → Engine (head, body, six panels; `freeze`) →
+CREATE3 factory → Timelock → Engine (head, body, the panels: six in V1, seven with the Gallery; `freeze`) →
 Crest → Reach impl → Grip impl → Catalog (its three companions, then the
 façade) → Renderer → hub (the four facets then `IntactDiamond`, or the
 monolith, by the ship rule) → KeyRegistry → Roster → Postage → Parley →
 Locks → Pool → Coin template check → Kiln → Launchpad → Router (only
-where a probed venue table exists) → Steward → Premises → `recover-record`
-with 0 disagreeing → the record. Then, through the Timelock's seven-day
+where the probed venue row names a Uniswap venue) → Steward → Premises →
+(with `--v2`: KeepsakeArt → Keepsake → Journal → Bazaar → Bridges → Studio
+→ Agora) → `recover-record` with 0 disagreeing → the record. Then, through the Timelock's seven-day
 public queue and only there (`Timelock.execute(factory, 0, deploy(salt,
 code))`, executable by anyone once ripe): AgentCard, the LaunchHook
 template, LPCustodian, Market, Roles, Nameplate (band 0) — each at the

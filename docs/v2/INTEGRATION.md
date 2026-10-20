@@ -103,6 +103,20 @@ Re-run on the merged head (a0a6c7f), before the documents:
 - verify-console **225 passed, 0 failed** (Chromium 141);
 - static-audit passed; invariants-check 225 passed.
 
+W15, the Catalog's rows, the deployer's V2 rows and the fork rehearsal,
+merged as b04226f (W15-deploy.md). Its battery on its own tree (a41a07e,
+without W14): "check: green — all 33 steps passed in 29m 29s".
+- forge 643 on both builds, gas 124 probes, verify 258.
+- verify:site 805, verify:recover 282, verify:console 215,
+  invariants 225.
+- Nine one-token mutants of its own changes, all killed.
+
+The fork, Base Sepolia at block 48,341,282 on port 8549, read 112 passed,
+0 failed. The V2 journey cost 5,460,770 gas on the chain's own Seaport.
+
+W12-8's last three edits and A13's words landed in f93cee9. The battery
+on the merged head follows.
+
 Requests from the lanes:
 
 | # | Request | From | Decision | State |
@@ -112,10 +126,10 @@ Requests from the lanes:
 | L15 | verify-console's own `until`: 122 of 129 waits drop their answer. None timed out silently in W13's measured run; fixing it touches testnet-drive | W13 | yes | done: W14. 129 of 136 waits throw by name, 7 are soft and say why; `sign` reads the ticker's log, and four signs pass `moved` (gallery B was the one W13's list missed) |
 | L3 | `#cslab [data-sentence]{overflow-wrap:anywhere}`: a full address runs off a 390 px screen | W10 | yes | done: W14 (row F20) |
 | L4 | Panel styles into app.css (W9's switch and orb; W11's `.post`), freeing panel bytes | W9, W11 | yes | done: W14 (row F21): swap −394 B, social −46 B, the computed look identical in Chromium |
-| L5 | Catalog rows: `keepsake.ownerOf`, `keepsake.tokenURI`; Agora's counts, `follows`, `isRegistered`, `collectionKey`, `homeKey`, `persona`; `seaport.*`, `erc721.*` | W10, W11, W8 | yes, one CatalogRowsV2 pass | open |
+| L5 | Catalog rows: `keepsake.ownerOf`, `keepsake.tokenURI`; Agora's counts, `follows`, `isRegistered`, `collectionKey`, `homeKey`, `persona`; `seaport.*`, `erc721.*` | W10, W11, W8 | yes, one CatalogRowsV2 pass | done: W15, 48 → 71 rows under `s` Seaport (the venue's address) and `e` any ERC-721 (zero); construction 8.19 M gas, 48.8 % of the cap; `erc1155.*` and `erc2981.*` not built |
 | L6 | The identity lane on an Agora band binds and reads keys through Agora | W11 | yes | done: W14 (row N18) |
 | L7 | The slab: a per-step label on the exact-approval line ("Lets the market pull…" when the spender is the Keepsake); argument rows for tuple arguments | W9 | yes | done: W14 (rows F23, F24); five sentences that stated the old contract are restated, none cited by a live row, and S19's citation follows |
-| L8 | `IEngine.panelCount` is `view`, not `pure` (INTERFACE-CHANGES) | W8 | yes | open |
+| L8 | `IEngine.panelCount` is `view`, not `pure` (INTERFACE-CHANGES) | W8 | yes | done: W15 |
 | L9 | CONSOLE.md §5 (`ui.data` builds tuples since 959acee), §6.2 (every lane's new ids), §9, §14, §16, §18, §19 | all | yes | written in 3a094fc: §5, §6.2's V2 table, §9 under Agora, §14, §18, §19. After W14: §4.2's tuple rows, the approval label, identity's Agora ids, §16's bytes |
 | L10 | INVARIANTS and DESIGN §14: W10-1…15, W9's F16–F22, W11's N10–N17, W8's F16–F18 and Y1–Y10 (renumbered at integration) | all | yes, pending until the battery | written, pending: F16–F19, K13–K32, J8, S17–S26, N10–N17, Y1–Y10 (53 rows; the id map below). Every cited sentence was found verbatim with all 53 read as live in a scratch copy: the checker read 331 passed, 0 failed. They flip after the battery, each by its own mutation evidence |
 | L11 | CLAUDE.md: the panel sizes; a panel's style goes in the head; a suite's own chain write while a shim read is in flight fails on its nonce; Playwright's service-worker error in sandboxed frames; never `pkill -f` | W8, W9, W11 | yes | traps written: PID-only kills, the shim's throwing waits (W13), solc's unhandled rejection (W12), the nonce, the shim's clock, the closed details, the sandboxed frame. The sizes line and the panel-style rule wait for W14, which moves the styles (L4) |
@@ -125,7 +139,9 @@ Requests from the lanes:
 | L16 | The Gallery's static inline styles into app.css (the frame, the iframe, the price, the constellation's card, the memory row): the panel is 55 B under its ceiling | W14 | yes, with the next fix to the Gallery | open |
 | L17 | verify-console's `journey()` on a V2 band: the speak step still assumes Parley; where Agora reports it must tap the commons and count Agora's `stateOf(0)`, or the drive cannot run the journey against a V2 record | W14 | yes, before a V2 rehearsal over a wire | open |
 | L18 | `tools/testnet-drive.mjs`'s first run over a wire confirms W14's item 9: the journey throws by name, the sale's sign reads the log, A coin is pressed where the Studio reports | W14 | yes, at the next drive | open |
-| W12-8 | One source for the Studio's default site, read by build-app and verify-studio | W12 | yes: W15 builds `engine/sitepage.mjs` and build-app's optional inline marker; the integrator makes the three edits that must land together (launch.js carries the marker, verify-studio imports the module, verify-site's launch group reads it) at W15's merge | open |
+| W12-8 | One source for the Studio's default site, read by build-app and verify-studio | W12 | yes: W15 builds `engine/sitepage.mjs` and build-app's optional inline marker; the integrator makes the three edits that must land together (launch.js carries the marker, verify-studio imports the module, verify-site's launch group reads it) at W15's merge | done: W15 (252996c) and f93cee9. The launch panel is the same bytes (12,233 B, keccak 0x3e1070f2…); verify-studio 47 passed; verify-site's launch group 116 passed |
+| L19 | `tools/verify-bazaar-fork.mjs` spawns its fork on 8549, the port W15's testnet fork used: give it `--port`, or move it, so the two cannot collide | W15 | yes, with the next touch of W3's file | open |
+| L20 | The lanes declare the rows W15 added with `ui.rows` instead of computing selectors or hashing keys themselves (the vault's `keepsake.*`, social's seven Agora reads, launch's `collection.*`, the gallery's `seaport.*` and `erc721.*`) | W15 | yes, with the next fix to each lane | open |
 | W7-7 | the Grip's copy button in a `data:` frame | W7 | yes | done in W10 |
 | W7-5 | a seventh panel | W7 | yes | done in W8: the Engine holds up to eight |
 
@@ -212,15 +228,18 @@ console, as V1's G1 cites a forge test and a lane sentence in one row:
 
 W6's own requests, beyond those rows:
 - `src/interfaces/Site.sol`'s `TokenState` comment lists the bits up to
-  262144: open. It is a comment in `src/`, so it waits for a run that
-  recompiles anyway.
+  262144: done (W15).
 - The agent card's `manifestHash` probe is the dearest of `stateOf`'s
-  seventeen. Face 1 is at 92.8 % of its cap, 95.2 % with V2 landed: open,
-  and it changes verify-site A13's wording.
-- `tools/gas.mjs` measuring a band with V2 landed (`v2: true`): open.
+  seventeen. Face 1 is at 92.8 % of its cap, 95.2 % with V2 landed: done
+  (W15). The probe is the card's `HUB()`, and face 1 is at 400,410 gas
+  (80.1 %), or 412,473 with V2 landed. A13's words follow (f93cee9).
+- `tools/gas.mjs` measuring a band with V2 landed (`v2: true`): done
+  (W15). 124 probes in two shapes, none over its cap.
 - V2's `SATELLITES` rows and PINS in `tools/deploy.mjs`, so
-  `deploySatellite` can land each V2 contract at its placeholder: open,
-  for wave 3.
+  `deploySatellite` can land each V2 contract at its placeholder: done
+  (W15). The rows cover all seven contracts, KeepsakeArt the seventh
+  placeholder, and the burner can land them with `--v2`. A fork of Base
+  Sepolia ran the V2 journey on the chain's own Seaport.
 
 Noted in review, not requested:
 

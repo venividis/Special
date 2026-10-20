@@ -81,6 +81,30 @@ carries `seaport`, `conduitController`, `openseaConduitKey`,
 schema-1 or schema-2 record recovers without the rows its contracts
 predate, and still agrees. `tools/verify-recover.mjs` proves both.
 
+**How a V2 contract lands (W15).** It lands one of two ways:
+- through the Timelock (`--satellite`), as the post-MVB satellites do;
+- by the burner in a fresh deployment (`tools/deploy.mjs --v2`), right
+  after the Premises, in `V2_ORDER`: the Keepsake's art, the Keepsake,
+  the Journal, the Bazaar, Bridges, the Studio, Agora.
+
+The art is a seventh placeholder, salted `intact.v2.keepsakeArt`, which
+only the Keepsake pins (`ART()`).
+
+A burner landing is recorded under `satellites.<key>` as
+`{via: "burner", op: null, queued: null, eta: null, executed: {tx, block,
+gas, by}}`. Recovery holds it to the factory's `Deployed` event at that
+block. A landed satellite whose entry records no block, by either path,
+is a disagreement.
+
+The V2 contracts' own pins are PINS rows of their own: `HUB()`, `POOL()`,
+`ART()`, `SEAPORT()`, `TIMELOCK()`, `JOURNAL()`, `AGORA()`, `KEYS()` and
+`STUDIO()`.
+
+What a record admits:
+- a record of schema 1 or 2 admits no V2 satellite;
+- a record whose venue row names no Seaport admits no Bazaar;
+- a venue row may name only Seaport, and such a record has no Router.
+
 ## The schema (`intact.deployment/2`)
 
 Schema 2 (the console round) is schema 1 with one pin more: the Catalog's `NAMEPLATE()`, band 0's resolver or the codeless placeholder, read back like every other pin. A record of schema 1 (every record written before 2026-10-19: 31337, 84532 and its first run) is recovered without that one row — its Catalog has no such getter — and agrees on everything else; `tools/deploy.mjs`'s `PINS` names the schema a row starts in.
