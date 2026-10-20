@@ -167,7 +167,7 @@ holds every request and its state. The ones that shape the whole:
 9. **verify.mjs reads a lane's bytes before its status.** Its panel loop gunzips each `/panel/<name>.js`
    body before it reads the status. So a router that refuses a lane (the integration's R1) ends the run at
    that lane, exit 1 with no summary, rather than failing a sentence by name. The battery still fails, since
-   a step without its summary fails.
+   a step without its summary fails, and the Premises suite fails R1 by name.
 10. **verify-recover's six-lane sentences cannot fail by name under one mutant.** The deployer runs the same
     recovery before it publishes and refuses a record it disagrees with. So a mutant of the recovery or the
     record ends the run at the six-lane deploy, by the field's name (the integration's J1).

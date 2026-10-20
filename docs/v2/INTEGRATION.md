@@ -270,6 +270,8 @@ pruned to `test/Premises.t.sol`; the rest used full copies.
 - **R1** (F17), `src/Premises.sol`: the panel router's `i < n` → `i < 6`.
   - verify.mjs ends at `/panel/gallery.js`, whose 404 body is no gzip
     (exit 1, no summary: its panel loop gunzips before it reads the status).
+  - The suite fails `test_theGalleryIsTheSeventhLaneAndIsServedLikeTheRest`
+    (16 passed, 1 failed).
 - **J1** (F18), `tools/recover-record.mjs`: `i < lanes.length` → `i < 7`,
   the recovery walking seven lanes whatever the record lists. verify-recover
   exits 1 at the six-lane band: the deployer runs the same recovery before
