@@ -38,7 +38,12 @@
       location.href followed by the browser into the new token's console;
     · the QR as Chromium rasterises the SVG, screenshotted and decoded
       with jsqr; an unhandled rejection inside a Blob panel surfaces as a
-      pageerror (CHECKPOINT observation 2), so every journey asserts none.
+      pageerror (CHECKPOINT observation 2), so every journey asserts none;
+    · the living light (V2, W16): the soul's WebGL on the battery's
+      SwiftShader, a spoofed GPU and a Chromium without WebGL; every
+      animation as getAnimations() reports it, under reduced motion too;
+      a Tab walk at 390×844 sampled with elementFromPoint; the shim has
+      no canvas, no CSS and no layout, so none of it can be asked there.
 
   Design: one in-process chain per group exactly as verify-site.mjs
   (Chain.open → deploySite → mint the cast), fronted by an http.createServer
@@ -64,9 +69,10 @@
   page-side, because a thrown binding error would lose its fields.
 
   Groups: boot, viewer, session, agent, swap, social, identity, vault,
-  launch, journey. Each prints its own count and time; the last line is
-  "  N passed, M failed" and the exit code follows it. The BUILD-PLAN §U11
-  sentences end their blocks verbatim as t.ok(..., "<sentence>").
+  launch, journey, gallery, light. Each prints its own count and time;
+  the last line is "  N passed, M failed" and the exit code follows it.
+  The BUILD-PLAN §U11 sentences end their blocks verbatim as
+  t.ok(..., "<sentence>").
 
     PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node tools/verify-console.mjs
     node tools/verify-console.mjs --group swap
@@ -91,7 +97,7 @@ import { walletFor, nap } from "./dom-shim.mjs";
 
 const ARGV = process.argv.slice(2);
 const arg = (f) => { const i = ARGV.indexOf(f); return i < 0 ? null : ARGV[i + 1]; };
-export const GROUPS = ["boot", "viewer", "session", "agent", "swap", "social", "identity", "vault", "launch", "journey", "gallery"];
+export const GROUPS = ["boot", "viewer", "session", "agent", "swap", "social", "identity", "vault", "launch", "journey", "gallery", "light"];
 const MIN_ASSERTIONS = 110;
 const WAD = 10n ** 18n;
 
@@ -243,10 +249,11 @@ export function decodePng(buf) {
 
 /*═══════════════════ the browser ═══════════════════*/
 
-export async function openBrowser() {
+/// openBrowser({ args }) — `args` are Chromium's own switches (the light group's `--disable-webgl`); none by default
+export async function openBrowser(o = {}) {
   const { chromium } = await import("playwright");
   const exe = path.join(process.env.PLAYWRIGHT_BROWSERS_PATH || "/opt/pw-browsers", "chromium");
-  const browser = await chromium.launch({ headless: true, ...(fs.existsSync(exe) ? { executablePath: exe } : {}) });
+  const browser = await chromium.launch({ headless: true, ...(fs.existsSync(exe) ? { executablePath: exe } : {}), ...(o.args ? { args: o.args } : {}) });
   return browser;
 }
 
@@ -312,13 +319,15 @@ const HOOKS = `(() => {
 
 /**
  * A page in a fresh browser context.
- *   openPage(browser, { origin, path, data, wallets, awaitReady })
+ *   openPage(browser, { origin, path, data, wallets, awaitReady, viewport, reducedMotion, init })
  * `data` boots the viewer: the served body as a data: URL (opaque origin). Resolves once
- * INTACT.ui.ready has settled unless awaitReady is false (the picker is up).
+ * INTACT.ui.ready has settled unless awaitReady is false (the picker is up). `viewport` replaces
+ * 1200 × 900, `reducedMotion: "reduce"` is prefers-reduced-motion, and `init` is one more script run
+ * before any document, after the wallet's (the light group's eyes, lightInit).
  */
 export async function openPage(browser, o = {}) {
   const wallets = o.wallets || (o.wallet ? [o.wallet] : []);
-  const context = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+  const context = await browser.newContext({ viewport: o.viewport || { width: 1200, height: 900 }, serviceWorkers: "block", ...(o.reducedMotion ? { reducedMotion: o.reducedMotion } : {}) });
   const byRdns = new Map(wallets.map((W) => [W.info.rdns, W]));
   const log = { errors: [], consoleErrors: [], csp: [], requests: [], navigations: [] };
   await context.exposeBinding("__intactWallet", async (source, rdns, method, params) => {
@@ -336,6 +345,7 @@ export async function openPage(browser, o = {}) {
   });
   await context.exposeBinding("__intactReport", (source, kind, text) => { (kind === "csp" ? log.csp : log.errors).push(String(text)); });
   await context.addInitScript({ content: walletScript(wallets.map((W) => ({ info: W.info, legacy: !!W.legacy, noAnnounce: !!W.noAnnounce, late: !!W.late }))) });
+  if (o.init) await context.addInitScript({ content: o.init });
   const page = await context.newPage();
   /* the frame the shell lives in: the page itself, or — for the viewer — a data: iframe inside a blank
      host page, which is the marketplace's own shape (DESIGN §5.1) and the only one Chromium allows:
@@ -904,13 +914,18 @@ async function groupViewer(t, ctx) {
     const loaded = await pg.evaluate(() => Object.keys(window.INTACT.panels).every((n) => window.INTACT.loaded[n] === true));
     v(loaded && W.callsTo(S1.engine, sel("panel(uint256)")).length >= 6 && await pg.count("script[src^='blob:']") >= 6 && httpReqs(pg).length === 0,
       "every panel came through eth_call engine.panel(i), hash-checked and injected as a blob: script, and still nothing was fetched", `panel calls ${W.callsTo(S1.engine, sel("panel(uint256)")).length} blob ${await pg.count("script[src^='blob:']")} http ${httpReqs(pg).length}`);
-    /* every button a person could reach, pressed; every lane opened; the wallet was never asked to prompt */
+    /* every button a person could reach, pressed; every lane opened; the wallet was never asked to prompt. A lane's own
+       visible buttons are counted again before each press, a read of one waits 1.5 s at most, as the click beside it
+       does, and a sheet's ✕ is pressed last. Until W16 the sweep counted the page's buttons once and pressed in document
+       order: the agent sheet's ✕ came first and closed it, its other buttons were never pressed, and the nth() past the
+       new end waited out Playwright's default 30 s inside the try (W7's request 6; measured, 30.0 s of the group's 43–49 s) */
     const pressed = [];
     for (const n of Object.keys(S1.panels)) {
       await pg.hash(n); await pg.settle(40);
-      const btns = pg.frame.locator("button:visible");
-      const k = await btns.count();
-      for (let i = 0; i < k; i++) { try { const b = btns.nth(i); pressed.push(await b.textContent()); await b.click({ timeout: 1500 }); } catch {} }
+      const btns = pg.frame.locator(`#lane-${n} button:visible`);
+      for (let i = 0; i < 40 && i < await btns.count(); i++) { try { const b = btns.nth(i); pressed.push(await b.textContent({ timeout: 1500 })); await b.click({ timeout: 1500 }); } catch {} }
+      const x = pg.frame.locator("#room-x:visible");
+      if (await x.count()) { try { pressed.push(await x.textContent({ timeout: 1500 })); await x.click({ timeout: 1500 }); } catch {} }
     }
     await pg.settle(300);
     v(W.prompts().length === 0 && await pg.count("[data-go]") === 0 && await pg.count("[data-act]") === 0 && !(await pg.slabOpen()) && await pg.count("textarea") === 0,
@@ -1359,6 +1374,20 @@ async function groupSwap(t, ctx) {
     vv(swap.status === "0x1" && id > 0n && await pg.ds(L("#swap-kept .keepsake"), "id") === String(id) && offered && /public/.test(await pg.text("#cslab [data-sentence]")) &&
       lower((await pg.slabCd()).slice(10 + 4 * 64, 10 + 5 * 64)) === lower(swap.transactionHash.slice(2)) && W.callsTo(s2.keepsake).length === 0,
       "the receipt lands: the keepsake's id from its Wrapped log, and a second slab offers the memory with the swap's transaction as its ref", `id ${id} offered ${offered}`);
+    /* W17 (its f21-orb): the keepsake's orb is app.css's ::before on the card, a round box floated before the card's
+       words, read where the card stands once the locked swap has landed; the shim has no stylesheet and no layout. The
+       words start where the orb and its 12 px margin end */
+    const orb = await pg.evaluate(() => {
+      const k = document.querySelector("#lane-swap #swap-kept .keepsake");
+      if (!k) return null;
+      const o = getComputedStyle(k, "::before"), cs = getComputedStyle(k), tw = document.createTreeWalker(k, NodeFilter.SHOW_TEXT);
+      let n = tw.nextNode(); while (n && !n.textContent.trim()) n = tw.nextNode();
+      const r = document.createRange(); if (n) r.selectNodeContents(n);
+      const first = n ? r.getClientRects()[0] : null, inner = k.getBoundingClientRect().left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
+      return { content: o.content, w: o.width, h: o.height, radius: o.borderRadius, float: o.cssFloat, lit: /radial-gradient/.test(o.backgroundImage), words: n ? n.textContent.trim().slice(0, 48) : "", indent: first ? Math.round(first.left - inner) : null };
+    });
+    t.ok(!!orb && orb.content === '""' && orb.w === "46px" && orb.h === "46px" && orb.radius === "50%" && orb.float === "left" && orb.lit && orb.words.startsWith(`keepsake #${id} holds what arrived`) && orb.indent === 58,
+      "in Chromium the keepsake's orb is the shell's: a 46 × 46 px circle before the keepsake's words", JSON.stringify(orb));
     await pg.sign(W, 2);
     await pg.until(() => /memory #1 is in #2's journal/.test(__t("#lane-swap #swap-kept")), null, 15000);
     const ins = c2.getLogs({ address: s2.journal, topics: [kec("Inscribed(address,uint256,uint256,uint8,address,uint64,bytes32,bytes32,bytes)")] }).pop();
@@ -1931,7 +1960,9 @@ async function keepsakeJourney(t, v) {
     await pv.until(() => __e("#lane-vault #vault-grip button.copy"), null, 15000);
     const clip = await pv.evaluate(() => typeof navigator.clipboard);
     await pv.click(L("#vault-grip button.copy"));
-    await pv.until(() => /copying is not available/.test(__t("#tick")), null, 5000);
+    /* soft: the sentence reads the ticker's words and the page's errors itself, so a copy button that throws (W10's c1)
+       fails it by name instead of stopping the group here */
+    await pv.until(() => /copying is not available/.test(__t("#tick")), null, 5000, { soft: true });
     g(clip === "undefined" && await pv.text("#tick") === "copying is not available in this frame; select the address above to copy it" && pv.log.errors.length === 0,
       "in a data: frame, where navigator.clipboard is undefined, the Grip's copy button says in words that copying is unavailable, and throws nothing", `${clip} "${await pv.text("#tick")}" ${pv.log.errors.join(" | ")}`);
     await pv.close();
@@ -2451,7 +2482,322 @@ async function groupGallery(t, ctx0) {
   } finally { await F.close(); }
 }
 
-const RUNNERS = { boot: groupBoot, viewer: groupViewer, session: groupSession, agent: groupAgent, swap: groupSwap, social: groupSocial, identity: groupIdentity, vault: groupVault, launch: groupLaunch, journey: groupJourney, gallery: groupGallery };
+/*──────────────── light (V2, W16) ────────────────*/
+/*  The light's eyes, installed before any document on the light group's pages. document.open() erases a window's
+    listeners but never its properties or a prototype, so all of this outlives the loader's rewrite:
+      · every getContext, and whether INTACT.ui.ready had resolved when it was asked: the state object and its `ui`
+        are caught as the page assigns them, so `ready` is watched from the moment it exists, and what stood when
+        it resolved (a #soul, a WebGL context) is written down in the same microtask;
+      · how many times readPixels (the timed frame's two syncs), drawArrays (the sky's frames) and
+        requestAnimationFrame (anything that loops on frames) were called;
+      · with `gpu`, W7's probe (docs/v2/W7-shell.md decision 9): UNMASKED_RENDERER_WEBGL (0x9246) names that GPU
+        and readPixels does nothing, so the timed frame passes as it does on a fast GPU. */
+const lightInit = (o = {}) => `(() => {
+  const O = ${JSON.stringify(o)};
+  const L = window.__light = { gl: [], reads: 0, draws: 0, frames: 0, ready: null, atReady: null };
+  const G = WebGLRenderingContext.prototype, gc = HTMLCanvasElement.prototype.getContext, gp = G.getParameter, rp = G.readPixels, da = G.drawArrays, rf = window.requestAnimationFrame;
+  HTMLCanvasElement.prototype.getContext = function (type, a) { const c = gc.call(this, type, a); L.gl.push({ type: String(type), ok: !!c, ready: L.ready !== null }); return c; };
+  if (O.gpu) G.getParameter = function (p) { return p === 0x9246 ? O.gpu : gp.call(this, p); };
+  G.readPixels = function (...a) { L.reads++; if (!O.gpu) return rp.apply(this, a); };
+  G.drawArrays = function (...a) { L.draws++; return da.apply(this, a); };
+  window.requestAnimationFrame = function (cb) { L.frames++; return rf.call(window, cb); };
+  const seen = () => { L.ready = performance.now(); L.atReady = { soul: !!document.querySelector("#soul"), webgl: L.gl.filter((g) => /webgl/.test(g.type)).length }; };
+  const ui = (x) => { let u; Object.defineProperty(x, "ui", { configurable: true, enumerable: true, get: () => u, set: (y) => { u = y; if (y && y.ready) y.ready.then(seen); } }); };
+  let st; Object.defineProperty(window, "INTACT", { configurable: true, enumerable: true, get: () => st, set: (x) => { st = x; if (x && typeof x === "object") ui(x); } });
+})();`;
+
+/*  The living light's own promises (INVARIANTS F9–F13), held in Chromium where W7 measured them by hand (docs/v2/
+    W7-shell.md decisions 9, 11 and 14, §6): the soul starts only after ready, keeps one still on the battery's software
+    rasteriser and under reduced motion, and is absent without WebGL; nothing loops without html.alive, which a spoofed
+    GPU sets and a hidden tab drops; a landing celebrates and a revert does not; a Tab walk at 390×844 leaves no control
+    wholly hidden under the crest bar, the dock or the ticker; and #lanes a[data-lane] is the dock. On a chain of the
+    group's own with the AgentCard at its pin, so both sheets are in the dock; the cast is W7's (§7). Every sentence
+    reads state — classes, attributes, getAnimations(), the counters lightInit keeps — and never how long a frame took,
+    so the machine's load moves no answer. */
+async function groupLight(t, ctx0) {
+  const ctx = await ctx0.fresh({ deployAgentCard: true });
+  try { await lightGroup(t, ctx); } finally { await ctx.close(); }
+}
+async function lightGroup(t, ctx) {
+  const { c, site, actors, weth, EVM } = ctx;
+  const { me } = actors;
+  const ME = me.from.toString(), hub = site.hub, pool = site.pool, parley = site.parley;
+  const SPEAK = "speak(uint256,uint256,uint8,uint64,uint64,bytes)", hexOf = (s) => "0x" + Buffer.from(s, "utf8").toString("hex");
+  /* Parley's commons counts two blocks between two words of one token */
+  const roll2 = () => EVM.roll(EVM.BLOCK.header.number + 2n);
+  await mint(c, site, ME); await mint(c, site, ME);
+  const reach1 = decAddr(await c.read(hub, "account(uint256)", [1]));
+  await c.exec(weth, "mint(address,uint256)", [ME, 1000n * WAD]);
+  await c.exec(weth, "approve(address,uint256)", [pool, 200n * WAD]);
+  await c.exec(pool, "openMarket(uint256,address,address,uint16,uint24,uint16,uint32)", [1, weth, ZERO, 30, 0, 0, 0], { label: "openMarket" });
+  await c.exec(pool, "deposit(uint256,uint256,uint256)", [1, 100n * WAD, 10n * WAD], { value: 10n * WAD, label: "deposit" });
+  await c.send({ to: reach1, value: 2n * WAD });
+  await c.exec(parley, SPEAK, [0, 1, 0, 0, 0, hexOf("hello, commons")], { label: "speak" });
+  roll2();
+  await c.exec(parley, SPEAK, [0, 1, 0, 0, 0, hexOf("and again")], { label: "speak" });
+  const price = decUint(await c.read(hub, "price()"));
+  const PHONE = { width: 390, height: 844 }, GPU = "ANGLE (a GPU the battery names, Direct3D11)";
+  const ROOMS = ["home", "gallery", "swap", "vault", "social", "launch", "identity", "agent"], DOCK = ["gallery", "swap", "vault", "social", "launch", "identity", "agent"];
+  const SHOWN = (pg) => pg.evaluate(() => {
+    const L = window.__light, s = document.querySelector("#soul");
+    return { webgl: L.gl.filter((g) => /webgl/.test(g.type)), reads: L.reads, draws: L.draws, frames: L.frames, ready: L.ready !== null, atReady: L.atReady,
+      soul: !!s, on: !!s && s.classList.contains("on"), w: s ? s.width : 0, h: s ? s.height : 0, iw: innerWidth, ih: innerHeight, alive: document.documentElement.classList.contains("alive") };
+  });
+  /* the renderer as Chromium names it to a fresh context: the battery's SwiftShader, or the spoof */
+  const renderer = (pg) => pg.evaluate(() => { const g = document.createElement("canvas").getContext("webgl"), d = g && g.getExtension("WEBGL_debug_renderer_info"); return g ? String(d ? g.getParameter(d.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER)) : null; });
+  /* every animation the document runs, as Chromium reports it: CSS animations, transitions, scripted ones */
+  const anims = (pg) => pg.evaluate(() => document.getAnimations().map((a) => {
+    const e = a.effect, g = e && e.target, tm = e ? e.getComputedTiming() : {};
+    return { kind: a.constructor.name, name: a.animationName || a.transitionProperty || "", on: !g ? "" : (g.matches("#cslab [data-go]") ? "[data-go]" : g.id ? "#" + g.id : g.tagName.toLowerCase()) + (e.pseudoElement || ""), state: a.playState, endless: tm.iterations === Infinity };
+  }));
+  const spinOf = (A) => A.find((a) => a.on === "#frame" && a.name === "spin"), flowOf = (A) => A.find((a) => a.on === "[data-go]" && a.name === "flow");
+  const loops = (A) => A.filter((a) => a.endless && a.state === "running").map((a) => a.on + " " + a.name);
+  /* frames asked for while nobody touches the page: no pointer moves here, so the shell's lean asks for none */
+  const idleFrames = async (pg, ms = 1000) => { const f0 = (await SHOWN(pg)).frames; await pg.settle(ms); return (await SHOWN(pg)).frames - f0; };
+  /* a slab with Sign enabled, so the button's flow is in the document: the shell's own mint row, estimated */
+  const raise = async (pg) => { await pg.evaluate(([h, a, v]) => { window.INTACT.ui.propose({ to: h, key: "hub.mint", args: [a], value: v, lines: [], sentence: "mints one more, to hold the slab open with Sign enabled" }); }, [hub, ME, String(price)]); await pg.ready(); };
+  /*  This headless Chromium never hides a page: a minimised window and a background tab in the same window both stay
+      "visible" and fire nothing, with or without Playwright's anti-backgrounding switches (measured, docs/v2/W16-light.md
+      §1). So the page is told, as Chromium tells a background tab: document.hidden, visibilityState, one visibilitychange */
+  const setHidden = (pg, h) => pg.evaluate((x) => { for (const [k, v] of [["hidden", x], ["visibilityState", x ? "hidden" : "visible"]]) Object.defineProperty(document, k, { configurable: true, get: () => v }); document.dispatchEvent(new Event("visibilitychange")); }, h);
+  const watchClasses = (pg) => pg.evaluate(() => { window.__cls = []; new MutationObserver(() => window.__cls.push(document.documentElement.className)).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] }); });
+  const room = async (pg, r) => { if (r === "home") { await pg.hash("home"); await pg.settle(150); } else await pg.lane(r); };
+
+  t.head("A · the soul: after ready, a still on software GL and under reduced motion, absent without WebGL (F9)");
+  /* p1: the holder at 1200 × 900 on the battery's own GL; p3: the holder on a phone, under reduced motion, with a GPU named */
+  /* the waits that a sentence below re-reads are soft (W14): a shell that never gets there fails that sentence by name */
+  const W1 = ctx.wallet(me);
+  const p1 = await ctx.open({ wallet: W1, init: lightInit() });
+  await p1.until(() => !!document.querySelector("#soul.on"), null, 10000, { soft: true });
+  const s1 = await SHOWN(p1);
+  t.ok(s1.webgl.length >= 1 && s1.webgl[0].ready === true && s1.ready && s1.atReady && s1.atReady.soul === false && s1.atReady.webgl === 0 && s1.on,
+    "the soul never starts before ready: the first WebGL context is asked for after INTACT.ui.ready resolved, when no #soul stood yet, and the canvas it makes is #soul",
+    JSON.stringify({ first: s1.webgl[0], atReady: s1.atReady, on: s1.on }));
+  const rn1 = await renderer(p1), idle1 = await idleFrames(p1), s1b = await SHOWN(p1);
+  t.ok(/SwiftShader/.test(rn1 || "") && s1b.w === Math.ceil(s1b.iw * .25) && s1b.h === Math.ceil(s1b.ih * .25) && s1b.draws === 1 && s1b.reads === 0 && !s1b.alive && idle1 === 0,
+    "on the battery's software rasteriser the soul is named, not timed: SwiftShader keeps one still at a quarter of the window, drawn once, with no readPixels, no html.alive and no frame asked for",
+    `renderer "${rn1}" canvas ${s1b.w}×${s1b.h} of ${s1b.iw}×${s1b.ih} draws ${s1b.draws} reads ${s1b.reads} alive ${s1b.alive} idle frames ${idle1}`);
+  const W3 = ctx.wallet(me);
+  const p3 = await ctx.open({ wallet: W3, viewport: PHONE, reducedMotion: "reduce", init: lightInit({ gpu: GPU }) });
+  await p3.until(() => !!document.querySelector("#soul.on"), null, 10000, { soft: true });
+  const rn3 = await renderer(p3), idle3 = await idleFrames(p3), s3 = await SHOWN(p3), rm3 = await p3.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  t.ok(rm3 && rn3 === GPU && s3.webgl[0].ready === true && s3.w === Math.ceil(s3.iw * .55) && s3.h === Math.ceil(s3.ih * .55) && s3.draws === 1 && s3.reads === 0 && !s3.alive && idle3 === 0,
+    "under reduced motion the soul keeps one still even where a GPU is named: drawn once at 0.55× and never timed, with no html.alive and no frame asked for",
+    `reduced ${rm3} renderer "${rn3}" canvas ${s3.w}×${s3.h} of ${s3.iw}×${s3.ih} draws ${s3.draws} reads ${s3.reads} alive ${s3.alive} idle frames ${idle3}`);
+  {
+    /* a Chromium whose WebGL is switched off: getContext("webgl") answers null there (measured, W16 §1) */
+    const nb = await openBrowser({ args: ["--disable-webgl"] });
+    try {
+      const p4 = await openPage(nb, { origin: ctx.web.origin, wallet: ctx.wallet(me), init: lightInit() });
+      await p4.until(() => window.__light.gl.some((g) => /webgl/.test(g.type)), null, 10000, { soft: true });
+      await p4.settle(300);
+      const s4 = await SHOWN(p4), sky = await p4.evaluate(() => getComputedStyle(document.body, "::before").backgroundImage), b4 = await p4.body();
+      t.ok(s4.webgl.length >= 1 && s4.webgl.every((g) => !g.ok) && s4.webgl[0].ready === true && !s4.soul && !(await p4.exists("canvas")) && /radial-gradient/.test(sky) && !s4.alive && b4.rights === "1" && p4.clean(),
+        "without WebGL the soul is absent: Chromium answers no context, no #soul is made, the CSS sky stands, and nothing threw",
+        `asked ${JSON.stringify(s4.webgl)} soul ${s4.soul} sky "${sky.slice(0, 60)}" alive ${s4.alive} rights ${b4.rights} ${p4.problems()}`);
+      await p4.close();
+    } finally { await nb.close(); }
+  }
+
+  t.head("B · nothing loops without html.alive (F10)");
+  {
+    const seen = [];
+    for (const r of ROOMS) { await room(p1, r); seen.push([r, loops(await anims(p1))]); }
+    await room(p1, "home");
+    await raise(p1);
+    const A = await anims(p1), alive = (await SHOWN(p1)).alive, idle = await idleFrames(p1);
+    t.ok(seen.every(([, l]) => l.length === 0) && spinOf(A) && spinOf(A).state === "paused" && flowOf(A) && flowOf(A).state === "paused" && loops(A).length === 0 && !alive && idle === 0,
+      "on software GL nothing loops: in every room and under an open slab no endless animation runs — the frame's spin and the Sign button's flow wait paused — no frame is asked for in an idle second, and html.alive is unset",
+      `rooms ${JSON.stringify(seen.filter(([, l]) => l.length))} spin ${JSON.stringify(spinOf(A))} flow ${JSON.stringify(flowOf(A))} running ${loops(A).join(",")} alive ${alive} idle frames ${idle}`);
+    await p1.dismiss();
+  }
+  {
+    /* p2: a phone with a GPU named, so the timed frame passes and the sky moves; kept short, since the battery's
+       SwiftShader then draws every frame of it */
+    const p2 = await ctx.open({ wallet: ctx.wallet(me), viewport: PHONE, init: lightInit({ gpu: GPU }) });
+    await p2.until(() => document.documentElement.classList.contains("alive"), null, 10000, { soft: true });
+    const f0 = (await SHOWN(p2)).frames;
+    await p2.until(([f]) => window.__light.frames >= f + 3, [f0], 10000, { soft: true });
+    await raise(p2);
+    const s2 = await SHOWN(p2), A2 = await anims(p2);
+    t.ok(s2.alive && s2.reads === 2 && s2.w === Math.ceil(s2.iw * .55) && s2.frames >= f0 + 3 && spinOf(A2) && spinOf(A2).state === "running" && flowOf(A2) && flowOf(A2).state === "running",
+      "under a spoofed GPU the timed frame passes and html.alive is set: the soul's loop asks for frames, and the frame's spin and the Sign button's flow run",
+      `alive ${s2.alive} reads ${s2.reads} canvas ${s2.w} of ${s2.iw} frames ${f0} → ${s2.frames} spin ${JSON.stringify(spinOf(A2))} flow ${JSON.stringify(flowOf(A2))}`);
+    await setHidden(p2, true);
+    const h2 = await SHOWN(p2), Ah = await anims(p2), idleH = await idleFrames(p2, 800);
+    await setHidden(p2, false);
+    const g0 = (await SHOWN(p2)).frames;
+    await p2.until(([f]) => window.__light.frames >= f + 3, [g0], 10000, { soft: true });
+    const v2 = await SHOWN(p2), Av = await anims(p2);
+    t.ok(!h2.alive && idleH === 0 && spinOf(Ah) && spinOf(Ah).state === "paused" && flowOf(Ah) && flowOf(Ah).state === "paused" &&
+      v2.alive && v2.frames >= g0 + 3 && spinOf(Av) && spinOf(Av).state === "running" && flowOf(Av) && flowOf(Av).state === "running",
+      "a hidden tab pauses both: told it is hidden, as Chromium tells a background tab, the soul stops asking for frames, html.alive drops and the spin and the flow pause; shown again, they resume",
+      `hidden: alive ${h2.alive} frames +${idleH} spin ${spinOf(Ah) && spinOf(Ah).state} flow ${flowOf(Ah) && flowOf(Ah).state}; shown: alive ${v2.alive} frames ${g0} → ${v2.frames} spin ${spinOf(Av) && spinOf(Av).state} flow ${flowOf(Av) && flowOf(Av).state}`);
+    await p2.dismiss();
+    await p2.close();
+  }
+  {
+    const seen = [];
+    for (const r of ROOMS) { await room(p3, r); seen.push([r, await anims(p3)]); }
+    await room(p3, "home");
+    await raise(p3);
+    seen.push(["slab", await anims(p3)]);
+    const s = await SHOWN(p3), idle = await idleFrames(p3);
+    const moving = seen.map(([r, A]) => [r, A.filter((a) => a.kind !== "CSSTransition" || a.name !== "opacity").map((a) => a.kind + " " + a.on + " " + a.name)]).filter(([, l]) => l.length);
+    t.ok(moving.length === 0 && !s.alive && idle === 0 && s.draws === 1,
+      "under reduced motion nothing animates, a spoofed GPU too: no CSS animation exists in any room or under an open slab, every transition is a fade, no frame is asked for, and html.alive is unset",
+      `moving ${JSON.stringify(moving).slice(0, 300)} alive ${s.alive} idle frames ${idle} draws ${s.draws}`);
+    await p3.dismiss();
+  }
+
+  t.head("C · a landing celebrates and a revert does not (F11)");
+  const speakIn = async (pg, words) => {
+    await room(pg, "social");
+    await pg.until(() => __e("#lane-social #social-composer textarea") && __e("#lane-social #social-composer [data-act=speak]"), null, 15000);
+    await pg.fill("#lane-social #social-composer textarea", words);
+    await pg.press("#lane-social #social-composer [data-act=speak]");
+    await pg.ready();
+    return pg.text("#cslab [data-sentence]");
+  };
+  /* what the page shows before a landing, so a sentence reads the landing's own celebration and not one before it:
+     the class log's length, whether a #spark already stands, and the frames asked for so far */
+  const before = (pg) => pg.evaluate(() => ({ cls: window.__cls.length, spark: !!document.querySelector("#spark"), frames: window.__light.frames }));
+  /* soft: the sentences read the class log themselves */
+  const landedOnce = (pg, from) => pg.until((k) => window.__cls.slice(k).some((x) => /\blanded\b/.test(x)) && !document.documentElement.classList.contains("landed"), from, 8000, { soft: true });
+  {
+    await watchClasses(p1);
+    /* the revert: the slab is estimated while the commons is open to #1; then #1 speaks from the chain in the same
+       block, so the page's word arrives inside the commons' two blocks and the chain refuses it (Cooldown) */
+    roll2();
+    await speakIn(p1, "a word the chain will refuse");
+    await c.exec(parley, SPEAK, [0, 1, 0, 0, 0, hexOf("a word from the chain, first")], { label: "speak" });
+    const m0 = (await p1.ticks()).length;
+    await p1.sign(W1, 1);
+    const r0 = [...W1.receipts.values()].pop(), said0 = await p1.ticks(m0), cls0 = await p1.evaluate(() => window.__cls.slice()), spark0 = await p1.exists("#spark");
+    t.ok(r0.status === "0x0" && said0.includes(`reverted in block ${BigInt(r0.blockNumber)}; nothing changed`) && !said0.some((s) => /^landed in block/.test(s)) && !cls0.some((x) => /\blanded\b/.test(x)) && !spark0,
+      "a revert does none of it: the ticker says reverted in block <n>; nothing changed, html.landed is never set, and no #spark is made",
+      `status ${r0.status} said ${JSON.stringify(said0)} classes ${JSON.stringify(cls0)} spark ${spark0}`);
+    /* the landing: two blocks on, a word the commons takes. Its celebration is read from the mark before its press: the
+       class it set, and the frames asked for since. Before the mark the page goes half a second asking for no frame —
+       waited for, since a celebration before this one may still be flying, and then read — so every frame counted from
+       the mark is this landing's: the press's pointer asks for one or two, and the sparks' own loop one on every frame
+       until the last spark dies, 84 in all however slow the machine (a spark's life falls by .012 a frame). The sentence
+       asks for 20 */
+    roll2();
+    const sentence = await speakIn(p1, "a word that lands");
+    let q1 = await idleFrames(p1, 500);
+    for (let i = 0; i < 20 && q1 > 0; i++) q1 = await idleFrames(p1, 500);
+    const m1 = (await p1.ticks()).length, b1 = await before(p1);
+    await p1.sign(W1, 2);
+    await landedOnce(p1, b1.cls);
+    /* soft: the sentence reads the frames itself */
+    await p1.until((f) => window.__light.frames >= f + 20, b1.frames, 10000, { soft: true });
+    const r1 = [...W1.receipts.values()].pop(), said1 = await p1.ticks(m1), cls1 = await p1.evaluate((k) => window.__cls.slice(k), b1.cls), burst = (await SHOWN(p1)).frames - b1.frames;
+    const sp = await p1.evaluate(() => { const s = document.querySelector("#spark"); return s ? { w: s.width, h: s.height, want: [Math.round(innerWidth * devicePixelRatio), Math.round(innerHeight * devicePixelRatio)], aria: s.getAttribute("aria-hidden"), z: getComputedStyle(s).zIndex } : null; });
+    t.ok(r1.status === "0x1" && said1.includes(`landed in block ${BigInt(r1.blockNumber)} — ${sentence}`) && /^says, as #1, in the commons, forever: a word that lands$/.test(sentence) && cls1.filter((x) => /\blanded\b/.test(x)).length >= 1 && !/\blanded\b/.test(cls1[cls1.length - 1]) &&
+      !!sp && sp.w === sp.want[0] && sp.h === sp.want[1] && sp.aria === "true" && q1 === 0 && burst >= 20 && p1.clean(),
+      "a landing celebrates: the ticker says landed in block <n> — <the slab's sentence>, html.landed is set and taken away again, and #spark bursts over the window",
+      `status ${r1.status} sentence "${sentence}" said ${JSON.stringify(said1)} classes since the press ${JSON.stringify(cls1)} spark ${JSON.stringify(sp)} frames in the half second before the mark ${q1}, since the press ${burst} ${p1.problems()}`);
+  }
+  await p1.close();
+  {
+    await watchClasses(p3);
+    roll2();
+    await speakIn(p3, "a word under reduced motion");
+    const f0 = (await SHOWN(p3)).frames, m = (await p3.ticks()).length, b3 = await before(p3);
+    await p3.sign(W3, 1);
+    await landedOnce(p3, b3.cls);
+    const said = await p3.ticks(m), f1 = (await SHOWN(p3)).frames, spark = await p3.exists("#spark"), cls = await p3.evaluate((k) => window.__cls.slice(k), b3.cls);
+    t.ok(said.some((s) => /^landed in block \d+ — says, as #1, in the commons, forever: a word under reduced motion$/.test(s)) && cls.some((x) => /\blanded\b/.test(x)) && !/\blanded\b/.test(cls[cls.length - 1]) && !b3.spark && !spark && f1 === f0 && p3.clean(),
+      "under reduced motion a landing is the glow alone: html.landed is set and taken away again, no #spark is made, and no frame is asked for",
+      `said ${JSON.stringify(said)} classes since the press ${JSON.stringify(cls)} spark before ${b3.spark}, after ${spark} frames ${f0} → ${f1} ${p3.problems()}`);
+  }
+  await p3.close();
+
+  t.head("D · at 390×844 focus never lands under the bars (F12) · E · #lanes a[data-lane] is the dock (F13)");
+  {
+    const p5 = await ctx.open({ wallet: ctx.wallet(me), viewport: PHONE });
+    /* the ticker speaks through the whole walk, so it is in the way wherever it can be */
+    await p5.evaluate(() => window.INTACT.ui.say("the ticker speaks while the keyboard walks"));
+    /*  One focus, sampled as W7's probe sampled it (decision 14): a 5 × 5 grid over the focused box, every point asked of
+        elementFromPoint. The ticker lets the pointer through (pointer-events: none), so a point under it is found by its
+        box while it speaks. `again` marks the first element seen twice: the walk has gone round once. */
+    const SAMPLE = () => {
+      const e = document.activeElement;
+      if (!e || e === document.body || e === document.documentElement) return null;
+      const K = window.__walk || (window.__walk = { ids: new WeakMap(), n: 0 });
+      const again = K.ids.has(e); if (!again) K.ids.set(e, ++K.n);
+      const r = e.getBoundingClientRect(), tk = document.querySelector("#tick"), tr = tk && tk.textContent && getComputedStyle(tk).display !== "none" ? tk.getBoundingClientRect() : null;
+      const bars = [document.querySelector("#crest"), document.querySelector("#dock")], inBar = (n) => bars.some((b) => b && b.contains(n));
+      let seen = 0, bar = 0, tick = 0, off = 0, other = 0, under = "";
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
+        const x = r.left + (i + .5) * r.width / 5, y = r.top + (j + .5) * r.height / 5;
+        if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) { off++; continue; }
+        if (tr && x >= tr.left && x < tr.right && y >= tr.top && y < tr.bottom) { tick++; continue; }
+        const h = document.elementFromPoint(x, y);
+        if (h && (h === e || e.contains(h))) seen++;
+        else if (h && inBar(h) && !inBar(e)) bar++;
+        else { other++; if (h && !under) under = h.id ? "#" + h.id : h.tagName.toLowerCase(); }
+      }
+      const at = e.closest("[id]"), what = e.id ? "#" + e.id : (at ? "#" + at.id + " " : "") + e.tagName.toLowerCase() + (e.dataset.act ? "[" + e.dataset.act + "]" : e.name ? "[" + e.name + "]" : e.dataset.lane ? "[" + e.dataset.lane + "]" : "");
+      return { again, what, seen, bar, tick, off, other, under, top: Math.round(r.top), bottom: Math.round(r.bottom), size: Math.round(r.width) + "×" + Math.round(r.height) };
+    };
+    const order = await p5.evaluate(() => ({ lanes: [...document.querySelectorAll("#lanes a[data-lane]")].map((a) => a.dataset.lane), panels: Object.keys(window.INTACT.panels),
+      inDock: !!document.querySelector("#dock > #lanes"), home: !!document.querySelector("#dock > #home") && !document.querySelector("#lanes #home"),
+      off: [...document.querySelectorAll("#lanes a")].filter((a) => a.getAttribute("aria-disabled") === "true" || a.tabIndex < 0).length }));
+    /*  Every room and both sheets, each walked round once from the crest's wallet cell, forward and then back: the key until
+        a control comes round again, that last focus sampled too and counted once. Both directions, because Chromium centres
+        a focused control in what html's scroll-padding leaves of the window when any of it lies outside, and leaves it be
+        when it lies wholly inside (measured, docs/v2/W16-light.md item 4): walking forward, the next control rises from the
+        bottom edge and meets the clearance below; only walking back does one come down from the top and meet the clearance
+        above (measured: with html's 84 px cut to 4 px, a forward walk saw nothing) */
+    const walked = [], wraps = [], current = [], cycled = {};
+    const round = async (r, key) => {
+      await p5.evaluate(() => { window.__walk = null; const w = document.querySelector("#c-wallet-v"); if (w) w.focus(); });
+      for (let i = 0; i < 240; i++) {
+        await p5.page.keyboard.press(key);
+        const f = await p5.evaluate(SAMPLE);
+        if (!f) continue;
+        if (f.again) { wraps.push({ room: r, key, ...f }); return true; }
+        walked.push({ room: r, key, ...f });
+      }
+      return false;
+    };
+    for (const r of ROOMS) {
+      /* the lane's reads land, and a sheet's rise (.55 s) is over before a box is sampled */
+      await room(p5, r);
+      await p5.settle(700);
+      current.push([r, await p5.evaluate(() => [...document.querySelectorAll("#home, #lanes a")].filter((a) => a.getAttribute("aria-current") === "true").map((a) => a.dataset.lane || "home").join() +
+        " / " + [...document.querySelectorAll("#home, #lanes a")].filter((a) => a.getAttribute("aria-current") !== "false" && a.getAttribute("aria-current") !== "true").length)]);
+      cycled[r] = await round(r, "Tab") && await round(r, "Shift+Tab");
+    }
+    const SHEETS = ["identity", "agent"], out = (f) => f.bar + f.tick + f.off;
+    const all = [...walked, ...wraps], hidden = all.filter((f) => f.seen === 0), barred = hidden.filter((f) => out(f) > 0), partly = all.filter((f) => f.seen > 0 && out(f) > 0), inRooms = partly.filter((f) => !SHEETS.includes(f.room));
+    const per = Object.fromEntries(ROOMS.map((r) => [r, ["Tab", "Shift+Tab"].map((k) => walked.filter((f) => f.room === r && f.key === k).length)]));
+    t.ok(ROOMS.every((r) => cycled[r] && per[r].every((n) => n >= 10)) && barred.length === 0 && inRooms.length === 0,
+      `at 390×844 a Tab walk through every room and both sheets, forward and back, never leaves a focused control wholly hidden under the crest bar, the dock or the ticker, nor out of view, and outside the sheets none is even partly covered (${walked.length} focuses, a 5×5 grid each)`,
+      `per room, forward and back ${JSON.stringify(per)} round once ${JSON.stringify(cycled)} hidden ${JSON.stringify(barred.slice(0, 6))} partly, outside the sheets ${JSON.stringify(inRooms.slice(0, 6))}`);
+    /* two things the walk sees that are not this row's claim, printed until the shell answers them (docs/v2/W16-light.md,
+       requests 1 and 2): inside a sheet, Tab reaches the dock's links lying under the sheet itself; and the sheet, its own
+       scroll container, which html's scroll-padding does not reach, lets a control near its foot take focus under the ticker */
+    const underSheet = hidden.filter((f) => SHEETS.includes(f.room) && out(f) === 0), sheetTicker = partly.filter((f) => SHEETS.includes(f.room));
+    if (underSheet.length) t.note(`inside a sheet, ${underSheet.length} focuses, forward and back, land on the dock's links under the sheet itself: ${[...new Set(underSheet.map((f) => f.what))].join(", ")}`);
+    if (sheetTicker.length) t.note(`inside a sheet, ${sheetTicker.length} focuses take a control partly under the ticker: ${sheetTicker.map((f) => f.what + " " + f.seen + "/25 in view").join(", ")}`);
+    t.ok(order.lanes.join() === DOCK.join() && order.panels.slice().sort().join() === DOCK.slice().sort().join() && order.inDock && order.home && order.off === 0,
+      "#lanes a[data-lane] is the dock: one link per lane, in the order gallery, swap, vault, social, launch, then identity and agent, and Home's anchor sits outside #lanes",
+      JSON.stringify(order));
+    t.ok(current.length === ROOMS.length && current.every(([r, x]) => x === r + " / 0"),
+      "the room in use carries aria-current=true and no other link does, in every room and both sheets", JSON.stringify(current));
+    await p5.close();
+    const p6 = await ctx.openData("/token/1/live", {});
+    const v = await p6.evaluate(() => [...document.querySelectorAll("#lanes a[data-lane]")].map((a) => [a.dataset.lane, a.getAttribute("aria-disabled"), a.getAttribute("tabindex"), a.tabIndex]));
+    t.ok(v.length === DOCK.length && v.map((x) => x[0]).join() === DOCK.join() && v.every((x) => x[1] === "true" && x[2] === "-1" && x[3] === -1) && (await p6.body()).mode === "viewer",
+      "in the viewer every lane link is aria-disabled and out of the tab order: each carries tabindex=-1", JSON.stringify(v));
+    await p6.close();
+  }
+}
+
+const RUNNERS = { boot: groupBoot, viewer: groupViewer, session: groupSession, agent: groupAgent, swap: groupSwap, social: groupSocial, identity: groupIdentity, vault: groupVault, launch: groupLaunch, journey: groupJourney, gallery: groupGallery, light: groupLight };
 
 /*═══════════════════ the runner ═══════════════════*/
 
