@@ -114,8 +114,52 @@ without W14): "check: green — all 33 steps passed in 29m 29s".
 The fork, Base Sepolia at block 48,341,282 on port 8549, read 112 passed,
 0 failed. The V2 journey cost 5,460,770 gas on the chain's own Seaport.
 
-W12-8's last three edits and A13's words landed in f93cee9. The battery
-on the merged head follows.
+W12-8's last three edits and A13's words landed in f93cee9.
+
+The battery on the merged head, `node tools/check.mjs --keep-going` on
+f93cee9 (W14 and W15 merged, the fuzz property and the documents):
+**check: green — all 33 steps passed in 64 m 16 s**.
+
+| Step | Passed | Step | Passed |
+|---|---|---|---|
+| compile | 46 | verify:steward | 91 |
+| facets | 96 | verify:timelock | 35 |
+| facets:selftest | 8 | verify:premises | 64 |
+| selftest | 60 | verify:plate | 228 |
+| build | 22,400 B of 24,000 | verify:keepsake | 81 |
+| forge:monolith | 643 (34 m 42 s) | verify:journal | 48 |
+| forge:diamond | 643 | verify:bazaar | 67 |
+| gas | 124 probes | verify:studio | 47 |
+| gas:selftest | 45.60 M over 16.78 M | verify:agora | 53 |
+| verify | 258 | fuzz | 11 properties |
+| verify:site | 818 | verify:findings | 36 |
+| mcp | 29 | agents | 6,729 |
+| verify:pool | 144 | static-audit | 14 |
+| verify:vault | 184 | static-audit:selftest | 5 |
+| verify:parley | 81 | verify:recover | 282 |
+| verify:launch | 307 | verify:console | 225 |
+| | | invariants | 225 |
+
+0 failed in every step.
+
+On that battery the ledger flips every console row with a one-character
+mutant behind it, and adds the rows that already had one:
+- live: F19, K13–K28, K30, J8, S17–S23, S25 and N10–N17;
+- new and live: W15's F26, F27, H4, H5 and H6;
+- K7 gains the fuzz property;
+- the foundation gains the harnesses' rows 0.9–0.12. 0.11's and 0.12's
+  one-character mutants ran in a scratch copy: the runner's refund restore
+  made dead fails `test_aSwallowedRevertKeepsTheCallersGasRefund` (0
+  passed, 1 failed); verify-console's `if (o.soft)` → `if (1)` fails its
+  first wait sentence (39 passed, 1 failed).
+
+Pending, each for a named reason:
+- F9–F14 wait for W16's Chromium sentences.
+- F16–F18 have no mutant aimed at them.
+- F20–F25, K29, K31, S24, S26–S28, N18 and Y1–Y11 wait for W17's
+  mutants.
+
+`node tools/invariants-check.mjs`: 309 passed, 0 failed.
 
 Requests from the lanes:
 
