@@ -165,7 +165,8 @@ holds every request and its state. The ones that shape the whole:
 6. **testnet-drive has not run over a wire since W14** made its waits throw (L18).
 7. **P11 stands** as the E1/E3 gate's one survivor (a test request: no test hides at `seq ≥ 128`).
 8. CLAUDE.md's command list and DEPLOYMENT.md's prerequisites name a public endpoint, against "no RPC in any
-   document"; no record does (the fork's records name none since W15).
+   document". No deployment record does (the fork's records name none since W15). But a live campaign
+   record's `measure` list names the endpoints `tokenURI` was measured on: 84532's three, 11155111's one.
 9. **verify.mjs reads a lane's bytes before its status.** Its panel loop gunzips each `/panel/<name>.js`
    body before it reads the status. So a router that refuses a lane (the integration's R1) ends the run at
    that lane, exit 1 with no summary, rather than failing a sentence by name. The battery still fails, since
@@ -186,17 +187,26 @@ holds every request and its state. The ones that shape the whole:
     landing the same two readings are 384 fields with the same one drift and one missing, and 383 fields
     with 0 disagreeing.
 
+13. **Glamsterdam multiplies the deploy's gas.** On Sepolia (EIP-8037, 1,530 gas a byte of state), the V2
+    deployment measured 842,561,807 gas against the Cancun fork's 130.11 M, and `catalogRows` alone
+    74,242,395 against 14.58 M. Its cost in ETH stays small while gas is cheap. Two habits of a public endpoint
+    matter there:
+    - its `eth_estimateGas` gives up on a step that big;
+    - its replicas disagree on how much gas a simulation may have.
+
+    `RpcChain` bisects such a step over `eth_call` (87b1ee4). Mainnet's date for Glamsterdam is not set; band 0
+    before it is the cheaper road (DESIGN §12).
+
 ## What remains
 
-- **A live V2 deployment** needs a fresh nonce-0 burner (`tools/deploy.mjs --v2`, or the rehearsal with
-  `tools/testnet.mjs --v2`), funded per the preflight (the deploy budget is 140 M gas with V2). Sepolia is
-  ready for one:
-  - its venue row names Seaport since 9572343, from a probe of the chain;
-  - the whole V2 rehearsal passed on a fork of it on 2026-10-25 (113 passed, `docs/DEPLOYMENT.md`, "V2 on a
-    fork of Sepolia").
-
-  At that day's 17 wei a gas, the run's ETH is almost all the campaign's own payments, about 0.027 ETH. The
-  five post-MVB satellites then wait the Timelock's week.
+- **Sepolia's five post-MVB satellites** (the card, the custodian, the Market, the Roles, the Nameplate)
+  ripen from 2026-11-01 03:58:36 UTC and stay executable for fourteen days. Landing them takes any key with a
+  little Sepolia ETH, running `tools/deploy.mjs --chain 11155111 --satellite all` from a tree whose `src/`
+  is this one's: a queued op is the hash of the initcode.
+- **V2 is live on Sepolia** since 2026-10-25 (`deployments/11155111.json`, 36 contracts, 842,561,807 gas;
+  `docs/DEPLOYMENT.md`, "V2 live on Sepolia"). The next live V2 deployment, a band, needs a fresh nonce-0
+  burner funded per the preflight. The deploy budget is 140 M gas with V2 on a chain without EIP-8037, and
+  ×8 where state gas is metered.
 - **Open requests**: L14 (`tools/mutations.mjs` adopting a JavaScript mode, W17's driver as its shape) and
   B4 (a keeper motive in `tools/agents.mjs`). L16–L22 are listed in `docs/v2/INTEGRATION.md`.
 - **Later work**: zkAPI (V2 §6), OpenSea posting and WETH offers. After those comes U19: the audits, the

@@ -388,8 +388,8 @@ change first (59 sentences, 0 failed).
 
 | What | Measured on 31337 | Base Sepolia (84532) | Sepolia (11155111) |
 |---|---|---|---|
-| deploy, in all | 89,680,000 gas (`89.68M` as the run prints it) for the 27 MVB contracts in 45 s, 95,874,720 with the three satellites; the record recovered in-run: 362 fields, 0 disagreeing after the MVB, 383 after the satellites | the same 27 contracts for the same 89.68 M gas in 105 s at 0.006 gwei, from block 48,082,395 (the first run: 91 s from 48,081,889); the record recovered in-run: 362 fields, 0 disagreeing; 96,124,380 gas in the record once the three satellites were queued and landed (2026-10-20), and 383 fields, 0 disagreeing after them | awaiting a funded burner |
-| satellites, through the Timelock's queue | the card queued for 327,180 and landed for 2,696,364 gas at the address the hub pinned; the Market 203,102 + 1,444,434; the Roles 188,154 + 1,336,285; each landing followed by a recover of the whole record, 0 disagreeing | queued on 2026-10-13 by the burner: the card (456,590 gas, op `0x72b5b3e0…`), the Market (268,260, op `0x694ffb72…`) and the Roles (243,390, op `0x50f36dd6…`). Landed on 2026-10-20 at 23:19 UTC with `--satellite all`, run from the tree pinned at fd18df4 (a queued op is the hash of that tree's initcode) by a separate funded key, `0xc79e…8f02`, since anyone may execute a ripe op: the card for 2,696,364 gas at `0xb9b6…1327` (block 48,385,007), the Market for 1,444,422 at `0xd361…9e74` (48,385,019) and the Roles for 1,336,285 at `0x0fae…d8dd` (48,385,032). That is 5,477,071 gas for 0.000049 ETH at 0.009 gwei, with each landing followed by a recover of the whole record: 371, 378 and 383 fields, 0 disagreeing (the first run's three ops, on its own Timelock, were never executed) | awaiting a funded burner |
+| deploy, in all | 89,680,000 gas (`89.68M` as the run prints it) for the 27 MVB contracts in 45 s, 95,874,720 with the three satellites; the record recovered in-run: 362 fields, 0 disagreeing after the MVB, 383 after the satellites | the same 27 contracts for the same 89.68 M gas in 105 s at 0.006 gwei, from block 48,082,395 (the first run: 91 s from 48,081,889); the record recovered in-run: 362 fields, 0 disagreeing; 96,124,380 gas in the record once the three satellites were queued and landed (2026-10-20), and 383 fields, 0 disagreeing after them | V2 live on 2026-10-25 under Glamsterdam: the MVB with the Router and V2's seven by the burner, 842,561,807 gas (6.5× the Cancun fork's 130.11 M, state at 1,530 gas a byte), 36 contracts; the record recovered in-run: 479 fields, 0 disagreeing ("V2 live on Sepolia") |
+| satellites, through the Timelock's queue | the card queued for 327,180 and landed for 2,696,364 gas at the address the hub pinned; the Market 203,102 + 1,444,434; the Roles 188,154 + 1,336,285; each landing followed by a recover of the whole record, 0 disagreeing | queued on 2026-10-13 by the burner: the card (456,590 gas, op `0x72b5b3e0…`), the Market (268,260, op `0x694ffb72…`) and the Roles (243,390, op `0x50f36dd6…`). Landed on 2026-10-20 at 23:19 UTC with `--satellite all`, run from the tree pinned at fd18df4 (a queued op is the hash of that tree's initcode) by a separate funded key, `0xc79e…8f02`, since anyone may execute a ripe op: the card for 2,696,364 gas at `0xb9b6…1327` (block 48,385,007), the Market for 1,444,422 at `0xd361…9e74` (48,385,019) and the Roles for 1,336,285 at `0x0fae…d8dd` (48,385,032). That is 5,477,071 gas for 0.000049 ETH at 0.009 gwei, with each landing followed by a recover of the whole record: 371, 378 and 383 fields, 0 disagreeing (the first run's three ops, on its own Timelock, were never executed) | queued only: the card 793,496 gas, the custodian 947,096, the Market 435,096, the Roles 398,232, the Nameplate 576,408; executable from 2026-11-01 03:58:36 UTC to 2026-11-15, by any funded key from a tree whose `src/` matches |
 | deploy, the largest steps | catalogRows 15.02 M · loadPanel (six) 10.07 M · catalogRowsPost 5.11 M · catalogText 4.72 M · reachImpl 4.60 M · catalog 3.82 M · launchpad 3.81 M · renderer 3.73 M · catalogState 3.55 M · premises 3.40 M | the same, step for step (the gas is the code's, not the chain's) | — |
 | campaign, in all | 5,907,685 gas over 39 transactions (40 steps, one of them the clock) | 5,816,607 gas over 38 transactions (40 steps: two refusals proved by their selectors and nothing sent; a public chain's clock cannot be moved, so the steward's summon is refused as `StillSpeaking` instead of walked); the second key's share 1,373,166; the lock released when due after a real two-minute wait | awaiting a funded burner |
 | fund (2) | 42,000 | 42,000 | |
@@ -465,6 +465,31 @@ block's state for the whole run, as on 2026-10-18. The records went to
 | `tokenURI(1)` | estimated at 5,076,707 gas, 107,201 bytes |
 | the gateway | 248 passed; the tamper fixture 251 |
 
+**V2 live on Sepolia, 2026-10-25.** The command was `RPC_URL=… node
+tools/testnet.mjs --chain 11155111 --confirm DEPLOY_INTACT_TO_SEPOLIA --v2
+--key-file .testnet-key`, with a fresh nonce-0 burner
+(`0x7600…6a11`) funded with 0.03 ETH. Sepolia runs Glamsterdam since
+2026-10-06, which the Cancun fork above could not show. Its EIP-8037
+prices state at 1,530 gas a byte, drawn from a reservoir above the 2^24
+cap. The run took three tries, each resumed from the journal.
+
+1. The first stopped before sending the Engine's `loadBody`, 35,434,623
+   gas nearly all of it state, on the deployer's old total-gas cap. e2ab374
+   holds only the execution share to 2^24 where a chain meters state gas.
+2. The second stopped at `catalogRows`. Both public endpoints' estimates
+   fail on its 74 M, and their replicas disagree on how much gas a
+   simulation may have. 87b1ee4 bisects such a step's gas over eth_call.
+3. The third ran to the end: 95 passed, 0 failed, in 1,257 s.
+
+| What | Sepolia (live, from block 11,988,067) |
+|---|---|
+| the deploy | 842,561,807 gas, 36 contracts; 479 fields, 0 disagreeing. The largest steps: the seven panels 117,048,243 · catalogRows 74,242,395 · catalogText 46,260,892 · catalogRowsV2 43,315,864 · the Studio 37,861,477 · the body 35,154,452 · the Reach implementation 32.63 M |
+| the post-MVB five | queued for 3,150,328 gas, executable from 2026-11-01 03:58:36 UTC |
+| the V2 journey, on Sepolia's own Seaport | wrap a keepsake 1,026,666 · inscribe a memory 261,631 · seal token 2's Reach 154,540 · approve Seaport for token 2 135,693 · validate, no signature 145,962 · publish through the Bazaar 512,125 · buy for exactly the price 521,617 · launch a Studio collection with the default site 29,039,639 · mint 688,934 · speak in Agora's commons 497,925 |
+| the campaign | 53 steps, 56,149,989 gas; the steward's summon and cancel proved by their selectors (`StillSpeaking`, `NotCalled`), since a public chain's clock cannot be moved |
+| `tokenURI(1)` | estimated at 5,072,928 gas, 107,213 bytes |
+| disposition | the burner ends at nonce 83 with 0.003100 ETH and holds the Timelock's admin; the key file was overwritten with zeros and unlinked after both records were written |
+
 The hub's `tokenURI` budget in CI is 8,000,000 (`tools/gas.mjs`, 3.62 M
 measured cold in the battery on the landed shape, after the encoder's
 rewrite — DESIGN §15, decision 39); the 3.78 M the node estimates is the
@@ -502,7 +527,7 @@ BUILD-PLAN.md's criterion for waves 0–3, and where each item is proved:
 - [x] lock — the campaign's native lock to the Reach, released when due (wire).
 - [x] grant a session that dies on sale — the campaign's grant and act, then `sessionCurrent` false after `panic` and `rightsOf(id, key)` 0 (wire); the sale's revocation of a live session is `verify-console`'s journey and `test/Bundle.t.sol`.
 - [x] sell the whole bundle with the buyer's `rightsOf` showing the seller holds nothing — the campaign's `transferFrom`, `rightsOf(id, seller)` read back as 0 and the Reach answering to the buyer (wire).
-- [ ] the same on Base Sepolia and Sepolia, with `deployments/84532.json`, `deployments/11155111.json` and their campaign records committed — Base Sepolia is done (2026-10-13: the forty steps, "Measured"); Sepolia awaits a funded burner. Its fork walked the whole V1 run on 2026-10-18, the Nameplate included, and the whole V2 run on 2026-10-25, the Bazaar on Sepolia's own Seaport included ("V2 on a fork of Sepolia").
+- [ ] the same on Base Sepolia and Sepolia, with `deployments/84532.json`, `deployments/11155111.json` and their campaign records committed — Base Sepolia is done (2026-10-13: the forty steps, "Measured"); Sepolia is done for V2 (2026-10-25: `deployments/11155111.json` and its campaign record, "V2 live on Sepolia"), its five post-MVB satellites queued until 2026-11-01. Its fork walked the whole V1 run on 2026-10-18, the Nameplate included, and the whole V2 run on 2026-10-25.
 
 ## The rollout order (DESIGN §12), and what comes after
 

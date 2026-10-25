@@ -1,0 +1,789 @@
+{
+ "schema": "intact.deployment/3",
+ "chainId": 11155111,
+ "network": "Sepolia",
+ "band": {
+  "band": 1,
+  "lo": "1",
+  "hi": "4096",
+  "rehearsal": true
+ },
+ "deployer": "0x760025730429523d70ef99d9332c28fcf5686a11",
+ "factory": "0xffb5eaf01a403f0ffd9a8a81c04faad3f387a135",
+ "factoryVia": {
+  "create": {
+   "from": "0x760025730429523d70ef99d9332c28fcf5686a11",
+   "nonce": "0"
+  }
+ },
+ "salts": {
+  "timelock": "0xb02d4a5dd0c65c8104a043d635b02c49aea9eb883e3e4022536bfc803c25c754",
+  "crest": "0x65f01309cad14248d55c3769bb6c494093117303ba958527662f5589fee79056",
+  "reachImpl": "0x6e43bd23e6e971ca8e656552916720ee39ace8ca5b3a5a174f6901b66bad456c",
+  "gripImpl": "0x98c761b40501ef9ec93cda66bcd285b4f994919d114c26a9f5b0aabdd92aa956",
+  "catalogRows": "0x5fa675ddc7cd467b1f5a1515873f78ef40ea35623c50ff17af8f87f43569b1e5",
+  "catalogRowsPost": "0xf14a82d5275701ce15ec3cad4c2fd0ba937c6a4b14e3cdfe556d9b7bb67df59d",
+  "catalogRowsV2": "0xf874044d847e30bec7e03ddb1c499533cd72864136b163d42c174f603f9edbd9",
+  "catalogText": "0x4b2b73a8d96e8d2c03efab052699d90e44501cd2b640a0854539adcca18c49ad",
+  "catalogState": "0xecbe580fb3c7cbe422ddc38317b72a97f69b071f129c21b16ec32e448d73562f",
+  "catalog": "0x05d008d74716e41801327df933fbf59c801ff75f7a6f728cf36d33518fe752fe",
+  "renderer": "0x5d15d507220021f96889f5ece3245f827d7d96a3f565920cfdcbcf3acf914c1c",
+  "coreFacet": "0xb3395f1abe347b6c291eeea811ac116bf39163bfdc5a5ee33968cfdd544e4cd7",
+  "rightsFacet": "0x6c64f92e349324b48fd6eb269814fd45a2a10754603564866aa59f08a6097ddc",
+  "mintFacet": "0x7176074267ed6ebb90fcd4e7d1119517882c2506c55f7b56a1701e2cb4811f74",
+  "siteFacet": "0x4531bb1643a36a4d46afaafdef0e121ee52675ca561164ef74cd268970fe6333",
+  "hub": "0x3fd8e55d6c3bb0b65bb9a85b3bd9ea654b53a2896271470c795115fa4e207490",
+  "keys": "0x3faaf2f472690c36b4d05dbf4df63f17f2c990a3e50ff04416b86682c1e197f9",
+  "roster": "0x582d1b1b8206c2f5b48530538b259f859f27d8ca056d30aa7f57958b86883e7f",
+  "postage": "0xd3518cc392afda76e19bd378e43a4507ebbc624ee1d1808e21ead636c3e3e21a",
+  "parley": "0x87e8466aa5c6b30e9ca02bfe8464c4e01e5b6df2731214966b6a8c8985775860",
+  "locks": "0xb714533e40b6061586426860fc502bb063937a5f57b33539ce7cd4e89ed21cfd",
+  "pool": "0xf448b94abd11b72a64096c448ea85b05608289ea951339cc05afd0a654cdb632",
+  "kiln": "0x401ad52769c12815e3c91854e9d1f1a5348ca8746089b562a710b473d1b8b816",
+  "launchpad": "0x916f2eb45f508c4130e2fd9014f980b0f7b0a2cc75e15a4dc3a6a6f67fa2df6e",
+  "router": "0xb04b45ddc585b18c80bc96754a546f11926107cab504c5c2147db6b141951e6e",
+  "steward": "0x12d8ca50f926472b6a18d89866339f8551233042f2fd98fbae41b27abb80ed3a",
+  "premises": "0x3afa36609001de5c889c0fddc7fe8d74aaa46ef0a820717cefbb16d7ff3fac38",
+  "market": "0xff4f9fcb604ba9a615c89a8fbe17f58e253deb8c46a504cd5959b15ee33ddc06",
+  "roles": "0xafb529ff86eaea1f054206d1161c2733f54fcb108d3183bed19776f947407850",
+  "agentCard": "0x3daf25cb1677e8e8d84b78fc8573b3512f44a258a9cb3d5997671cb5680b9ee9",
+  "nameplate": "0x62b63fb3010a3d9dfde888c3de4827ba97254ce19558c6a1dee8dcfc4ee53614",
+  "custodian": "0xa031e2f3e5af7f8f1a60d8efa1f1e6762e22897c4ab52ebb7a49f591e86765dd",
+  "keepsake": "0x21512d76de8f71a17d00f059f2ad1e25693798a88bc5e85602dab2b792027f13",
+  "journal": "0x97eb9d9e873c31c1e38baf5c12bedcedd74cfbb1d7c6e6baf246865474a36681",
+  "bazaar": "0x773537740ae5276dc291a963178af157e3037e7ef9b1e040fefe7f1460d5caf4",
+  "bridges": "0xc684b5131ac3bd537bdcdc853c115c5b2d96b1e1b324a371397b996f9e7d6412",
+  "studio": "0xad62009f96f6001c15328315193d04ec6a2e64576acb85755ab2bdba61099285",
+  "agora": "0xd8aff65a5731f5c3aefed7c704e243f06d3c3bdb2b72a2a2f38610f2bf303ac3",
+  "keepsakeArt": "0x2c59419d8b28b9bb8b34d91ca3eb242c51f9f72f75d251c1456ba33e5fb5bcf8"
+ },
+ "contracts": {
+  "factory": "0xffb5eaf01a403f0ffd9a8a81c04faad3f387a135",
+  "engine": "0xbfbf0dbd7d2728983911b9fa81e05c044fefa328",
+  "timelock": "0x84692423353b3c1a00305ad18b727b2206923c63",
+  "crest": "0x1c1c766c1b340b3b6d40555ff2eaa72792b4e794",
+  "reachImpl": "0x533a4d06c414e91d78712bc2bdfdd385784b4e18",
+  "gripImpl": "0x9f41c8f0d3b365b08b25c22697da88c30d124f83",
+  "catalogRows": "0xc058a23c1ff99d1ec6ed7a05cbd54fac9e923f12",
+  "catalogRowsPost": "0x5ebf193ea672c1d121bf0831b555764ace4f9cdc",
+  "catalogRowsV2": "0x5288a3b44272f4514df388defaae10b111a7ce2c",
+  "catalogText": "0x2fcd885db34219dee50a83957b86f621a02ce78e",
+  "catalogState": "0xd4060c0465ff12a26bcef5ac70c77eda084ace42",
+  "catalog": "0xee9f89b94481857207f799e44985ede2717f0181",
+  "renderer": "0x04613ca4c829133731d294f5539efb8c4948900e",
+  "coreFacet": "0x3da6e9d9878daaebb3a4eff1bbd6fb56bbb247ad",
+  "rightsFacet": "0xd8d780aae49fb86baf6886642e7a98231b656328",
+  "mintFacet": "0x38869cfe181ce71ba61221cb6915c3f64e0033cf",
+  "siteFacet": "0x1abe9293ff63fd27a896f3210ef6e01ad1f619dd",
+  "hub": "0x12c09ad323548e66008970f669fc5d47823d297f",
+  "keys": "0x7867170b3b73646e43726420667facb6f5a7c4f9",
+  "roster": "0xd73b2c6e455367018fcbd9af1918c08071570b8f",
+  "postage": "0x555b3da9d4b5db89b5d461978ddcfb0782d0c784",
+  "parley": "0xe9504614c20abe24635db0b0e45926e64451eedd",
+  "locks": "0xcdc0c4956e74d5aafc770e0255dbee0b24302af9",
+  "pool": "0xb086ae5906096a09fa0abda112be0bb7109ee68e",
+  "kiln": "0xed675d4d8b6076b3ced1032fe6fed3cda63d97c7",
+  "launchpad": "0xcfbe1ff98f643f63db0e4be0c39ba4ef44e2a5c3",
+  "router": "0x3f64106f0cfab44d578e1b8a8580d33c8fe4ee79",
+  "steward": "0x938cf41bcc34e94b5e19e4501a7766acaf7796bc",
+  "premises": "0x6cb58fd5ec721b6bbb5455d3db2b3c0ab0596142",
+  "keepsakeArt": "0xb5f02ba3d3d33908877eac48d8af988f5b239439",
+  "keepsake": "0xa3870777b3d89ded40fe03cdc1f9ee5d39dc1afe",
+  "journal": "0xb96116ef8d7f8443edeab587db46d5d13ccfadd9",
+  "bazaar": "0xe911b5973bca9de19e46130c3b714f847b93cad6",
+  "bridges": "0x1182a05727a2610920c95f18978a66e66967c3f3",
+  "studio": "0x04e6d5a1c81341c7aab2978032bc660f99cc33f4",
+  "agora": "0xc442fc8bfc17682af5c441255f5c8ed58bb1d6b8"
+ },
+ "codehashes": {
+  "factory": "0x66fb2423faf4edd733d75d7c8002fc4a9e848ca205ecc8a3f1ac4830c32618fa",
+  "timelock": "0x8f51ffd0ad5412d0b2d1a1c643e8b81a73c1af3951f627f5eb170a8779b33800",
+  "engine": "0xc9d44c1050fa8291a423f04aec85889881cf80defbe8a19c129061d0452bf15d",
+  "crest": "0x6ef70eadf4183436ee1e1f35330874e1265a315a3c32925f395745d4868eb36c",
+  "reachImpl": "0x949c6883c6a50b12d853ff08b25b69ac2ff586bd829271184a56a97d0b30cf58",
+  "gripImpl": "0x239b658de98d451e4c4305e90f433964b50700b9f60973d32f33fa5fe4189824",
+  "catalogRows": "0xd49711314dca3a595ff0a5b9b90070d85d0f979e72b4e7b9945ed365b608a179",
+  "catalogRowsPost": "0x9df97f127b16990143e3cb345c996d353b35398e86d48dd87aa5b24d6e40cae4",
+  "catalogRowsV2": "0x8c2a683de25cf46d87e1bad308fcf0c90fa107a9db8c0c32c0454b7c17806c0b",
+  "catalogText": "0x64010f601a45ed93bdf9e2b1c2e7d30fa8d68c7bfe5322d933c5e0666268d1ce",
+  "catalogState": "0x51668922b51a8356557d8595234c00037ddf6189d057a3ccb5a6c1ee33861b6a",
+  "catalog": "0xd58e74c915c02aa49e764abf8ffdfacc2797dcdb987aa96da1166b0954aaea19",
+  "renderer": "0x1c484570d0aa96ca720a715d6c58d162432e82f1727f84b98e0a3a1f46f645a6",
+  "coreFacet": "0xe40fb0100b327b9d294cccbb57fe837adc14d7d96bd48d3810135f687a9b3597",
+  "rightsFacet": "0x7a02a16cf8462a7442224622b1dcddb868e84ae591cf74c186c9344fd29fae21",
+  "mintFacet": "0x5033c4f963e5168936d6daab118589f1bab29aa7315bcdebd47c01b61bcbb394",
+  "siteFacet": "0x9a7cf6bdf1a76a9af81ae4b9723881e771bcf4cbf4d8044c713dfc64ae3e89cc",
+  "hub": "0xd9322106dfc329434c918fc3a82ea5c5e13872726bb26cf22cf5cb871b878cda",
+  "keys": "0x7f33fed5fab97fe6dbcee39a41aff2c9d3be1a3708c5db6245f9f64bf8060520",
+  "roster": "0xcac8b5f250a64b6e7feebd547158e3e8184f31b1e41061fe0c53909c01b40a69",
+  "postage": "0x8e2c63095327c9ea25876ec27986703c4a65df4cbd26248e53bf88139faf6dc8",
+  "parley": "0x5c18f9b345e6ec3b25102a9295e7354bfcbf0697b5880bab64ccb3ab8a107f13",
+  "locks": "0xbd32d65b3595af364d17f1c77f76e3c2b952cc7e8f52d8536896fad899afe38e",
+  "pool": "0x22ef23468d4c45b720a4b5d104ebde678fc5ff7d60b415189c8dfa05c8153c15",
+  "kiln": "0xfe6420c72874c07d0eba6f7e2f8633dd8bc9e262f5461779828b03e714ac8371",
+  "launchpad": "0x42abdb3ba3751cfdc1eec3f672c3e8c67b443cb01cd3fcecd68db6ecec54a43f",
+  "router": "0xc14e572ffa04707a9bd3f00ceb564b356745dc58adc38408a6a0e7c5c849081f",
+  "steward": "0x041ed0f68afcb0ba7abd8aad9907a7852c311cf1ec941236e993f8387322dce5",
+  "premises": "0x768e9a995c21cad3f343dba6659d1c1a75d55ff676b6c5f60b764f65a7553d49",
+  "keepsakeArt": "0xc8bcf660c35b4a49f63b95325bb26caf05885f57399e5b4fb49db389bfb67cea",
+  "keepsake": "0x9dd99a6f2955c6f72389acf54ffa5fe7ea8fb5175bb88ce330938db69bdd3ebb",
+  "journal": "0xa9721554fab9543e572630c354518c73d63981bc393434ee8c8e789056d7032f",
+  "bazaar": "0xa5ebffee2fbc66b1b8c04aaa186e26957ef383a1434f883439748aac1701f9ba",
+  "bridges": "0x3dc4ce1d20278b559c856f04f74068ce26effc282acbe057d2d6912e064102a3",
+  "studio": "0xa4961386d4d44cedd9d99181895085cfc6073cbec45cd2d53ece2b452717567e",
+  "agora": "0xfe5e783b0c2c6d5639d4329d1d0c27e0652c7af7e81fb51ffaebdb0ac8ac754f"
+ },
+ "reproducible": {
+  "factory": false,
+  "timelock": true,
+  "engine": true,
+  "crest": true,
+  "reachImpl": true,
+  "gripImpl": true,
+  "catalogRows": false,
+  "catalogRowsPost": false,
+  "catalogRowsV2": false,
+  "catalogText": false,
+  "catalogState": false,
+  "catalog": false,
+  "renderer": false,
+  "coreFacet": false,
+  "rightsFacet": false,
+  "mintFacet": false,
+  "siteFacet": false,
+  "hub": true,
+  "keys": true,
+  "roster": false,
+  "postage": false,
+  "parley": false,
+  "locks": false,
+  "pool": false,
+  "kiln": false,
+  "launchpad": false,
+  "router": false,
+  "steward": false,
+  "premises": false,
+  "keepsakeArt": true,
+  "keepsake": false,
+  "journal": false,
+  "bazaar": false,
+  "bridges": false,
+  "studio": false,
+  "agora": false
+ },
+ "placeholders": {
+  "market": "0xa6b7dece810b071519a327ec63030a731a7135d7",
+  "roles": "0x9f6935cb7d2ec925d21f22180d98595fc8b05376",
+  "agentCard": "0xa5996235b4766388eea7e5940be47f29989dabe6",
+  "nameplate": "0xc0dbb8bab48a8bdbafcb75a946d04e5e020b0186",
+  "custodian": "0x61f5a26d330c21b66a9a7fb7db18d5f2f1660357",
+  "keepsake": "0xa3870777b3d89ded40fe03cdc1f9ee5d39dc1afe",
+  "journal": "0xb96116ef8d7f8443edeab587db46d5d13ccfadd9",
+  "bazaar": "0xe911b5973bca9de19e46130c3b714f847b93cad6",
+  "bridges": "0x1182a05727a2610920c95f18978a66e66967c3f3",
+  "studio": "0x04e6d5a1c81341c7aab2978032bc660f99cc33f4",
+  "agora": "0xc442fc8bfc17682af5c441255f5c8ed58bb1d6b8",
+  "keepsakeArt": "0xb5f02ba3d3d33908877eac48d8af988f5b239439"
+ },
+ "shipBuild": {
+  "build": "diamond",
+  "reason": "Intact 26082 B > 24000; IntactDiamond compiled",
+  "intactBytes": 26082,
+  "threshold": 24000,
+  "limit": 24576,
+  "solc": "0.8.36+commit.8a079791.Emscripten.clang",
+  "facets": {
+   "CoreFacet": {
+    "address": "0x3da6e9d9878daaebb3a4eff1bbd6fb56bbb247ad",
+    "codehash": "0xe40fb0100b327b9d294cccbb57fe837adc14d7d96bd48d3810135f687a9b3597",
+    "selectors": [
+     "0x01ffc9a7",
+     "0x06433b1b",
+     "0x06fdde03",
+     "0x07933a8f",
+     "0x081812fc",
+     "0x081c3909",
+     "0x095ea7b3",
+     "0x10988fb9",
+     "0x18160ddd",
+     "0x1b8f1190",
+     "0x1dd26c2c",
+     "0x23b872dd",
+     "0x250793d4",
+     "0x25d397a0",
+     "0x2a55205a",
+     "0x2f745c59",
+     "0x37bdc99b",
+     "0x42842e0e",
+     "0x4deb4124",
+     "0x4f6ccce7",
+     "0x51431d4f",
+     "0x6352211e",
+     "0x6cd2b36f",
+     "0x6faffcb5",
+     "0x70a08231",
+     "0x72a26260",
+     "0x72f40a6b",
+     "0x7535d246",
+     "0x77869b5f",
+     "0x7aadef8b",
+     "0x7ec05705",
+     "0x8a8d28d2",
+     "0x8c0e1c8d",
+     "0x91a6262f",
+     "0x923cb952",
+     "0x95d89b41",
+     "0x9632d1e4",
+     "0x97e6ac7d",
+     "0xa22cb465",
+     "0xa2694771",
+     "0xaeb45622",
+     "0xb33d968f",
+     "0xb378e5ce",
+     "0xb45a3c0e",
+     "0xb88d4fde",
+     "0xb94604b6",
+     "0xc335fc00",
+     "0xd62b4350",
+     "0xe2fb0f52",
+     "0xe6de7b06",
+     "0xe985e9c5",
+     "0xeb40cd75",
+     "0xf46f16c2"
+    ]
+   },
+   "RightsFacet": {
+    "address": "0xd8d780aae49fb86baf6886642e7a98231b656328",
+    "codehash": "0x7a02a16cf8462a7442224622b1dcddb868e84ae591cf74c186c9344fd29fae21",
+    "selectors": [
+     "0x136439dd",
+     "0x5b42dc33",
+     "0x5c87f9e1",
+     "0x7ea50e51",
+     "0x851f5d69",
+     "0x85ee2281",
+     "0x8fc88c48",
+     "0xad35efd4",
+     "0xb29b961f",
+     "0xc02f5582",
+     "0xc2f1f14a",
+     "0xd896dd64",
+     "0xddef9afe",
+     "0xe030565e",
+     "0xeb876601",
+     "0xed994da0"
+    ]
+   },
+   "MintFacet": {
+    "address": "0x38869cfe181ce71ba61221cb6915c3f64e0033cf",
+    "codehash": "0x5033c4f963e5168936d6daab118589f1bab29aa7315bcdebd47c01b61bcbb394",
+    "selectors": [
+     "0x064677cd",
+     "0x0e77fc33",
+     "0x0f061467",
+     "0x2dd7c658",
+     "0x4f02c420",
+     "0x51cff8d9",
+     "0x6a627842",
+     "0x91b7f5ed",
+     "0xa035b1fe",
+     "0xc9c628a2",
+     "0xda380b95"
+    ]
+   },
+   "SiteFacet": {
+    "address": "0x1abe9293ff63fd27a896f3210ef6e01ad1f619dd",
+    "codehash": "0x9a7cf6bdf1a76a9af81ae4b9723881e771bcf4cbf4d8044c713dfc64ae3e89cc",
+    "selectors": [
+     "0x1cbe0f24",
+     "0x2bf453e3",
+     "0x455086e1",
+     "0x4bb30912",
+     "0x52dbd6da",
+     "0x6c8b703f",
+     "0x7de19c5f",
+     "0xa28eec87",
+     "0xabce47e2",
+     "0xc87b56dd",
+     "0xcdbcbda4",
+     "0xde475bf9",
+     "0xe3d61eb3",
+     "0xe8a3d485",
+     "0xf5112315",
+     "0xf80ecba3"
+    ]
+   }
+  },
+  "cut": [
+   {
+    "facet": "0x3da6e9d9878daaebb3a4eff1bbd6fb56bbb247ad",
+    "selectors": [
+     "0x10988fb9",
+     "0xe6de7b06",
+     "0x25d397a0",
+     "0x72a26260",
+     "0x9632d1e4",
+     "0x8c0e1c8d",
+     "0x081c3909",
+     "0x97e6ac7d",
+     "0x51431d4f",
+     "0x07933a8f",
+     "0xf46f16c2",
+     "0x1dd26c2c",
+     "0x7535d246",
+     "0x7ec05705",
+     "0x8a8d28d2",
+     "0xd62b4350",
+     "0x06433b1b",
+     "0x6cd2b36f",
+     "0x923cb952",
+     "0x1b8f1190",
+     "0x7aadef8b",
+     "0x77869b5f",
+     "0x6faffcb5",
+     "0x095ea7b3",
+     "0x70a08231",
+     "0xc335fc00",
+     "0x081812fc",
+     "0xb378e5ce",
+     "0xe985e9c5",
+     "0x91a6262f",
+     "0xb45a3c0e",
+     "0xe2fb0f52",
+     "0xaeb45622",
+     "0xb94604b6",
+     "0x06fdde03",
+     "0x6352211e",
+     "0x72f40a6b",
+     "0x37bdc99b",
+     "0x250793d4",
+     "0x2a55205a",
+     "0x42842e0e",
+     "0xb88d4fde",
+     "0x4deb4124",
+     "0xa22cb465",
+     "0xa2694771",
+     "0xb33d968f",
+     "0x01ffc9a7",
+     "0x95d89b41",
+     "0x4f6ccce7",
+     "0x2f745c59",
+     "0x18160ddd",
+     "0x23b872dd",
+     "0xeb40cd75"
+    ]
+   },
+   {
+    "facet": "0xd8d780aae49fb86baf6886642e7a98231b656328",
+    "selectors": [
+     "0xed994da0",
+     "0x5c87f9e1",
+     "0x851f5d69",
+     "0x7ea50e51",
+     "0xeb876601",
+     "0x5b42dc33",
+     "0x136439dd",
+     "0xb29b961f",
+     "0x85ee2281",
+     "0xddef9afe",
+     "0xc02f5582",
+     "0xd896dd64",
+     "0xe030565e",
+     "0xad35efd4",
+     "0x8fc88c48",
+     "0xc2f1f14a"
+    ]
+   },
+   {
+    "facet": "0x38869cfe181ce71ba61221cb6915c3f64e0033cf",
+    "selectors": [
+     "0x2dd7c658",
+     "0x064677cd",
+     "0x0e77fc33",
+     "0x6a627842",
+     "0x4f02c420",
+     "0xa035b1fe",
+     "0xda380b95",
+     "0x0f061467",
+     "0x91b7f5ed",
+     "0xc9c628a2",
+     "0x51cff8d9"
+    ]
+   },
+   {
+    "facet": "0x1abe9293ff63fd27a896f3210ef6e01ad1f619dd",
+    "selectors": [
+     "0xe8a3d485",
+     "0xabce47e2",
+     "0xf5112315",
+     "0xde475bf9",
+     "0xa28eec87",
+     "0xf80ecba3",
+     "0x455086e1",
+     "0x7de19c5f",
+     "0x1cbe0f24",
+     "0x4bb30912",
+     "0xe3d61eb3",
+     "0x2bf453e3",
+     "0xc87b56dd",
+     "0xcdbcbda4",
+     "0x6c8b703f",
+     "0x52dbd6da"
+    ]
+   }
+  ]
+ },
+ "engine": {
+  "address": "0xbfbf0dbd7d2728983911b9fa81e05c044fefa328",
+  "via": {
+   "create": {
+    "from": "0x760025730429523d70ef99d9332c28fcf5686a11",
+    "nonce": "2"
+   }
+  },
+  "curator": "0x760025730429523d70ef99d9332c28fcf5686a11",
+  "frozen": true,
+  "engineHash": "0xfa81840c465422435533e16647322df948d6518608234080fb5d2668b1a7ac7b",
+  "inflatedSize": 56831,
+  "shardHashes": [
+   "0xb6acaff94afb2d06c080baa4cf3f22ba12559e5ef7dedbc3d181379aa8768d47",
+   "0x6d6ac3ec09aa0c955d237259cd979b80e087ad5ed71d9c7dacf55e44f9ab12be",
+   "0xf0a011b2791ff4c5fda40ddac000179ba9b0e24bb2498df4f4bd24988c69cfdd",
+   "0xb7c2025771c4b65df90aa7084f6da2c7cfe1c579b26570643e22621e19f72ab8",
+   "0x5bf2dbaa0d91b6b35ca364dece7d687ba061f7573858296f770f2e83dd650444",
+   "0x94d293cfbf7791300caeb7b641961b9f65a7828f7a3bda2386c86e6806fb9cdb",
+   "0xd3195c93ce01a28356a50d1d10404bfe1eed54725138cba08a755cdedd1ca006",
+   "0xacb154cdd991424fd483aa778738a02b345f47ac36e6fea28900de240f012876",
+   "0x056d4f757b79f34acb697eefedbf35d1cbf026ec6bbec6d1f1e383063a9738a0"
+  ],
+  "panelHashes": {
+   "swap": "0xa14b572efa2f6a5af29f329e8174e5828e4305d9efe83a2ff10e51a7b345c027",
+   "social": "0x4b6ed11db94cffe338b6f5dcf00c85a6a3620492081068af044bc448d175764b",
+   "launch": "0x3e1070f2a278fa07ed79e355449d726900b493ef14342a8b972747dfed9258f1",
+   "vault": "0x2ab4739a8d9b7870ca81f83b0acd5f662ca1f8e234a3f6621a09451ee4919ed5",
+   "identity": "0x69a78db5ab90ff7aaf390c5f299eee8a41d0cf73ae4cd17f281ee927e668a15b",
+   "agent": "0x8afdd662e9c6709240a95d9e7237e1894f08b2b22110af266b0fbab332839519",
+   "gallery": "0xc80662e554d50f359f0a3fc5efccf9843975ffd4cd82d4798621bae37534de62"
+  },
+  "head": [
+   "0xc0a39e5b040b7923a102566f022f02ffb21b9c22"
+  ],
+  "body": [
+   "0x96af1f487466816156532547d7cdae8b46ef145c"
+  ],
+  "panels": [
+   {
+    "name": "swap",
+    "address": "0xe3513ddc34a862e84183cfcad1865a645df16f6a",
+    "hash": "0xa14b572efa2f6a5af29f329e8174e5828e4305d9efe83a2ff10e51a7b345c027",
+    "gzipHash": "0xf0a011b2791ff4c5fda40ddac000179ba9b0e24bb2498df4f4bd24988c69cfdd"
+   },
+   {
+    "name": "social",
+    "address": "0x240bdc1afa3d175a6b150ac58c22c68a6c5456b0",
+    "hash": "0x4b6ed11db94cffe338b6f5dcf00c85a6a3620492081068af044bc448d175764b",
+    "gzipHash": "0xb7c2025771c4b65df90aa7084f6da2c7cfe1c579b26570643e22621e19f72ab8"
+   },
+   {
+    "name": "launch",
+    "address": "0xf0cebcc06f058cdf2838bf7c2c2682dd076632fa",
+    "hash": "0x3e1070f2a278fa07ed79e355449d726900b493ef14342a8b972747dfed9258f1",
+    "gzipHash": "0x5bf2dbaa0d91b6b35ca364dece7d687ba061f7573858296f770f2e83dd650444"
+   },
+   {
+    "name": "vault",
+    "address": "0xdad72ae15fb50991f8ed7ed8c0a6d436f155af98",
+    "hash": "0x2ab4739a8d9b7870ca81f83b0acd5f662ca1f8e234a3f6621a09451ee4919ed5",
+    "gzipHash": "0x94d293cfbf7791300caeb7b641961b9f65a7828f7a3bda2386c86e6806fb9cdb"
+   },
+   {
+    "name": "identity",
+    "address": "0xb0a0fe573f205d97c582a659e01e9bceb2b1a04b",
+    "hash": "0x69a78db5ab90ff7aaf390c5f299eee8a41d0cf73ae4cd17f281ee927e668a15b",
+    "gzipHash": "0xd3195c93ce01a28356a50d1d10404bfe1eed54725138cba08a755cdedd1ca006"
+   },
+   {
+    "name": "agent",
+    "address": "0xc917640ea8a78147b239c252be32a9d32a0ab671",
+    "hash": "0x8afdd662e9c6709240a95d9e7237e1894f08b2b22110af266b0fbab332839519",
+    "gzipHash": "0xacb154cdd991424fd483aa778738a02b345f47ac36e6fea28900de240f012876"
+   },
+   {
+    "name": "gallery",
+    "address": "0x118929b98c7bc8a94962bbe64dc01599f1a1491b",
+    "hash": "0xc80662e554d50f359f0a3fc5efccf9843975ffd4cd82d4798621bae37534de62",
+    "gzipHash": "0x056d4f757b79f34acb697eefedbf35d1cbf026ec6bbec6d1f1e383063a9738a0"
+   }
+  ],
+  "storedBytes": 23005,
+  "placeholder": false
+ },
+ "catalogHash": "0xc71d0f524e9ff5d570dc146813349e63e1cf7bbb97426f3d33fed82c804e6cdc",
+ "coinTemplate": {
+  "bytes": 4417,
+  "keccak": "0x5e0426f5c22671c9c063f5a8871b1d6312ee976df3c4f56733c881ed84a09050"
+ },
+ "registry": {
+  "address": "0x000000006551c19487814612e58FE06813775758",
+  "codehash": "0xda1d5b06e579f9e42e59b00fbc22939896ecb38dc8830d40de0a2508fecd6735"
+ },
+ "price": "10000000000000000",
+ "timelock": {
+  "admin": "0x760025730429523d70ef99d9332c28fcf5686a11",
+  "delay": "604800",
+  "grace": "1209600",
+  "disposition": "the burner holds the admin; rotation or renunciation only through the Timelock's own 7-day queue"
+ },
+ "burner": {
+  "nonceAfter": "47",
+  "balanceAfter": "29999849944268278"
+ },
+ "venues": {
+  "swapRouter02": "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
+  "poolManager": "0xE03A1074c86CFeDd5C142C4F04F1a1536e203543",
+  "positionManager": "0x429ba70129df741B2Ca2a85BC3A2a3328e5c09b4",
+  "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+  "weth": "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
+  "probed": {
+   "on": "2026-10-18",
+   "block": 11943880,
+   "v3Factory": "0x0227628f3F023bb0B980b67D528571c95c6DaC1c",
+   "codehashes": {
+    "swapRouter02": "0xe7f98ee73dfe6d5c96cbf8936920f496b1b82f24326d6a415b4144a2252271de",
+    "poolManager": "0x09930125a49f5b95caf8052991cc14d1240dca8b43f42b899115b86867e4bce1",
+    "positionManager": "0xcffd746f78c2b50aafd19076bbe9c48f14446e5248fc5d76b9b4896610e51aab",
+    "permit2": "0x96d9f5c3f0fb0423426b7f970186235b7347027f4e5c19c40c412b7d97fc3751",
+    "weth": "0xc864e10689f2da18833652a3b075d43106e87f0f90d95ee64f6f0b33bc026083"
+   }
+  },
+  "seaport": "0x0000000000000068F116a894984e2DB1123eB395",
+  "conduitController": "0x00000000F9490004C11Cef243f5400493c00Ad63",
+  "openseaConduitKey": "0x0000007b02230091a7ed01230072f7006a004d60a8d4e71d599b8104250f0000",
+  "openseaConduit": "0x1E0049783F008A0085193E00003D00cd54003c71",
+  "seaportProbed": {
+   "on": "2026-10-25",
+   "block": 11987924,
+   "blockHash": "0x7350506dc3a5eac742e2a3ae5e1a13806cda90d6f71421e3af4695baa917fe17",
+   "version": "1.6",
+   "domainSeparator": "0xabe6fa56e16aecdc0a81f712b3c41518e063f22fb475c9f802a8265c782f7beb",
+   "codehashes": {
+    "seaport": "0xd3c20b1b63b44e7a392b8b95b710186b79cc494f440e07a01545e2fb14901f5a",
+    "conduitController": "0x880348b652e7cce91216153a4d0107e70c77b92192f3d7a127ff1f1351961948",
+    "openseaConduit": "0x069efdc9b946a332dce9951324fa197268e3ff0e00e44c6bf36049fc53113a41"
+   }
+  },
+  "launchHookCodehash": "0x9baead38e555c81a479aca695e03309a4c66ffc49322a1951680a5c766e24517"
+ },
+ "satellites": {
+  "keepsakeArt": {
+   "via": "burner",
+   "op": null,
+   "queued": null,
+   "eta": null,
+   "executed": {
+    "tx": "0xfe84c97c5ad5d3093dadc5241b1dd19ec8a20a648173c19ebf8db2bb2b4428a8",
+    "block": "11988351",
+    "gas": "17750671",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   }
+  },
+  "keepsake": {
+   "via": "burner",
+   "op": null,
+   "queued": null,
+   "eta": null,
+   "executed": {
+    "tx": "0x56a44bdcc8ddb57fc5f093bbffe4f511d9099df2de6fe959be44d282c82f7f94",
+    "block": "11988352",
+    "gas": "25231213",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   }
+  },
+  "journal": {
+   "via": "burner",
+   "op": null,
+   "queued": null,
+   "eta": null,
+   "executed": {
+    "tx": "0x2ae6d6d9cb625efa805c196587ce18e6baadf3252161210e7105e8d9f4cae1b5",
+    "block": "11988353",
+    "gas": "3740240",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   }
+  },
+  "bazaar": {
+   "via": "burner",
+   "op": null,
+   "queued": null,
+   "eta": null,
+   "executed": {
+    "tx": "0x45c1b21a5e3cabd401200d29f76225fbe7ae65cfe4603f87ec35ca39427328c9",
+    "block": "11988354",
+    "gas": "18402457",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   }
+  },
+  "bridges": {
+   "via": "burner",
+   "op": null,
+   "queued": null,
+   "eta": null,
+   "executed": {
+    "tx": "0xbe5c76b2261a34df6488d537a660152c1f3628ad54ff9a52255076e6dece3ca0",
+    "block": "11988355",
+    "gas": "3514492",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   }
+  },
+  "studio": {
+   "via": "burner",
+   "op": null,
+   "queued": null,
+   "eta": null,
+   "executed": {
+    "tx": "0xf8340f8408652f20b28b4cdcd7897f2636b634953dbf1b5e131984aa11e823c0",
+    "block": "11988356",
+    "gas": "37861477",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   }
+  },
+  "agora": {
+   "via": "burner",
+   "op": null,
+   "queued": null,
+   "eta": null,
+   "executed": {
+    "tx": "0xa0d28e238678b88eab4ef2a3c3546ebabc2775ec0c7c5c68371836a185c45eb9",
+    "block": "11988357",
+    "gas": "18034374",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   }
+  },
+  "agentCard": {
+   "via": "timelock",
+   "op": "0x95fd7821ff20cb90c57be1270f66cdd3bd09f1a8ac99bbf112671a11cfe87130",
+   "queued": {
+    "tx": "0x7303edaae22ab57c0701979ecfeb110f57170b47cf5d8667394c8b8e906c7721",
+    "block": "11988361",
+    "gas": "793496",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   },
+   "eta": "1793505516",
+   "executed": null
+  },
+  "custodian": {
+   "via": "timelock",
+   "op": "0x87beefe8d95d1b9481eddd68623a668d3094998d90a0a690c107524f61da09d7",
+   "queued": {
+    "tx": "0xd0bf7811bba7174627eb95d50c6c841d4abd3a472958ffd942290bcb3161cf91",
+    "block": "11988362",
+    "gas": "947096",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   },
+   "eta": "1793505528",
+   "executed": null
+  },
+  "market": {
+   "via": "timelock",
+   "op": "0xcbeadf71448cc58eaa3d7396921c1ec0bd0c2ba7ba07bbc1dd0e0f892a30de97",
+   "queued": {
+    "tx": "0x61807f374ed362a4ec57ff7850a58803871768833d9afa0d01c9961dd8d2334f",
+    "block": "11988363",
+    "gas": "435096",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   },
+   "eta": "1793505540",
+   "executed": null
+  },
+  "roles": {
+   "via": "timelock",
+   "op": "0x37340013a6c4a353cddcac62308b36fb3f18cd7b43cab72fbecee77a1a84d0ff",
+   "queued": {
+    "tx": "0x1dfa77490b61b56770d3436cd22db44818a4b9066f81576f9db960564a5e2e09",
+    "block": "11988364",
+    "gas": "398232",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   },
+   "eta": "1793505552",
+   "executed": null
+  },
+  "nameplate": {
+   "via": "timelock",
+   "op": "0xdf0ebc22f34164faaeedea16245c8d775ce58fbac31cfb6cb77093e593d24dd6",
+   "queued": {
+    "tx": "0x6b7778ebe48f4ea1d72faafd5ac14e9fed2303a1824c1232969b11c0bfe1e10a",
+    "block": "11988365",
+    "gas": "576408",
+    "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
+   },
+   "eta": "1793505564",
+   "executed": null
+  }
+ },
+ "gas": {
+  "factory": "1917276",
+  "timelock": "3041925",
+  "engine": "6141484",
+  "crest": "6528635",
+  "reachImpl": "32632861",
+  "gripImpl": "3421882",
+  "catalogRows": "74242395",
+  "catalogRowsPost": "26016370",
+  "catalogRowsV2": "43315864",
+  "catalogText": "46260892",
+  "catalogState": "27917144",
+  "catalog": "27153852",
+  "renderer": "26445892",
+  "coreFacet": "20478602",
+  "rightsFacet": "8197734",
+  "mintFacet": "8768377",
+  "siteFacet": "15067828",
+  "hub": "16934566",
+  "keys": "3428470",
+  "roster": "5370744",
+  "postage": "9953520",
+  "parley": "15936302",
+  "locks": "8785499",
+  "pool": "19926656",
+  "kiln": "22149825",
+  "launchpad": "26992982",
+  "router": "18726335",
+  "steward": "13955898",
+  "premises": "24499836",
+  "keepsakeArt": "17750671",
+  "keepsake": "25231213",
+  "journal": "3740240",
+  "bazaar": "18402457",
+  "bridges": "3514492",
+  "studio": "37861477",
+  "agora": "18034374",
+  "loadHead": "1310955",
+  "loadBody": "35154452",
+  "loadPanel": "117048243",
+  "setEngineHash": "238497",
+  "freeze": "65090",
+  "agentCard": "793496",
+  "custodian": "947096",
+  "market": "435096",
+  "roles": "398232",
+  "nameplate": "576408"
+ },
+ "gasTotal": "845712135",
+ "gasThisRun": "635060507",
+ "toolchain": {
+  "solc": "0.8.36+commit.8a079791.Emscripten.clang",
+  "optimizerRuns": 800,
+  "viaIR": true,
+  "evmVersion": "cancun",
+  "bytecodeHash": "none",
+  "eip170": 24576
+ },
+ "confirmToken": "DEPLOY_INTACT_TO_SEPOLIA",
+ "journal": "deployments/11155111.journal.json",
+ "writtenAt": "2026-10-25T03:59:25.753Z",
+ "block": "11988358",
+ "recovered": {
+  "checked": 479,
+  "disagreeing": 0
+ }
+}

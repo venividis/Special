@@ -256,6 +256,30 @@ destroyed the key, so that deployment's holder and admin are gone with it.
 Kept as the record of the lesson (`CLAUDE.md`, the traps); nothing reads
 it by default.
 
+## `11155111.json`
+
+Sepolia, written by `tools/testnet.mjs --v2` on 2026-10-25 from this tree:
+V2 live, at schema 3. Sepolia runs Glamsterdam, so every byte of state
+cost 1,530 gas. The record holds:
+- the MVB with the Router and V2's seven, landed by the burner
+  `0x7600…6a11` from block 11,988,067: 36 contracts and 842,561,807 gas
+  (hub `0x12c0…297f`, Premises `0x6cb5…6142`, Timelock `0x8469…3c63`);
+- the recovery in-run, with 479 fields and 0 disagreeing;
+- in `satellites`, V2's seven `executed` by the burner, and the card, the
+  custodian, the Market, the Roles and the Nameplate QUEUED on the
+  Timelock (`queued`, `op`, `eta`).
+
+The five ripen from 2026-11-01 03:58:36 UTC and stay executable for
+fourteen days. `tools/deploy.mjs --chain 11155111 --satellite all`, run by
+any funded key from a tree whose `src/` is this one's, writes `executed`
+and recovers the record.
+
+Its campaign record walks 53 steps for 56,149,989 gas, the V2 family on
+Sepolia's own Seaport included. The run was resumed twice from its
+journal, as the deployer learned EIP-8037 (`docs/DEPLOYMENT.md`, "V2 live
+on Sepolia"). The burner was destroyed when the run completed; it holds
+the Timelock's admin, as a rehearsal's must.
+
 ## The campaign record (`intact.campaign/1`)
 
 `deployments/<chainId>.campaign.json`, written by `tools/testnet.mjs`
