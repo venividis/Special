@@ -448,6 +448,23 @@ On forks of both rehearsal chains, 2026-10-18, this tree (`--fork`, above):
 | `tokenURI(1)` | estimated at 5,046,263 gas, 106,677 bytes |
 | the gateway | 248 passed; the tamper fixture 251 |
 
+**V2 on a fork of Sepolia, 2026-10-25.** The same command with `--chain
+11155111 --confirm DEPLOY_INTACT_TO_SEPOLIA`, once Sepolia's venue row
+named Seaport (9572343: `tools/verify-bazaar-fork.mjs --probe --chain
+11155111` at block 11,987,924, 12 passed). The fork's endpoint kept the
+block's state for the whole run, as on 2026-10-18. The records went to
+`out/fork/` only, and neither names an endpoint.
+
+| What | Sepolia fork (block 11,987,820) |
+|---|---|
+| sentences | 113 passed, 0 failed, 188 s |
+| the deploy | 130.11 M gas in 83 s: the MVB with the Router, and V2's seven by the burner (keepsakeArt 2,510,809 · keepsake 3,567,887 · journal 558,544 · bazaar 2,611,909, against the venue's Seaport · bridges 527,000 · studio 5,333,171 · agora 2,568,166); 479 fields, 0 disagreeing |
+| the post-MVB five through the Timelock | the card 327,180 + 2,696,364 · the custodian 387,906 + 3,168,433 · the Market 203,102 + 1,444,434 · the Roles 188,154 + 1,336,285 · the Nameplate 244,061 + 1,725,380, against Sepolia's ENS; 515 fields, 0 disagreeing; 141,832,000 gas in the record, 41 contracts |
+| the V2 journey, on the chain's own Seaport | wrap a keepsake 234,786 · inscribe a memory 90,803 · seal token 2's Reach 64,020 · approve Seaport for token 2 53,273 · validate from the seller's wallet, no signature 63,954 · publish through the Bazaar 257,019 · buy for exactly the price 314,779 · launch a Studio collection with the default site 4,077,637 · mint 160,914 · speak in Agora's commons as token 1 143,657 |
+| the rest of the campaign | 70 steps, 15,773,436 gas, the router and v4 families included |
+| `tokenURI(1)` | estimated at 5,076,707 gas, 107,201 bytes |
+| the gateway | 248 passed; the tamper fixture 251 |
+
 The hub's `tokenURI` budget in CI is 8,000,000 (`tools/gas.mjs`, 3.62 M
 measured cold in the battery on the landed shape, after the encoder's
 rewrite — DESIGN §15, decision 39); the 3.78 M the node estimates is the
@@ -485,7 +502,7 @@ BUILD-PLAN.md's criterion for waves 0–3, and where each item is proved:
 - [x] lock — the campaign's native lock to the Reach, released when due (wire).
 - [x] grant a session that dies on sale — the campaign's grant and act, then `sessionCurrent` false after `panic` and `rightsOf(id, key)` 0 (wire); the sale's revocation of a live session is `verify-console`'s journey and `test/Bundle.t.sol`.
 - [x] sell the whole bundle with the buyer's `rightsOf` showing the seller holds nothing — the campaign's `transferFrom`, `rightsOf(id, seller)` read back as 0 and the Reach answering to the buyer (wire).
-- [ ] the same on Base Sepolia and Sepolia, with `deployments/84532.json`, `deployments/11155111.json` and their campaign records committed — Base Sepolia is done (2026-10-13: the forty steps, "Measured"); Sepolia awaits a funded burner, and its fork already walked the whole run, the Nameplate included.
+- [ ] the same on Base Sepolia and Sepolia, with `deployments/84532.json`, `deployments/11155111.json` and their campaign records committed — Base Sepolia is done (2026-10-13: the forty steps, "Measured"); Sepolia awaits a funded burner. Its fork walked the whole V1 run on 2026-10-18, the Nameplate included, and the whole V2 run on 2026-10-25, the Bazaar on Sepolia's own Seaport included ("V2 on a fork of Sepolia").
 
 ## The rollout order (DESIGN §12), and what comes after
 

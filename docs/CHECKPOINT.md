@@ -189,7 +189,14 @@ holds every request and its state. The ones that shape the whole:
 ## What remains
 
 - **A live V2 deployment** needs a fresh nonce-0 burner (`tools/deploy.mjs --v2`, or the rehearsal with
-  `tools/testnet.mjs --v2`), funded per the preflight (the deploy budget is 140 M gas with V2).
+  `tools/testnet.mjs --v2`), funded per the preflight (the deploy budget is 140 M gas with V2). Sepolia is
+  ready for one:
+  - its venue row names Seaport since 9572343, from a probe of the chain;
+  - the whole V2 rehearsal passed on a fork of it on 2026-10-25 (113 passed, `docs/DEPLOYMENT.md`, "V2 on a
+    fork of Sepolia").
+
+  At that day's 17 wei a gas, the run's ETH is almost all the campaign's own payments, about 0.027 ETH. The
+  five post-MVB satellites then wait the Timelock's week.
 - **Open requests**: L14 (`tools/mutations.mjs` adopting a JavaScript mode, W17's driver as its shape) and
   B4 (a keeper motive in `tools/agents.mjs`). L16–L22 are listed in `docs/v2/INTEGRATION.md`.
 - **Later work**: zkAPI (V2 §6), OpenSea posting and WETH offers. After those comes U19: the audits, the
