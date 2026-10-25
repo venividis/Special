@@ -17,6 +17,8 @@ import { hexToBytes, bytesToHex, privateToAddress } from "@ethereumjs/util";
 import fs from "node:fs";
 import path from "node:path";
 import { enc, TX_GAS_CAP } from "./evm.mjs";
+/// EIP-8037's ceiling on a transaction's total gas, execution and state together.
+export const TX_MAX_TOTAL_GAS = 4_294_967_295n;
 
 /*  Node's global fetch does not read HTTP(S)_PROXY, so in an environment
     whose only road out is a proxy, a request to a public endpoint dies at
@@ -140,12 +142,29 @@ export class RpcChain {
 
   rpc(method, params = []) { return call(this.url, method, params); }
 
+  /*  EIP-8037 (Glamsterdam; Sepolia since 2026-10-06) meters state creation
+      as its own gas, 1,530 a byte, drawn from a reservoir above the EIP-7825
+      cap: `tx.gas` may exceed 2^24, a transaction's execution share may not.
+      Measured, never assumed: a creation that stores one byte of code costs
+      about 53 k gas on a chain without it and about 212 k with it (a new
+      account is 183,600 state gas). Asked once per chain; every `as()` key
+      shares the answer through `view`.                                    */
+  async stateGas() {
+    if (this.view.stateGas === undefined) {
+      const est = BigInt(await this.rpc("eth_estimateGas", [{ from: this.from.toString(), data: "0x60016000f3" }, await this.tag()]));
+      this.view.oneByteCreation = est;
+      this.view.stateGas = est > 150_000n;
+    }
+    return this.view.stateGas;
+  }
+
   /*  Legacy transactions on purpose: one shape that every chain and every
       block explorer understands, and nothing about fee markets to be wrong
       about. The price is asked of the node and padded, because a base fee
       can rise between asking and mining.                                 */
   async send({ to, data = "0x", value = 0n, label } = {}) {
     const gasPrice = (BigInt(await this.rpc("eth_gasPrice")) * 15n) / 10n + 1n;
+    const stateGas = await this.stateGas();
     let gasLimit;
     try {
       const est = await this.rpc("eth_estimateGas", [{
@@ -156,12 +175,20 @@ export class RpcChain {
           Fusaka chain. The estimate is the honest number; refuse it rather
           than send something the chain will reject or, worse, a chunk a
           pre-Fusaka testnet accepts and mainnet never will. The padded
-          limit is clamped to the cap so the padding itself never trips it. */
-      if (BigInt(est) > TX_GAS_CAP) {
+          limit is clamped to the cap so the padding itself never trips it.
+          On a chain that meters state gas (EIP-8037) the cap binds the
+          execution share alone, and the node's estimate already holds it
+          there, since a larger limit only deepens the state reservoir. So
+          the estimate is sent as it is, up to EIP-8037's 2^32 - 1. A chain
+          without EIP-8037 never meets a chunk this lets through: the
+          battery holds every step to 2^24 in total, in-process, at Cancun's
+          prices (tools/evm.mjs).                                         */
+      if (!stateGas && BigInt(est) > TX_GAS_CAP) {
         throw new Error(`${label || "tx"} needs ${est} gas, over the EIP-7825 cap of ${TX_GAS_CAP}`);
       }
       gasLimit = (BigInt(est) * 13n) / 10n;
-      if (gasLimit > TX_GAS_CAP) gasLimit = TX_GAS_CAP;
+      const ceiling = stateGas ? TX_MAX_TOTAL_GAS : TX_GAS_CAP;
+      if (gasLimit > ceiling) gasLimit = ceiling;
     } catch (e) {
       /*  estimateGas replays the call and reports the revert here, which is
           a better error than a mined failure — surface it.              */

@@ -483,6 +483,9 @@ export function adapt(c) {
     getLogs: (f) => c.getLogs(f),
     nonceNow: () => c.nonceNow(),
     balanceOf: (a) => c.balanceOf(a),
+    /// whether the chain meters state creation as its own gas (EIP-8037, measured by tools/rpc.mjs);
+    /// the in-process chain is Cancun and never does
+    stateGas: async () => (inProcess || !c.stateGas ? false : c.stateGas()),
     codeAt: async (addr) => inProcess
       ? bytesToHex(await c.vm.stateManager.getCode(createAddressFromString(addr)))
       : low(await c.rpc("eth_getCode", [addr, await c.tag()])),   // pinned: a replica behind the receipt answers "header not found" and is retried, never 0x
@@ -743,11 +746,14 @@ export async function deployIntact(ad, opts = {}) {
   }
   const save = () => { if (journalPath) atomicWrite(journalPath, journal); };
   const gasOf = {};
-  /// every receipt is held to the EIP-7825 transaction cap (DESIGN §12:
-  /// "the deployer refuses post-EIP-8037 chunks over the 2^24 cap") — a
-  /// step that spent more could not be included on a Fusaka chain
+  /// every receipt is held to the EIP-7825 transaction cap (DESIGN §12) — a
+  /// step that spent more could not be included on a Fusaka chain. On a
+  /// chain that meters state gas (EIP-8037) a receipt counts the state
+  /// reservoir too, and the cap binds the execution share alone, which the
+  /// node's estimate already held (tools/rpc.mjs `send`).
+  const stateGas = ad.stateGas ? await ad.stateGas() : false;
   const took = (label, r) => {
-    if (BigInt(r.gas || 0n) > TX_GAS_CAP) throw new Error(`${label} used ${r.gas} gas, over the 2^24 transaction cap — not includable on a Fusaka chain`);
+    if (!stateGas && BigInt(r.gas || 0n) > TX_GAS_CAP) throw new Error(`${label} used ${r.gas} gas, over the 2^24 transaction cap — not includable on a Fusaka chain`);
     gasOf[label] = (gasOf[label] || 0n) + BigInt(r.gas || 0n); return r;
   };
 
@@ -1289,8 +1295,10 @@ export async function deploySatellite(ad, rec, key, opts = {}) {
   if ((init.length - 2) / 2 > 49_152) throw new Error(`${key}'s initcode is ${(init.length - 2) / 2} bytes, over EIP-3860's 49,152`);
   const data = enc("deploy(bytes32,bytes)", [salt, init]);
   const op = low(await ad.read(timelock, "opHash(address,uint256,bytes,bytes32)", [factory, 0, data, salt]));
+  /// as deployIntact's receipts: 2^24 in total, or the execution share alone where the chain meters state gas
+  const stateGas = ad.stateGas ? await ad.stateGas() : false;
   const capped = (label, r) => {
-    if (BigInt(r.gas || 0n) > TX_GAS_CAP) throw new Error(`${label} used ${r.gas} gas, over the 2^24 transaction cap`);
+    if (!stateGas && BigInt(r.gas || 0n) > TX_GAS_CAP) throw new Error(`${label} used ${r.gas} gas, over the 2^24 transaction cap`);
     return r;
   };
   let landed = rec.satellites?.[key] ? { ...rec.satellites[key] } : null;

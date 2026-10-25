@@ -208,6 +208,11 @@ export const CAMPAIGN_BUDGET_GAS = 30_000_000n;
 /// the Collection's creation code and whose constructor stores it: 6,189,198
 /// in-process (627,434 to queue, 5,561,764 to land), the Keepsake 4,172,705.
 export const SATELLITE_BUDGET_GAS = 6_500_000n;
+/// Where the chain meters state gas (EIP-8037: 1,530 gas a byte of state,
+/// against Cancun's 200 a byte of code), every gas budget above is
+/// multiplied by this — a budget, not a measurement, until a run on such a
+/// chain has measured one (tools/rpc.mjs `stateGas` says which chain is).
+export const STATE_GAS_BUDGET = 8n;
 
 /*═══════════════════ signatures and topics ═══════════════════*/
 
@@ -443,6 +448,15 @@ async function main() {
   if (stalled) throw refuse("the endpoint is stalled");
   const gasPrice = BigInt(await c.rpc("eth_gasPrice"));
   ok(gasPrice > 0n, `preflight · gas price ${gasPrice} wei (${(Number(gasPrice) / 1e9).toFixed(4)} gwei)`);
+  /*  EIP-8037 (tools/rpc.mjs `stateGas`): where the chain meters state
+      creation as its own gas, a transaction's total may pass 2^24, its
+      execution share may not, and the run's gas grows with every byte it
+      stores, so the budgets below are multiplied by STATE_GAS_BUDGET.  */
+  const stateGas = await c.stateGas();
+  const stateX = stateGas ? STATE_GAS_BUDGET : 1n;
+  note(stateGas
+    ? `the chain meters state gas (EIP-8037): a one-byte creation is estimated at ${c.view.oneByteCreation} gas; the 2^24 cap binds execution gas alone, and every gas budget below is ×${stateX}`
+    : `no state gas on this chain: a one-byte creation is estimated at ${c.view.oneByteCreation} gas, and every transaction stays under 2^24 in total`);
   // the burner rule
   const nonce = await c.nonceNow();
   const bal = await c.balanceOf(me);
@@ -484,25 +498,25 @@ async function main() {
       109.78 M for the MVB without a Router and 127.46 M with V2's seven
       (17.68 M of them) on a row that names only Seaport; the fork's
       figures with the Router are in docs/v2/W15-deploy.md.             */
-  const deployGas = V2 ? 140_000_000n : 120_000_000n;
+  const deployGas = (V2 ? 140_000_000n : 120_000_000n) * stateX;
   const deployNeed = skipDeploy ? 0n : (deployGas * gasPrice * 15n) / 10n + l1Deploy;
   const measured = CAMPAIGN_GAS.measuredOn !== null;
-  const campaignGas = measured ? CAMPAIGN_GAS.total : CAMPAIGN_BUDGET_GAS;
-  const secondGas = measured ? CAMPAIGN_GAS.second : CAMPAIGN_BUDGET_GAS / 8n;
+  const campaignGas = (measured ? CAMPAIGN_GAS.total : CAMPAIGN_BUDGET_GAS) * stateX;
+  const secondGas = (measured ? CAMPAIGN_GAS.second : CAMPAIGN_BUDGET_GAS / 8n) * stateX;
   const steps = 50n;
   const price = args.price && args.price !== true ? BigInt(args.price) : (skipDeploy ? decUint(await c.read(JSON.parse(fs.readFileSync(RECORD, "utf8")).contracts.hub, "price()")) : 10n ** 16n);
   const secondFund = (secondGas * gasPrice * 15n) / 10n + l1PerStep * 12n + SECOND_SPEND + 2n * 27_300n * gasPrice;
   /// with --v2 the V2 family runs too: its ether, and its gas as a budget until a run has measured it (W15)
-  const v2Need = V2 ? V2_SPEND.holder + V2_SPEND.second + ((AMOUNTS.v2HolderGas + AMOUNTS.v2SecondGas) * gasPrice * 15n) / 10n + l1PerStep * 12n : 0n;
+  const v2Need = V2 ? V2_SPEND.holder + V2_SPEND.second + ((AMOUNTS.v2HolderGas + AMOUNTS.v2SecondGas) * stateX * gasPrice * 15n) / 10n + l1PerStep * 12n : 0n;
   const campaignNeed = (campaignGas * gasPrice * 15n) / 10n + l1PerStep * steps + HOLDER_SPEND + 2n * price + secondFund + v2Need;
   const hasArtifact = (f, n) => { try { artifact(out, f, n); return true; } catch { return false; } };
   /// the budget's list, before any record exists: what this chain's band and venue table admit
   /// (a fresh deployment writes this tree's schema; with --v2 the burner lands V2 itself, so the Timelock lands none of it)
   const satelliteKeys = SATELLITE_ORDER.filter((k) => !(V2 && V2_ORDER.includes(k)) &&
     !admitsSatellite(k, { chainId, band: { band: band.band }, venues: VENUES[chainId] || null, schema: "intact.deployment/" + RECORD_SCHEMA }) && hasArtifact(SATELLITES[k].file, SATELLITES[k].name));
-  const satelliteNeed = (BigInt(satelliteKeys.length) * SATELLITE_BUDGET_GAS * gasPrice * 15n) / 10n + l1PerStep * 2n * BigInt(satelliteKeys.length);
+  const satelliteNeed = (BigInt(satelliteKeys.length) * SATELLITE_BUDGET_GAS * stateX * gasPrice * 15n) / 10n + l1PerStep * 2n * BigInt(satelliteKeys.length);
   const need = deployNeed + campaignNeed + satelliteNeed;
-  ok(bal >= need, `preflight · balance ${eth(bal)} ETH covers ${eth(need)} ETH: the deploy ${eth(deployNeed)} (${M(deployGas)} gas × ${gasPrice} wei × 1.5 + L1${V2 ? ", V2 landed by the burner" : ""}) plus the campaign ${eth(campaignNeed)} (${campaignGas} gas ${measured ? `measured on ${CAMPAIGN_GAS.measuredOn}` : "BUDGET: no wire run measured yet"} × 1.5, two mints at ${eth(price)} ETH, ${eth(HOLDER_SPEND)} ETH the holder spends, ${eth(secondFund)} ETH funding the second key)${satelliteKeys.length ? ` plus the satellites ${eth(satelliteNeed)} (${satelliteKeys.join(", ")}: ${SATELLITE_BUDGET_GAS} gas each, a budget, × 1.5)` : ""}`,
+  ok(bal >= need, `preflight · balance ${eth(bal)} ETH covers ${eth(need)} ETH: the deploy ${eth(deployNeed)} (${M(deployGas)} gas × ${gasPrice} wei × 1.5 + L1${V2 ? ", V2 landed by the burner" : ""}) plus the campaign ${eth(campaignNeed)} (${campaignGas} gas ${measured ? `measured on ${CAMPAIGN_GAS.measuredOn}` : "BUDGET: no wire run measured yet"} × 1.5, two mints at ${eth(price)} ETH, ${eth(HOLDER_SPEND)} ETH the holder spends, ${eth(secondFund)} ETH funding the second key)${satelliteKeys.length ? ` plus the satellites ${eth(satelliteNeed)} (${satelliteKeys.join(", ")}: ${SATELLITE_BUDGET_GAS * stateX} gas each, a budget, × 1.5)` : ""}`,
      `fund ${me} with at least ${eth(need - bal)} ETH more`);
   if (bal < need) throw refuse(`underfunded: ${eth(need)} ETH needed, ${eth(bal)} ETH held`);
   const preflight = { rpcChainId: c.chainId, blockA: blockA.toString(), blockB: blockB.toString(), latestTimestamp: String(BigInt(latest.timestamp)), wallClock: wall.toString(), skewSeconds: skew.toString(),

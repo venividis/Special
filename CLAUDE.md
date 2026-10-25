@@ -167,6 +167,17 @@ after wave 0: a change is additive only and goes in
   codehashes) and `checkVenues` re-proves it before every deploy over a
   wire. A row whose code moved refuses the deploy by name; re-probe it in
   a dated commit, never edit a hash to match.
+- **A fork does not see Glamsterdam.** Sepolia runs Glamsterdam since
+  2026-10-06, and its EIP-8037 prices state at 1,530 gas a byte (code,
+  slots, accounts), drawn from a reservoir above the 2^24 cap. A hardhat
+  fork runs Cancun, so V2's fork rehearsal of Sepolia passed on 2026-10-25
+  while the live run's first heavy step (`loadBody`, 35,434,623 gas, nearly
+  all of it state) met the deployer's old check on total gas.
+  `RpcChain.stateGas()` (tools/rpc.mjs) measures the chain: a one-byte
+  creation is estimated at about 212 k gas with EIP-8037 and 53 k without.
+  On such a chain the cap binds the execution share, which the node's
+  estimate already holds, and every other chain keeps 2^24 in total
+  (DESIGN §12). A live run on a chain ahead of hardhat is its own proof.
 - **hardhat must run cancun.** Left to default it runs Osaka, where
   EIP-7825 caps a transaction at 2^24 gas and applies that cap to
   `eth_call` too, so `tokenURI` fails with a bare revert while every
