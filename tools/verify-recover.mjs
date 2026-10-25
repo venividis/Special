@@ -416,7 +416,15 @@ eq("and the schema this tree writes is 3, V2's", RECORD_SCHEMA, 3);
      row.seaportProbed.on === fx.probed && row.seaportProbed.block === fx.block && low(row.seaportProbed.blockHash) === low(fx.blockHash) &&
      low(row.seaportProbed.codehashes.seaport) === low(fx.codehash) && low(row.seaportProbed.codehashes.conduitController) === low(fx.conduitController.codehash) &&
      low(row.seaportProbed.codehashes.openseaConduit) === low(fx.opensea.codehash) && SEAPORT_KEYS.join(",") === "seaport,conduitController,openseaConduit");
-  ok("and Sepolia's row names no Seaport (not probed there)", !VENUES[11155111].seaport);
+  /* Sepolia's (2026-10-25): the same three addresses, from its own probe, whose Seaport codehash is its own (its chain id is an immutable) */
+  const f11 = JSON.parse(fs.readFileSync(path.join(ROOT, "tools/fixtures/seaport-1.6/probe.11155111.json"), "utf8"));
+  const s11 = VENUES[11155111];
+  ok("and Sepolia's row names the same three as tools/fixtures/seaport-1.6/probe.11155111.json recorded them, with that probe's own date, block and codehashes",
+     f11.chainId === 11155111 && low(f11.address) === low(row.seaport) && SEAPORT_KEYS.every((k) => low(s11[k]) === low(row[k])) &&
+     low(s11.openseaConduitKey) === low(f11.opensea.conduitKey) &&
+     s11.seaportProbed.on === f11.probed && s11.seaportProbed.block === f11.block && low(s11.seaportProbed.blockHash) === low(f11.blockHash) &&
+     low(s11.seaportProbed.codehashes.seaport) === low(f11.codehash) && low(s11.seaportProbed.codehashes.conduitController) === low(f11.conduitController.codehash) &&
+     low(s11.seaportProbed.codehashes.openseaConduit) === low(f11.opensea.codehash) && low(f11.codehash) !== low(fx.codehash));
 }
 const written = JSON.parse(fs.readFileSync(recordPath, "utf8"));
 eq("the file on disk is the record (minus the path it was written to)", JSON.stringify({ ...written }), JSON.stringify((({ path: _p, ...r }) => r)(rec)));

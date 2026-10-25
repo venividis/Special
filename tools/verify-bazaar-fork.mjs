@@ -5,15 +5,21 @@
 
   Two modes, both over a wire, so neither is a step of `npm run check`:
 
-    node tools/verify-bazaar-fork.mjs --probe
+    node tools/verify-bazaar-fork.mjs --probe [--chain <id>]
         Seaport 1.6, its ConduitController and OpenSea's conduit, read from
-        the chain at one pinned block (the endpoint from RPC_URL_84532, or
-        RPC_URL): code and codehash at each address, Seaport's
-        `information()` and `name()`, the conduit the controller names for
-        OpenSea's key, its owner and whether Seaport's channel is open.
-        Writes tools/fixtures/seaport-1.6/ — the two runtimes the in-process
-        verifier etches, and probe.json, the evidence. Nothing in the record
-        is typed by hand: every value is what the chain answered.
+        the chain at one pinned block (the endpoint from RPC_URL_<id>, or
+        RPC_URL; the chain is 84532 unless --chain names another): code and
+        codehash at each address, Seaport's `information()` and `name()`,
+        the conduit the controller names for OpenSea's key, its owner and
+        whether Seaport's channel is open. The probe's date is the pinned
+        block's. Writes tools/fixtures/seaport-1.6/ — for 84532 the two
+        runtimes the in-process verifier etches and probe.json, the
+        evidence; for any other chain the same three as probe.<id>.json,
+        seaport.<id>.runtime.hex and conduit-controller.<id>.runtime.hex,
+        the evidence a venue row of that chain cites (Seaport's runtime
+        differs by chain: its chain id and domain separator are
+        immutables). Nothing in the record is typed by hand: every value is
+        what the chain answered.
 
     node tools/verify-bazaar-fork.mjs
         A hardhat fork of Base Sepolia (FORK_URL, else RPC_URL_84532, else
@@ -57,7 +63,6 @@ import {
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
 const CHAIN = 84532;
-const PROBED_ON = "2026-10-19";
 const PORT = 8549;
 const ETH = 10n ** 18n;
 const DAY = 86_400n;
@@ -119,11 +124,11 @@ function claims(r, want) {
 
 /*═══════════════════ --probe ═══════════════════*/
 
-async function probe(url) {
-  head(`probe · Seaport 1.6 on chain ${CHAIN}`);
-  const c = new RpcChain(url, DEV_KEYS[0], CHAIN);
+async function probe(url, chain) {
+  head(`probe · Seaport 1.6 on chain ${chain}`);
+  const c = new RpcChain(url, DEV_KEYS[0], chain);
   const chainId = Number(await c.rpc("eth_chainId"));
-  if (!ok(chainId === CHAIN, `the endpoint is chain ${CHAIN}`, `it says ${chainId}`)) return;
+  if (!ok(chainId === chain, `the endpoint is chain ${chain}`, `it says ${chainId}`)) return;
   // a few blocks behind the head, so every replica behind the balancer holds it
   const block = BigInt(await c.rpc("eth_blockNumber")) - 5n;
   const tag = "0x" + block.toString(16);
@@ -132,10 +137,10 @@ async function probe(url) {
   const r = await readRecord((m, p) => c.rpc(m, p), tag);
   const before = fail;
   const { sea, con, cdt } = claims(r, null);
-  ok(low(r.domainSeparator) === low(domainSeparatorOf(chainId)), "its domain separator is EIP712Domain(\"Seaport\", \"1.6\", 84532, its address)", r.domainSeparator);
+  ok(low(r.domainSeparator) === low(domainSeparatorOf(chainId)), `its domain separator is EIP712Domain("Seaport", "1.6", ${chainId}, its address)`, r.domainSeparator);
   if (fail !== before) { note("a claim failed: nothing written"); return; }
   const record = {
-    probed: PROBED_ON,
+    probed: new Date(Number(BigInt(blk.timestamp)) * 1000).toISOString().slice(0, 10),
     chainId, block: Number(block), blockHash: blk.hash, blockTimestamp: Number(BigInt(blk.timestamp)),
     address: SEAPORT, codehash: sea, bytes: (r.seaportCode.length - 2) / 2,
     version: r.version, name: r.name, domainSeparator: r.domainSeparator,
@@ -145,13 +150,18 @@ async function probe(url) {
                owner: r.conduitOwner, totalChannels: r.totalChannels, seaportChannelOpen: r.seaportChannelOpen },
     how: "node tools/verify-bazaar-fork.mjs --probe: eth_getCode and eth_call at the pinned block; the runtimes beside this file are the bytes eth_getCode returned"
   };
+  /// 84532's files are the ones the in-process verifier etches; another chain's carry its id
+  const tail = chain === CHAIN ? "" : `.${chain}`;
+  const names = { probe: `probe${tail}.json`, seaport: `seaport${tail}.runtime.hex`, controller: `conduit-controller${tail}.runtime.hex` };
   fs.mkdirSync(FIXTURE_DIR, { recursive: true });
-  fs.writeFileSync(path.join(FIXTURE_DIR, "seaport.runtime.hex"), r.seaportCode + "\n");
-  fs.writeFileSync(path.join(FIXTURE_DIR, "conduit-controller.runtime.hex"), r.controllerCode + "\n");
-  fs.writeFileSync(path.join(FIXTURE_DIR, "probe.json"), JSON.stringify(record, null, 2) + "\n");
-  const back = loadFixture();
-  ok(back.seaportMatches && back.controllerMatches, "the written runtimes hash to the codehashes the record names");
-  note(`wrote ${path.relative(ROOT, FIXTURE_DIR)}/ (probe.json, seaport.runtime.hex ${record.bytes} B, conduit-controller.runtime.hex ${record.conduitController.bytes} B)`);
+  fs.writeFileSync(path.join(FIXTURE_DIR, names.seaport), r.seaportCode + "\n");
+  fs.writeFileSync(path.join(FIXTURE_DIR, names.controller), r.controllerCode + "\n");
+  fs.writeFileSync(path.join(FIXTURE_DIR, names.probe), JSON.stringify(record, null, 2) + "\n");
+  const read = (n) => fs.readFileSync(path.join(FIXTURE_DIR, n), "utf8").trim();
+  const back = JSON.parse(read(names.probe));
+  ok(low(kecHex(read(names.seaport))) === low(back.codehash) && low(kecHex(read(names.controller))) === low(back.conduitController.codehash),
+     "the written runtimes hash to the codehashes the record names");
+  note(`wrote ${path.relative(ROOT, FIXTURE_DIR)}/ (${names.probe}, ${names.seaport} ${record.bytes} B, ${names.controller} ${record.conduitController.bytes} B)`);
 }
 
 /*═══════════════════ the fork ═══════════════════*/
@@ -348,10 +358,14 @@ async function main() {
   const argv = process.argv.slice(2);
   const probing = argv.includes("--probe");
   console.log(`\n  \x1b[1mINTACT · verify-bazaar-fork\x1b[0m  ${probing ? "probe" : "fork"}`);
-  const url = probing ? (process.env.RPC_URL_84532 || process.env.RPC_URL)
+  const at = argv.indexOf("--chain");
+  const chain = at >= 0 ? Number(argv[at + 1]) : CHAIN;
+  if (!Number.isInteger(chain) || chain <= 0) throw new Error(`--chain takes a chain id, not ${argv[at + 1]}`);
+  if (!probing && chain !== CHAIN) throw new Error(`the fork runs on chain ${CHAIN} only; --chain names the chain a --probe reads`);
+  const url = probing ? (process.env[`RPC_URL_${chain}`] || process.env.RPC_URL)
                       : (process.env.FORK_URL || process.env.RPC_URL_84532 || process.env.RPC_URL);
-  if (ok(Boolean(url), `an endpoint for chain ${CHAIN} is in the environment (${probing ? "RPC_URL_84532 or RPC_URL" : "FORK_URL, RPC_URL_84532 or RPC_URL"})`)) {
-    if (probing) await probe(url); else await fork(url);
+  if (ok(Boolean(url), `an endpoint for chain ${chain} is in the environment (${probing ? `RPC_URL_${chain} or RPC_URL` : "FORK_URL, RPC_URL_84532 or RPC_URL"})`)) {
+    if (probing) await probe(url, chain); else await fork(url);
   }
   console.log(`\n  ${pass} passed, ${fail} failed\n`);
   killAll();

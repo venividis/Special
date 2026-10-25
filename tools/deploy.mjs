@@ -210,6 +210,26 @@ export const VENUES = {
         permit2: "0x96d9f5c3f0fb0423426b7f970186235b7347027f4e5c19c40c412b7d97fc3751",
         weth: "0xc864e10689f2da18833652a3b075d43106e87f0f90d95ee64f6f0b33bc026083"
       }
+    },
+    /// Seaport 1.6, its ConduitController and OpenSea's conduit at the
+    /// addresses 84532's row names, from tools/fixtures/seaport-1.6/
+    /// probe.11155111.json — read by `node tools/verify-bazaar-fork.mjs
+    /// --probe --chain 11155111` at one pinned block, the bytes eth_getCode
+    /// returned kept beside it. The controller and the conduit hash as on
+    /// 84532; Seaport does not, since its chain id and domain separator are
+    /// immutables of its runtime.
+    seaport: "0x0000000000000068F116a894984e2DB1123eB395",
+    conduitController: "0x00000000F9490004C11Cef243f5400493c00Ad63",
+    openseaConduitKey: "0x0000007b02230091a7ed01230072f7006a004d60a8d4e71d599b8104250f0000",
+    openseaConduit: "0x1E0049783F008A0085193E00003D00cd54003c71",
+    seaportProbed: {
+      on: "2026-10-25", block: 11987924, blockHash: "0x7350506dc3a5eac742e2a3ae5e1a13806cda90d6f71421e3af4695baa917fe17",
+      version: "1.6", domainSeparator: "0xabe6fa56e16aecdc0a81f712b3c41518e063f22fb475c9f802a8265c782f7beb",
+      codehashes: {
+        seaport: "0xd3c20b1b63b44e7a392b8b95b710186b79cc494f440e07a01545e2fb14901f5a",
+        conduitController: "0x880348b652e7cce91216153a4d0107e70c77b92192f3d7a127ff1f1351961948",
+        openseaConduit: "0x069efdc9b946a332dce9951324fa197268e3ff0e00e44c6bf36049fc53113a41"
+      }
     }
   }
 };
