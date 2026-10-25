@@ -158,6 +158,48 @@ export class RpcChain {
     return this.view.stateGas;
   }
 
+  /// Where state gas is metered, a limit's ceiling: EIP-8037's 2^32 - 1, and
+  /// never more than nineteen-twentieths of the latest block's gas limit, so
+  /// a block has room for it beside others.
+  async blockCeiling() {
+    const block = await this.rpc("eth_getBlockByNumber", [await this.tag(), false]);
+    const room = (BigInt(block.gasLimit) * 19n) / 20n;
+    return room < TX_MAX_TOTAL_GAS ? room : TX_MAX_TOTAL_GAS;
+  }
+
+  /// The gas a call needs, found by eth_call where eth_estimateGas will not
+  /// say: null when it reverts even at the ceiling, else the least gas that
+  /// lands, bisected to 1 % from the first of 32 M, 64 M, 128 M or the ceiling
+  /// that lands. Every probe is pinned to one block. A public
+  /// endpoint's replicas do not agree on how much gas a simulation may have:
+  /// CatalogRows' construction from the burner landed 5 times in 6 at 130 M
+  /// and 3 in 6 at 190 M on Sepolia (2026-10-25). So a landing is believed at
+  /// once, and a failure only after `tries` draws.
+  async gasByCall({ to, data = "0x", value = 0n }) {
+    const tag = await this.tag();
+    const top = await this.blockCeiling();
+    const lands = async (gas, tries) => {
+      for (let i = 0; i < tries; i++) {
+        try {
+          await this.rpc("eth_call", [{ from: this.from.toString(), to: to || undefined, data,
+            value: "0x" + BigInt(value).toString(16), gas: "0x" + gas.toString(16) }, tag]);
+          return true;
+        } catch (e) { if (!e.rpc) throw e; }
+      }
+      return false;
+    };
+    /// climb rather than start at the ceiling, where the most replicas refuse: the first level that lands bounds the bisection
+    let lo = 21_000n, hi = null;
+    for (const g of [32_000_000n, 64_000_000n, 128_000_000n, top]) {
+      if (g > top) continue;
+      if (await lands(g, 6)) { hi = g; break; }
+      lo = g;
+    }
+    if (hi === null) return null;
+    while (hi - lo > hi / 100n) { const mid = (lo + hi) / 2n; if (await lands(mid, 4)) hi = mid; else lo = mid; }
+    return hi;
+  }
+
   /*  Legacy transactions on purpose: one shape that every chain and every
       block explorer understands, and nothing about fee markets to be wrong
       about. The price is asked of the node and padded, because a base fee
@@ -167,10 +209,24 @@ export class RpcChain {
     const stateGas = await this.stateGas();
     let gasLimit;
     try {
-      const est = await this.rpc("eth_estimateGas", [{
-        from: this.from.toString(), to: to || undefined,
-        data, value: "0x" + BigInt(value).toString(16)
-      }, await this.tag()]);
+      let est, bisected = false;
+      try {
+        est = await this.rpc("eth_estimateGas", [{
+          from: this.from.toString(), to: to || undefined,
+          data, value: "0x" + BigInt(value).toString(16)
+        }, await this.tag()]);
+      } catch (e) {
+        /*  EIP-8037: the step that stores the most state can need more gas
+            than a public endpoint will estimate. CatalogRows' table needs
+            between 120 M and 190 M on Sepolia (2026-10-25), and both public
+            endpoints' estimates fail on it. On such a chain the call is
+            asked again at the block's own gas limit; if it lands there, its
+            gas is bisected over eth_call. A call that reverts even there is
+            a revert, reported as before.                                  */
+        est = stateGas && e.rpc ? await this.gasByCall({ to, data, value }) : null;
+        if (est === null) throw e;
+        bisected = true;
+      }
       /*  EIP-7825: a transaction over 2^24 gas is not includable on a
           Fusaka chain. The estimate is the honest number; refuse it rather
           than send something the chain will reject or, worse, a chunk a
@@ -179,15 +235,17 @@ export class RpcChain {
           On a chain that meters state gas (EIP-8037) the cap binds the
           execution share alone, and the node's estimate already holds it
           there, since a larger limit only deepens the state reservoir. So
-          the estimate is sent as it is, up to EIP-8037's 2^32 - 1. A chain
+          the estimate is sent as it is, up to nineteen-twentieths of the
+          block's gas limit (`blockCeiling`, never past EIP-8037's 2^32 - 1). A chain
           without EIP-8037 never meets a chunk this lets through: the
           battery holds every step to 2^24 in total, in-process, at Cancun's
           prices (tools/evm.mjs).                                         */
       if (!stateGas && BigInt(est) > TX_GAS_CAP) {
         throw new Error(`${label || "tx"} needs ${est} gas, over the EIP-7825 cap of ${TX_GAS_CAP}`);
       }
-      gasLimit = (BigInt(est) * 13n) / 10n;
-      const ceiling = stateGas ? TX_MAX_TOTAL_GAS : TX_GAS_CAP;
+      /// a bisected figure already landed, so it is padded 5 %, an estimate 30 %; a tight limit fits a block more easily
+      gasLimit = (BigInt(est) * (bisected ? 105n : 130n)) / 100n;
+      const ceiling = stateGas ? await this.blockCeiling() : TX_GAS_CAP;
       if (gasLimit > ceiling) gasLimit = ceiling;
     } catch (e) {
       /*  estimateGas replays the call and reports the revert here, which is
