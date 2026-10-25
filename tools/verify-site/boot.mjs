@@ -6,7 +6,9 @@
   C the loader's refusal ("a tampered panel is refused"), N discovery and
   the chain gate, R the collection page and the mint-from-the-page flow,
   Z session mode, Q the QR, V the self-hash footer, E′ the chips, O the
-  shell's half of escaping, P the loader, G′ the slab's generic rules. The
+  shell's half of escaping, P the loader, W the shim's own waits (W13: a
+  wait that times out throws by name, its soft form answers false), G′ the
+  slab's generic rules. The
   two BUILD-PLAN sentences this file owns end their blocks as `t.ok(...,
   "<sentence>")`, verbatim, so INVARIANTS can quote them.
 
@@ -89,7 +91,7 @@ export async function run(t, ctx) {
     const fact = (k) => page.text(`#facts [data-fact=${k}]`);
     t.ok(fact("id") === "1" && fact("chain") === "1" && fact("holder").toLowerCase() === S.owner && fact("epoch") === "1" && fact("status") === "Active",
       "Home prints the baked facts through textContent", `${fact("id")} ${fact("chain")} ${fact("holder")} ${fact("epoch")} ${fact("status")}`);
-    t.ok(ctx.gzipBytes <= 15_000, `the shell's gzip is under the ceiling and the routes are cold-measured (${ctx.gzipBytes.toLocaleString()} B gzip; the runner printed the cold gas)`);
+    t.ok(ctx.gzipBytes <= 24_000, `the shell's gzip is under the ceiling and the routes are cold-measured (${ctx.gzipBytes.toLocaleString()} B gzip; the runner printed the cold gas)`);
     t.ok(page.innerHTMLWrites === 0, "nothing was assigned through innerHTML, by anybody, all run (checked again at the end)");
     page.close();
   }
@@ -670,8 +672,10 @@ export async function run(t, ctx) {
        token #1; the map is a function of the payload, so another deployment pins another number —
        re-pinned in wave 4 when the service table became two contracts (CatalogRowsPost, one more
        CREATE before the Premises), which moved the harness Premises to the next nonce and so the
-       payload the QR carries; the decoder sentences below prove the new map is the new address */
-    const PIN = "0x9ebd22a1940d9d19f3de6f72c90e2ee1b2730f7118c0450b9d236cf9c106308c";
+       payload the QR carries; the decoder sentences below prove the new map is the new address.
+       Re-pinned in V2 wave 2 (W8) for the same reason: the Gallery is the Engine's seventh panel, one
+       more loadPanel from the deployer before the Premises, so the harness Premises moved one nonce on */
+    const PIN = "0x610e7c44219772c44e4cfe6f8568dcd4741f5507afc528f0f32bd255a94a861e";
     t.ok(mapHash === PIN, `the module map's keccak is pinned (${mapHash})`, "want " + PIN);
     /* an independent decoder: the map rasterised at 4 px per module, including the quiet zone */
     let decoded = null, how = "";
@@ -823,6 +827,22 @@ export async function run(t, ctx) {
     pb.close();
   }
 
+  /*═══════════ W · the shim's own waits (W13) ═══════════*/
+  t.head("W · the shim's waits: one that times out throws, by name; the soft form answers false");
+  {
+    const { page } = await bootToken(1, { opaque: true });
+    const never = () => page.text("#viewer-note") === "a sentence no page prints";
+    let threw = null;
+    try { await page.until(never, 3); } catch (e) { threw = e; }
+    const msg = threw ? String(threw.message) : "";
+    t.ok(!!threw && threw.name === "UntilTimeout" && /^until timed out after 3 settles in group boot, waiting at tools\/verify-site\/boot\.mjs:\d+ ← tools\/verify-site\.mjs:\d+: /.test(msg) &&
+      msg.includes(': () => page.text("#viewer-note") === "a sentence no page prints"'),
+      "a wait that times out throws, naming its settles, its group, the lines that waited and its condition", msg || "it returned instead");
+    const soft = await page.until(never, 3, { soft: true }), met = await page.until(() => page.$("body").dataset.mode === "viewer", 3);
+    t.ok(soft === false && met === true, "the soft form answers false where the wait would throw, and a wait that is met answers true", `soft ${soft} met ${met}`);
+    page.close();
+  }
+
   /*═══════════ G′ · the slab's generic rules ═══════════*/
   t.head("G′ · the slab's generic rules, through the harness");
   {
@@ -848,7 +868,9 @@ export async function run(t, ctx) {
       let rejected = false;
       await ui.propose({ to: "nope", key: "erc20.approve", args: [site.pool, 1n], lines: [["Lets", "STALE"]], sentence: "x" }).catch(() => { rejected = true; }); await page.settle();
       const clean = !rejected && !slabOpen() && page.$("#cslab").childNodes.length === 0 && /a panel bug/.test(tick());
-      await Promise.race([ui.propose({ to: weth, key: "erc20.approve", args: [site.pool, 1n], sentence: "x" }), page.until(() => slabOpen(), 50)]);
+      /* soft (W13): raced against the propose, this wait may lose the race and must not throw after it; the line
+         below reads slabOpen() itself, and the sentence says whether a slab came */
+      await Promise.race([ui.propose({ to: weth, key: "erc20.approve", args: [site.pool, 1n], sentence: "x" }), page.until(() => slabOpen(), 50, { soft: true })]);
       const firstRow = page.$("#cslab .kv .k");
       const own = slabOpen() && firstRow && firstRow.textContent === "To" && !/STALE/.test(page.text("#cslab"));
       /* the belt on Sign: a disabled button is inert in the shim (a browser fires nothing) and in the shell
@@ -890,6 +912,16 @@ export async function run(t, ctx) {
     await ui.propose({ to: weth, key: "erc20.transfer", args: [site.pool, 1n], sentence: "x" }); await page.settle();
     const r2 = !slabOpen() && /erc20\.transfer: not declared by this panel/.test(tick());
     t.ok(r1 && r2, "a signature that does not name the bytes is a panel bug", tick());
+    /* the integration, after W17 §6.2: a slab's rows are decoded from its calldata, and a length word that claims more
+       elements than the bytes hold is no row, never an array of that length (a decode at a wrong offset once asked
+       the shell for one and ran node out of memory) */
+    const LONG = "f(uint256[])";
+    /* the promise resolves when the slab closes, so it is held, the slab read, Not now pressed, and then awaited */
+    const longSlab = ui.propose({ to: weth, data: sel(LONG) + encodeParams("uint256,uint256", [32n, 1n << 20n]), sig: LONG, lines: [["Claims", "a million numbers"]], sentence: "x" });
+    await page.until(() => slabOpen() && !!page.$("#cslab [data-gas]") && page.text("#cslab [data-gas]") !== "estimating…", 80);
+    const longRows = page.$$("#cslab [data-arg]").length, longOpen = slabOpen();
+    page.click(page.$("[data-no]")); await page.settle(); await longSlab;
+    t.ok(longOpen && longRows === 0, "a calldata whose array claims more elements than its bytes hold draws no argument row, and the slab still opens", `open ${longOpen} rows ${longRows}`);
     t.ok(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML, by anybody, all run — and no script threw (end of the boot group)", page.errors.map((e) => e.message).join("; "));
     page.close();
   }

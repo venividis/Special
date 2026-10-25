@@ -57,9 +57,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { decAddr, decUint, decBool } from "./evm.mjs";
-import { REGISTRY, REGISTRY_RUNTIME, ZERO, PANELS, predictCreate, encRequest, decResponse } from "./site.mjs";
+import { REGISTRY, REGISTRY_RUNTIME, ZERO, predictCreate, encRequest, decResponse } from "./site.mjs";
 import { PINS, pinApplies, BAND_GETTERS, SALTED, PLACEHOLDERS, RECORD_KEYS, ROUTER_HASHES, venueTargets, DEPLOYED_TOPIC,
-         saltOf, predictCreate3, kec, decWords, decAddrs, decBytes4s, adapt } from "./deploy.mjs";
+         saltOf, saltName, predictCreate3, kec, decWords, decAddrs, decBytes4s, adapt } from "./deploy.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const low = (a) => String(a).toLowerCase();
@@ -78,11 +78,13 @@ function compiled(out, name, which = "deployedBytecode") {
 }
 const ARTIFACT = {
   factory: "Create3Factory", engine: "Engine", timelock: "Timelock", crest: "Crest", reachImpl: "Reach", gripImpl: "Grip",
-  catalogRows: "CatalogRows", catalogRowsPost: "CatalogRowsPost", catalogText: "CatalogText", catalogState: "CatalogState", catalog: "Catalog", renderer: "Renderer",
+  catalogRows: "CatalogRows", catalogRowsPost: "CatalogRowsPost", catalogRowsV2: "CatalogRowsV2", catalogText: "CatalogText", catalogState: "CatalogState", catalog: "Catalog", renderer: "Renderer",
   coreFacet: "CoreFacet", rightsFacet: "RightsFacet", mintFacet: "MintFacet", siteFacet: "SiteFacet",
   keys: "KeyRegistry", roster: "Roster", postage: "Postage", parley: "Parley", locks: "Locks", pool: "Pool", kiln: "Kiln",
   launchpad: "Launchpad", router: "Router", steward: "Steward", premises: "Premises",
-  market: "Market", roles: "Roles", agentCard: "AgentCard", nameplate: "Nameplate", custodian: "LPCustodian"
+  market: "Market", roles: "Roles", agentCard: "AgentCard", nameplate: "Nameplate", custodian: "LPCustodian",
+  /// V2 (W6): placeholders from schema 3, recovered by code once each lands; and (W15) the Keepsake's art
+  keepsake: "Keepsake", journal: "Journal", bazaar: "Bazaar", bridges: "Bridges", studio: "Studio", agora: "Agora", keepsakeArt: "KeepsakeArt"
 };
 
 /**
@@ -123,7 +125,9 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
       say(`reproducible.${key}`, rec.reproducible?.[key] ?? "(unrecorded)", same);
     }
   }
-  const missing = RECORD_KEYS.filter((k) => !C[k] && !(k === "router" && !rec.venues) && !(k.endsWith("Facet") && rec.shipBuild?.build === "monolith"));
+  /// the Router is expected where the venue row names a Uniswap venue (a row may name only Seaport, W15)
+  const routed = Boolean(rec.venues && (rec.venues.swapRouter02 || rec.venues.poolManager));
+  const missing = RECORD_KEYS.filter((k) => !C[k] && !(k === "router" && !routed) && !(k.endsWith("Facet") && rec.shipBuild?.build === "monolith"));
 
   /*── the factory, its gate, and every salt three ways ──*/
   if (rec.factoryVia?.create) say("factory = CREATE(deployer, nonce)", rec.factory, predictCreate(rec.deployer, rec.factoryVia.create.nonce));
@@ -138,7 +142,10 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
   /*── a satellite that landed after the MVB (deploy.mjs `deploySatellite`):
        the record carries the Timelock op that queued it and the transaction
        that landed it; the queue must be clear now, and the factory's own
-       `Deployed` event at the recorded block must name this address ──*/
+       `Deployed` event at the recorded block must name this address. A V2
+       contract the burner landed in a fresh deployment (`--v2`, W15) is
+       recorded `via: "burner"` with no op: its evidence is the same event at
+       the block of the transaction that made it ──*/
   const satelliteEvidence = async (key, salt, predicted) => {
     const s = rec.satellites?.[key];
     if (!s) { checked++; D.push({ field: `satellites.${key}`, want: "the queue op and the transaction that landed it", have: "(unrecorded)", kind: "drift" }); return; }
@@ -151,12 +158,15 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
       } catch { logs = null; }
       const named = (logs || []).map((l) => "0x" + String(l.topics[2]).slice(26).toLowerCase());
       say(`satellites.${key}.executed.block: the factory's Deployed event names it`, predicted, named.length === 1 ? named[0] : named.length ? `(${named.length} events)` : NO);
+    } else {
+      /// a burner landing has no op to check (W15): without its block nothing would hold it to the factory's event
+      checked++; D.push({ field: `satellites.${key}.executed.block`, want: "the block of the transaction that landed it", have: "(unrecorded)", kind: "drift" });
     }
   };
   for (const key of [...SALTED, ...PLACEHOLDERS]) {
     const salt = rec.salts?.[key];
     if (!salt) continue;
-    say(`salts.${key} = keccak("intact.v1.${key}")`, saltOf(key), salt);
+    say(`salts.${key} = keccak("${saltName(key)}")`, saltOf(key), salt);
     const predicted = predictCreate3(rec.factory, salt);
     const onChain = await addrOf(rec.factory, "predict(bytes32)", [salt]);
     predictedOnChain[key] = onChain;
@@ -252,9 +262,15 @@ export async function recover(ad, rec, { out = null, log = () => {} } = {}) {
     say("engine.inflatedSize", E.inflatedSize, or(await uintOf(e, "inflatedSize()")));
     say("engine.curator", E.curator, or(await addrOf(e, "curator()")));
     sayJson("engine.shardHashes", E.shardHashes.map(low), await wordsOf(e, "shardHashes()"));
-    for (let i = 0; i < PANELS.length; i++) {
-      say(`engine.panelHashes.${PANELS[i]}`, E.panelHashes[PANELS[i]], or(await rawOf(e, "panelHash(uint256)", [i])));
+    /*  The lanes the RECORD lists, in slot order — V1's six on a record written before V2's
+        Gallery, seven after it (W8) — each against its slot, and no lane past them: a V1 Engine
+        refuses the next index (BadPanel) and a V2 Engine answers zero, and either is "none". */
+    const lanes = (E.panels || []).map((p) => p.name);
+    for (let i = 0; i < lanes.length; i++) {
+      say(`engine.panelHashes.${lanes[i]}`, E.panelHashes[lanes[i]], or(await rawOf(e, "panelHash(uint256)", [i])));
     }
+    const past = await rawOf(e, "panelHash(uint256)", [lanes.length]);
+    say(`engine holds no lane past the record's ${lanes.length}`, "none", past === null || /^0x0*$/.test(past) ? "none" : past);
     const counts = await rawOf(e, "shardCount()");
     say("engine.head.length", E.head.length, counts ? decUint(counts, 0) : NO);
     say("engine.body.length", E.body.length, counts ? decUint(counts, 1) : NO);

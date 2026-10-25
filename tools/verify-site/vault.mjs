@@ -87,10 +87,36 @@
   #cslab, [data-go], [data-no], [data-to], [data-function], [data-arg],
   [data-calldata], [data-gas]), #tick, #facts [data-fact=epoch|status|
   locked|seal], body[data-rights].
+
+  V2 (W10): the Keepsakes section. V0 runs on this group's own chain, where
+  the Keepsake is the codeless placeholder: the section is the not-deployed
+  chip and nothing reads that address. V1–V6 run on a second chain from
+  ctx.fresh({ v2: true }) (deploySite with the V2 satellites), the cast
+  set up in `keepsakes()` below: a bundle of ETH and two coins made from the
+  page with exact approvals; a gift to `buyer`, with a slow sale refused on
+  it in words; the keepsakes found from the Transfer logs (the wallet's and
+  the Reach's), drawn, and a refused range said as a sentence; a warp, after
+  which claimable grows and claims pay the holder (the holder's own and a
+  stranger's, for the Reach's keepsake); a shortening extend refused and an
+  extend that lengthens, directly and through the Reach's execute; a slow
+  sale typed in human terms, found raw in the calldata and read back; a
+  memory into the keepsake's own journal; a give; the recipient's page and
+  the viewer's. Elements read: #vault-keepsakes (.chip), #vault-keepsakes-
+  status, #vault-keepsakes-list .keepsake[data-id] (img, .kv, progress,
+  .free, .claimable, .drip, .note, details input[name=more|dsell|dmkt|
+  dfloor|dmax|give|memory]), #vault-make (input[name=eth|token|amount|lock|
+  over|to|note|dsell|dfloor|dmax], .coin p.s), #vault-make-add,
+  #vault-keepsake-made, [data-act=wrap|claim|extend|setDrip|clearDrip|give|
+  inscribe]; from the shell the slab's [data-sentence], [data-value] and
+  lines.
 ───────────────────────────────────────────────────────────────────────────*/
+import { argWords } from "../verify-console.mjs";
 const WAD = 10n ** 18n;
 const EXEC = "execute(address,uint256,bytes,uint8)", BATCH = "executeBatch((address,uint256,bytes)[])";
 const GRANT = "grantSession(address,uint64,uint128,(address,uint128)[],address[],bytes4[],uint32,uint32)";
+/// the slab's [data-arg] rows, as words, are the calldata decoded apart from the shell — one row per argument, a
+/// tuple's and an array of tuples' too since W14 (CONSOLE §4.2, INTEGRATION L7)
+const argsAgree = (page, sig) => { const rows = page.$$("#cslab [data-arg]"), want = argWords(sig, page.text("#cslab [data-calldata]")); return rows.length === want.length && rows.every((r, i) => r.dataset.arg === String(i) && r.textContent === want[i]); };
 const SWAP_IN = "swapExactIn(uint256,bool,uint256,uint256,address,uint64)", WITHDRAW = "withdraw(uint256,uint256,uint256,address)";
 const APPROVE = "approve(address,uint256)", ARRANGE = "arrange(uint256,bytes32,uint64,uint64,address[],uint8)";
 const lower = (s) => String(s).toLowerCase();
@@ -128,10 +154,13 @@ export async function run(t, ctx) {
   const press = async (page, el) => { page.click(el); await page.until(() => slabOpen(page) && gasRow(page) !== "estimating…", 120); if (!slabOpen(page)) throw new Error("no slab after the press; the ticker reads: " + tick(page)); };
   const ready = (page) => page.until(() => !page.$("#cslab [data-go]").disabled, 40);
   const dismiss = async (page) => { page.click(page.$("#cslab [data-no]")); await page.settle(); };
-  const sign = async (page, W, n) => {
+  /* a receipt that itself moves the custody epoch or this wallet's rights (a panic) ends, as CONSOLE §4.7 says, on
+     the sentence after the landing; such a call passes `moved`, and its wait names that sentence (W13: the landing
+     wait timed out there, in silence, until the shim's waits threw) */
+  const sign = async (page, W, n, moved = false) => {
     const before = tick(page);
     page.click(page.$("#cslab [data-go]"));
-    await page.until(() => W.sent() === n && tick(page) !== before && /landed in block|reverted in block/.test(tick(page)), 160);
+    await page.until(() => W.sent() === n && tick(page) !== before && (moved ? tick(page) === "ownership or epoch changed — review again" : /landed in block|reverted in block/.test(tick(page))), 160);
     for (let k = 0; k < 4; k++) await page.settle();
   };
   const repaint = async (page, vctx) => { vctx.dispatchEvent(new vctx.CustomEvent("intact:lane", { detail: { name: "vault" } })); await page.settle(); await page.settle(); };
@@ -221,8 +250,8 @@ export async function run(t, ctx) {
     page.type(field(page, "#vault-execute", "amount"), "2"); page.click(L(page, "#vault-batch-add")); await page.settle();
     await press(page, L(page, "[data-act=executeBatch]"));
     const bcd = slabCd(page);
-    k(fn(page) === BATCH && word(bcd, 1) === 2n && page.$$("#cslab [data-arg]").length === 0 && /1 ETH|0 ETH/.test(line(page, "Call 1") || "") && (line(page, "Call 2") || "").includes(sel(APPROVE)) && LL(page, "#vault-batch .row").length === 2,
-      "K24 two batch rows → executeBatch((address,uint256,bytes)[]) with a decoded array length of 2; a tuple gets no [data-arg] rows, so every call is a line", `fn ${fn(page)} len ${word(bcd, 1)} line1 "${line(page, "Call 1")}"`);
+    k(fn(page) === BATCH && word(bcd, 1) === 2n && argsAgree(page, BATCH) && /1 ETH|0 ETH/.test(line(page, "Call 1") || "") && (line(page, "Call 2") || "").includes(sel(APPROVE)) && LL(page, "#vault-batch .row").length === 2,
+      "K24 two batch rows → executeBatch((address,uint256,bytes)[]) with a decoded array length of 2; every call is a line, and the batch's [data-arg] row is decoded from the calldata", `fn ${fn(page)} len ${word(bcd, 1)} line1 "${line(page, "Call 1")}"`);
     await ready(page);
     await sign(page, W, 3);
     k(W.sent() === 3 && await allowance() === 2n && await ledgerLen() === 1n, "K24 Sign → one transaction for the batch; the last approve stands and the ledger still lists the pair once", `sent ${W.sent()} allowance ${await allowance()} ledger ${await ledgerLen()}`);
@@ -263,6 +292,11 @@ export async function run(t, ctx) {
     const gw = L(page, "#vault-grip-warning"), ga = L(page, "#vault-grip-address"), svg = L(page, "#vault-grip svg[role=img]"), kids = LL(page, "#vault-grip *");
     k(!!ga && lower(ga.textContent) === lower(S.grip) && !!svg && svg.getAttribute("aria-label") === "ethereum:" + S.grip + "@1" && !!gw && /cannot ever leave|can ever leave|permanent/i.test(gw.textContent) && kids.indexOf(gw) < kids.indexOf(ga) && kids.indexOf(ga) < kids.indexOf(svg),
       "K9 the Grip warns before any way in: the warning precedes the address, and the QR names ethereum:<grip>@1", `address ${ga && ga.textContent} label ${svg && svg.getAttribute("aria-label")} warning "${gw && gw.textContent}"`);
+    /* W14 (INTEGRATION W12-3): a QR in a lane is drawn on a white card of the shell's, never dark on the lane's glass;
+       the shim reads the hook and the rule, Chromium reads the paint (verify-console's vault group) */
+    const SHIPPED = ctx.fs.readFileSync(ctx.path.join(ctx.ROOT, "dist/app.html"), "utf8");
+    t.ok(!!svg && svg.getAttribute("class") === "qr" && !svg.getAttribute("style") && /\.qr\{[^}]*width:184px[^}]*background:#fff/.test(SHIPPED),
+      "the Grip's QR carries the shell's qr class, the white 184 px card the shipped stylesheet draws under a code in a lane", `class "${svg && svg.getAttribute("class")}"`);
     const gb = LL(page, "#vault-grip button");
     k(gb.length >= 1 && gb.every((b) => b.classList.contains("copy")) && LL(page, "#vault-grip [data-act]").length === 0 && LL(page, "#vault-grip input").length === 0,
       "K10 the Grip offers nothing outbound: its only buttons are .copy, no control, no input", gb.map((b) => b.className).join(","));
@@ -278,8 +312,8 @@ export async function run(t, ctx) {
     const gcd = slabCd(page), gr = decodeGrant(gcd);
     k(fn(page) === GRANT && lower(page.text("#cslab [data-to]")) === lower(reach1) && gr.selectors.length === 1 && gr.selectors[0] === sel(SWAP_IN) && gr.targets.length === 1 && lower(gr.targets[0]) === lower(pool) && lower(gr.key) === lower(BUYER) && gr.expires === now() + 86400n && gr.cap === WAD / 2n && gr.caps.length === 0 && since(W, mark12).some((x) => x.method === "eth_getBlockByNumber"),
       "K12 the grant's calldata is exactly the chips pressed: one selector, the Pool as the one target, the key, an expiry one day on the chain's clock", `fn ${fn(page)} sels ${gr.selectors} targets ${gr.targets} expires ${gr.expires} vs ${now() + 86400n}`);
-    k(/Exposure/.test(page.text("#cslab")) && /native cap 0\.5 ETH/.test(line(page, "Exposure") || "") && /no asset cap/.test(line(page, "Exposure") || "") && page.$$("#cslab [data-arg]").length === 0 && (line(page, "Selectors") || "").includes("pool.swapExactIn " + sel(SWAP_IN)),
-      "K13 the exposure is printed before Sign — the native cap and each asset cap in words — and, the tuple drawing no [data-arg] rows, every argument is a line", `"${line(page, "Exposure")}" / "${line(page, "Selectors")}"`);
+    k(/Exposure/.test(page.text("#cslab")) && /native cap 0\.5 ETH/.test(line(page, "Exposure") || "") && /no asset cap/.test(line(page, "Exposure") || "") && argsAgree(page, GRANT) && (line(page, "Selectors") || "").includes("pool.swapExactIn " + sel(SWAP_IN)),
+      "K13 the exposure is printed before Sign — the native cap and each asset cap in words — and every argument is a line beside the [data-arg] rows decoded from the calldata", `"${line(page, "Exposure")}" / "${line(page, "Selectors")}"`);
     await ready(page);
     await sign(page, W, 5);
     k(await allows(BUYER, pool, sel(SWAP_IN)) === true && await allows(BUYER, pool, sel(WITHDRAW)) === false && await allows(BUYER, hub, sel(SWAP_IN)) === false,
@@ -443,7 +477,7 @@ export async function run(t, ctx) {
     l(fn(page) === "panic(uint256)" && word(slabCd(page), 0) === 1n && lower(page.text("#cslab [data-to]")) === lower(hub) && W.sent() === s0 && /^\d+ units$/.test(gasRow(page)), "L5 the second press proposes panic(uint256), nothing sent until Sign", fn(page));
     await ready(page);
     const T0 = now();
-    await sign(page, W, 1); sentH = W.sent();
+    await sign(page, W, 1, true); sentH = W.sent();   // the panic moves #1's epoch
     const ok6 = decUint(await c.read(hub, "custodyEpoch(uint256)", [1])) === 2n && decUint(await c.read(hub, "approvalEpoch(address)", [ME])) === 1n && decUint(await c.read(hub, "statusOf(uint256)", [1])) === 1n &&
       decUint(await c.read(reach1, "sealedUntil()")) === T0 + 365n * 86400n && await allows(AGENT, pool, sel(SWAP_IN)) === false && decUint(await c.read(parley, "keyOf(uint256)", [1]), 1) === 0n &&
       decUint(await c.read(postage, "inboxOf(uint256)", [1]), 1) === 0n && await wouldPass() === 1n && decBool(await c.read(pad, "firstLaunchApproved(uint256)", [1])) === false &&
@@ -496,7 +530,7 @@ export async function run(t, ctx) {
     l(fn(page) === "panic(uint256)" && word(slabCd(page), 0) === 1n && /the epoch moves/.test(page.text("#cslab [data-sentence]")) && /seals/.test(page.text("#cslab [data-sentence]")) && /^\d+ units$/.test(gasRow(page)),
       "L8 the guardian's slab is panic(uint256), its sentence naming the epoch and the seal; the hold is in the list above it", page.text("#cslab [data-sentence]"));
     await ready(page);
-    await sign(page, W, 1); sentG = W.sent();
+    await sign(page, W, 1, true); sentG = W.sent();   // the guardian's panic moves #1's epoch
     await page.until(() => page.text("#facts [data-fact=locked]") === "yes" && /locked: yes/.test(laneText(page)), 60);
     l(decBool(await c.read(hub, "locked(uint256)", [1])) && decUint(await c.read(hub, "custodyEpoch(uint256)", [1])) === 3n && page.text("#facts [data-fact=locked]") === "yes" && /locked: yes/.test(laneText(page)) && /only the holder in person/.test(laneText(page)) && !L(page, "[data-act=release]") && W.sent() === 1,
       "L9 under the hold Home's locked fact reads yes, the vault repeats locked: yes, and the guardian is offered no release", `locked ${page.text("#facts [data-fact=locked]")} lane ${laneText(page).match(/locked: [^\n]{0,80}/)}`);
@@ -536,9 +570,285 @@ export async function run(t, ctx) {
     const { page } = await bootToken(1, { opaque: true, wallet: W });
     await lane(page, "vault");
     await page.until(() => page.text("#lane-vault #vault-steward-status") !== "reading…" && LL(page, "#vault-holdings .row").length >= 1, 80);
-    t.ok(page.$("body").dataset.mode === "viewer" && LL(page, "[data-act]").length === 0 && LL(page, "input").length === 1 && (laneText(page).match(/nothing here can sign/g) || []).length === 1 && W.prompts().length === 0 && !!L(page, "#vault-grip svg[role=img]"),
+    /* W13: "reads the vault" — the holdings and the plan — was the wait's alone; the sentence now checks them */
+    t.ok(page.$("body").dataset.mode === "viewer" && LL(page, "#vault-holdings .row").length >= 1 && page.text("#lane-vault #vault-steward-status") !== "reading…" &&
+      LL(page, "[data-act]").length === 0 && LL(page, "input").length === 1 && (laneText(page).match(/nothing here can sign/g) || []).length === 1 && W.prompts().length === 0 && !!L(page, "#vault-grip svg[role=img]"),
       "the viewer reads the vault and offers no control, with the one sentence; the key field is a read", `acts ${LL(page, "[data-act]").length} inputs ${LL(page, "input").length}`);
     t.ok(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML and no script threw on the viewer's page", page.errors.map((e) => e.message).join("; "));
     page.close();
   }
+
+  /*═══════════ V · keepsakes (V2, W10): the chip where there is no Keepsake ═══════════*/
+  t.head("V0 · a band without the Keepsake");
+  {
+    const W = walletFor(c, me);
+    const { page, S } = await bootToken(1, { wallet: W });
+    await lane(page, "vault");
+    await page.until(() => !!L(page, "#vault-keepsakes .chip") && page.text("#lane-vault #vault-steward-status") !== "reading…", 60);
+    const ch = L(page, "#vault-keepsakes .chip"), toK = W.calls.filter((x) => { const p = (x.params || [])[0] || {}; return lower(p.to || p.address || "") === lower(S.keepsake); });
+    t.ok(!!ch && ch.dataset.state === "absent" && ch.textContent === "keepsake: not deployed on this chain" && !L(page, "#vault-make") && !L(page, "#vault-keepsakes-list") && toK.length === 0 && LL(page, "#vault-keepsakes input").length === 0,
+      "where the Keepsake is not deployed the section is the not-deployed chip, with no form, and nothing reads the codeless address", `chip ${ch && ch.dataset.state} "${ch && ch.textContent}" reads ${toK.length}`);
+    page.close();
+  }
+  await keepsakes(t, await ctx.fresh({ v2: true }), { L, LL, press, ready, sign, dismiss, repaint, since, tick, slabOpen, slabCd, gasRow, fn, line, now });
+}
+
+/*═══════════ V · keepsakes (V2, W10): on a band with the V2 satellites (deploySite v2: true) ═══════════
+  Setup on that chain: #1 to `me`; 1,000,000 USDC (6 decimals) and 100 WETH to `me`; Pool market #1 is USDC/ETH,
+  opened by #1's holder with 100,000 USDC and 50 ETH (0.0005 ETH per USDC). Keepsake #1 is made from the page
+  (0.2 ETH, 500 USDC, 3 WETH, for me, 30 days locked then 60 days to free), #2 from the page as a gift to `buyer`
+  (0.1 ETH and 100 USDC, freed over 10 days, with a note), #3 by `trader` straight on the chain into #1's Reach
+  (1,000 USDC over 100 days). The sentences below are this block's, each ending the steps that prove it. */
+async function keepsakes(t, v, h) {
+  const { L, LL, press, ready, sign, dismiss, repaint, since, tick, slabOpen, slabCd, gasRow, fn, line, now } = h;
+  const { c, site, actors, weth, A, enc, encodeParams, decUint, decAddr, walletFor, bootToken, lane, mint, ZERO, kec } = v;
+  const { me, buyer, trader, stranger } = actors;
+  const WAD = 10n ** 18n, U6 = 10n ** 6n, DAY = 86400n;
+  const ME = me.from.toString(), BUYER = buyer.from.toString(), STRANGER = stranger.from.toString();
+  const K = site.keepsake, J = site.journal, pool = site.pool, hub = site.hub;
+  const WRAP = "wrap(((address,uint256)[],(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))";
+  const SETDRIP = "setDrip(uint256,(uint8,uint256,uint256,uint256))", INSCRIBE = "inscribe(address,uint256,uint8,bytes,bytes32)";
+  const EXEC = "execute(address,uint256,bytes,uint8)", EXTEND = "extend(uint256,uint64)", TRANSFER = "transferFrom(address,address,uint256)";
+  const lower = (s) => String(s).toLowerCase();
+  const word = (cd, i) => BigInt("0x" + cd.slice(10 + 64 * i, 10 + 64 * (i + 1)));
+  const short = (a) => a.slice(0, 6) + " … " + a.slice(-4);
+  const cks = (a) => { const x = kec(Buffer.from(a.slice(2).toLowerCase(), "utf8")).slice(2); let o = "0x"; for (let i = 0; i < 40; i++) o += parseInt(x[i], 16) >= 8 ? a[i + 2].toUpperCase() : a[i + 2].toLowerCase(); return o; };
+  const dateOf = (ts) => new Date(Number(ts) * 1e3).toISOString().replace("T", " ").slice(0, 16) + " UTC";
+  const bal = async (tok, who) => decUint(await c.read(tok, "balanceOf(address)", [who]));
+  const ownerOf = async (id) => lower(decAddr(await c.read(K, "ownerOf(uint256)", [id])));
+  /* KeepsakeView's head, as tools/verify-keepsake.mjs decodes it: holder, creator, createdAt, start, cliff, end, … drip at 11–14 */
+  const view = async (id) => { const x = (await c.call(K, enc("keepsakeOf(uint256)", [id]))).slice(2), b = Number(BigInt("0x" + x.slice(0, 64))) * 2, w = (i) => BigInt("0x" + x.substr(b + i * 64, 64)); return { start: w(3), cliff: w(4), end: w(5), drip: [w(11), w(12), w(13), w(14)] }; };
+  const card = (page, id) => L(page, `#vault-keepsakes-list .keepsake[data-id="${id}"]`);
+  const ctext = (page, id, s) => { const k = card(page, id); const e = k && (s ? k.querySelector(s) : k); return e ? e.textContent : ""; };
+  const cardRow = (page, id, k) => { const r = (card(page, id) || { querySelectorAll: () => [] }).querySelectorAll(".kv").find((x) => x.firstChild.textContent === k); return r ? r.lastChild.textContent : null; };
+  const F = (page, n, i = 0) => LL(page, `#vault-make input[name=${n}]`)[i];
+  /* the page has stopped reading: no new wallet call across three settles */
+  const quiet = async (page, W) => { for (let n = -1, k = 0; k < 40 && n !== W.calls.length; k++) { n = W.calls.length; for (let j = 0; j < 3; j++) await page.settle(); } };
+  const M = (page, id, n) => { const k = card(page, id); return k && k.querySelector(`details input[name=${n}]`); };
+  /* null-safe reads for the assertions, so a mutant that removes a control fails a sentence instead of crashing the group */
+  const inC = (page, id, s) => { const k = card(page, id); return (k && k.querySelector(s)) || null; };
+  const ds = (e, k) => (e ? e.dataset[k] : undefined), att = (e, k) => (e ? e.getAttribute(k) : null);
+  const make = (page, o) => {
+    page.type(F(page, "eth"), o.eth || "0");
+    (o.coins || []).forEach(([tok, amt], i) => { if (!F(page, "token", i)) page.click(L(page, "#vault-make-add")); page.type(F(page, "token", i), tok); page.type(F(page, "amount", i), amt); });
+    page.type(F(page, "lock"), o.lock); page.type(F(page, "over"), o.over); page.type(F(page, "to"), o.to || ""); page.type(F(page, "note"), o.note || "");
+    for (const k of ["dsell", "dfloor", "dmax"]) page.type(F(page, k), o[k] || "");
+  };
+  let V = true;
+  const ok = (cond, name, d) => { t.ok(cond, name, d); V = V && !!cond; return !!cond; };
+
+  /* the cast */
+  await mint(c, site, ME);
+  const reach1 = decAddr(await c.read(hub, "account(uint256)", [1]));
+  const usdc = await c.deploy(A("test/mocks/MockERC20.sol", "MockERC20").bytecode, encodeParams("string,string,uint8,uint256,bool", ["USD Coin", "USDC", 6, 0, false]), "USDC");
+  await c.exec(usdc, "mint(address,uint256)", [ME, 1_000_000n * U6]);
+  await c.exec(weth, "mint(address,uint256)", [ME, 100n * WAD]);
+  await c.exec(usdc, "approve(address,uint256)", [pool, 100_000n * U6], { label: "approve" });
+  await c.exec(pool, "openMarket(uint256,address,address,uint16,uint24,uint16,uint32)", [1, usdc, ZERO, 30, 0, 0, 0], { label: "openMarket" });
+  await c.exec(pool, "deposit(uint256,uint256,uint256)", [1, 100_000n * U6, 50n * WAD], { value: 50n * WAD, label: "deposit" });
+
+  t.head("V1 · make a keepsake: a bundle of ETH and two coins, exact approvals first");
+  const W = walletFor(c, me);
+  const { page, ctx: vctx, S } = await bootToken(1, { wallet: W });
+  await lane(page, "vault");
+  await page.until(() => /none held by/.test(page.text("#lane-vault #vault-keepsakes-status")) && !!F(page, "eth"), 80);
+  const walk0 = W.calls.filter((x) => x.method === "eth_getLogs" && lower(x.params[0].address) === lower(K))[0], f0 = walk0 && walk0.params[0];
+  ok(!!f0 && f0.topics[0] === S.topics.transfer && f0.topics[1] === null && f0.topics[2].map(lower).sort().join() === ["0x" + "0".repeat(24) + lower(ME).slice(2), "0x" + "0".repeat(24) + lower(reach1).slice(2)].sort().join() && f0.fromBlock === "0x0" && f0.toBlock === "latest" &&
+    page.text("#lane-vault #vault-keepsakes-status") === "none held by this wallet or #1's Reach yet" && !L(page, "#vault-keepsakes .chip") && ds(L(page, "[data-act=wrap]"), "spend") === "",
+    "where the Keepsake reports, the lane walks its Transfer logs to the wallet and to the Reach in one filter, says none are held yet, and offers the form", JSON.stringify(f0));
+  make(page, { eth: "0.2", coins: [[usdc, "500"], [weth, "3"]], lock: "30", over: "60", note: "for the long road" });
+  await page.until(() => LL(page, "#vault-make .coin p.s").map((p) => p.textContent).join("|") === "USDC · 6 decimals|WETH · 18 decimals", 60);
+  ok(LL(page, "#vault-make .coin").length === 2 && LL(page, "#vault-make .coin p.s").map((p) => p.textContent).join("|") === "USDC · 6 decimals|WETH · 18 decimals",
+    "each coin typed by its address is named with its symbol and decimals read live from the chain", LL(page, "#vault-make .coin p.s").map((p) => p.textContent).join("|"));
+  let sent = 0;
+  await press(page, L(page, "[data-act=wrap]"));
+  const a1 = slabCd(page);
+  ok(fn(page) === "approve(address,uint256)" && lower(page.text("#cslab [data-to]")) === lower(usdc) && lower("0x" + a1.slice(34, 74)) === lower(K) && word(a1, 1) === 500n * U6 && line(page, "Never") === "unlimited" && W.sent() === 0,
+    "the first press is the exact approval of the first coin: approve(Keepsake, 500 USDC in base units) and nothing more", `fn ${fn(page)} to ${page.text("#cslab [data-to]")} amount ${word(a1, 1)}`);
+  /* W14 (INTEGRATION L7): the approval's line names who pulls, not "the market" */
+  t.ok(line(page, "Lets") === "the Keepsake pull exactly 500 USDC", "the exact approval's line names who pulls it: Lets · the Keepsake pull exactly 500 USDC", line(page, "Lets"));
+  await ready(page); await sign(page, W, ++sent);
+  await press(page, L(page, "[data-act=wrap]"));
+  const a2 = slabCd(page);
+  ok(fn(page) === "approve(address,uint256)" && lower(page.text("#cslab [data-to]")) === lower(weth) && word(a2, 1) === 3n * WAD, "the same button again approves exactly the second coin", `to ${page.text("#cslab [data-to]")} amount ${word(a2, 1)}`);
+  await ready(page); await sign(page, W, ++sent);
+  const T1 = now();
+  await press(page, L(page, "[data-act=wrap]"));
+  const st1 = T1 + 30n * DAY, en1 = st1 + 60n * DAY;
+  const want1 = enc(WRAP, [[[[ZERO, WAD / 5n], [usdc, 500n * U6], [weth, 3n * WAD]], [st1, 0, en1], ME, "for the long road", [0, 0, 0, 0]]]);
+  const sen1 = page.text("#cslab [data-sentence]");
+  ok(fn(page) === WRAP && slabCd(page) === lower(want1) && ds(page.$("#cslab [data-value]"), "wei") === String(WAD / 5n) && argsAgree(page, WRAP) &&
+    sen1 === "You lock 0.2 ETH, 500 USDC and 3 WETH for 30 days, then they free slowly over 60 days; it is yours, with your note." &&
+    line(page, "Assets") === "0.2 ETH, 500 USDC and 3 WETH" && line(page, "Schedule") === `nothing frees before ${dateOf(st1)}; all free on ${dateOf(en1)}` && line(page, "For") === "you, " + cks(ME) && line(page, "Note") === "for the long road" && line(page, "Slow sale") === "none" && /^\d+ units$/.test(gasRow(page)),
+    "the third press is wrap: its bytes are exactly the Wrap the form says, the value is the ETH to the wei, and the sentence is plain words", `sentence "${sen1}" calldata equal ${slabCd(page) === lower(want1)}`);
+  await ready(page); await sign(page, W, ++sent);
+  await page.until(() => /is made/.test(page.text("#lane-vault #vault-keepsake-made")), 60);
+  const r1 = [...W.receipts.values()].at(-1), wl1 = r1.logs.find((l) => l.topics[0] === S.topics.wrapped);
+  ok(page.text("#lane-vault #vault-keepsake-made") === "keepsake #1 is made · its number from the Wrapped log" && !!wl1 && BigInt(wl1.topics[1]) === 1n &&
+    await ownerOf(1) === lower(ME) && await c.balanceOf(K) === WAD / 5n && await bal(usdc, K) === 500n * U6 && await bal(weth, K) === 3n * WAD &&
+    decUint(await c.read(usdc, "allowance(address,address)", [ME, K])) === 0n && decUint(await c.read(weth, "allowance(address,address)", [ME, K])) === 0n,
+    "a bundle of ETH and two ERC-20s is made with exact approvals: the Keepsake holds exactly what was typed, both allowances are spent to zero, and the page names #1 from the Wrapped log", page.text("#lane-vault #vault-keepsake-made"));
+
+  t.head("V2 · a gift to another account, and a slow sale refused on it");
+  await page.until(() => !!F(page, "eth") && F(page, "eth").value === "0" && !!ctext(page, 1, ".claimable"), 60);
+  await quiet(page, W);
+  make(page, { eth: "0.1", coins: [[usdc, "100"]], lock: "0", over: "10", to: BUYER, note: "happy birthday", dsell: "USDC", dfloor: "0.0004", dmax: "10" });
+  await quiet(page, W);
+  const est0 = W.count("eth_estimateGas"), calls0 = W.calls.length;
+  page.click(L(page, "[data-act=wrap]")); await page.settle(); await page.settle();
+  ok(!slabOpen(page) && tick(page) === "a slow sale only on a keepsake you keep: a giver never sells a recipient's gift" && W.count("eth_estimateGas") === est0 && since(W, calls0).length === 0,
+    "a slow sale on a gift is refused in words before anything is read or built: a giver never sells a recipient's gift", tick(page));
+  page.type(F(page, "dfloor"), "");
+  await press(page, L(page, "[data-act=wrap]"));
+  ok(fn(page) === "approve(address,uint256)" && word(slabCd(page), 1) === 100n * U6, "the gift's coin is approved exactly first", `${word(slabCd(page), 1)}`);
+  await ready(page); await sign(page, W, ++sent);
+  const T2 = now();
+  await press(page, L(page, "[data-act=wrap]"));
+  const want2 = enc(WRAP, [[[[ZERO, WAD / 10n], [usdc, 100n * U6]], [0, 0, T2 + 10n * DAY], BUYER, "happy birthday", [0, 0, 0, 0]]]);
+  const sen2 = page.text("#cslab [data-sentence]");
+  ok(slabCd(page) === lower(want2) && sen2 === `You lock 0.1 ETH and 100 USDC; they free slowly over 10 days; it is a gift to ${short(cks(BUYER))} with your note.` && line(page, "For") === "a gift to " + cks(BUYER) && line(page, "Schedule") === `starts when it lands; all free on ${dateOf(T2 + 10n * DAY)}`,
+    "the gift's slab names the recipient (in the sentence, and in full on the line beneath it) and the note, and its bytes are the Wrap to that address", `"${sen2}"`);
+  await ready(page); await sign(page, W, ++sent);
+  await page.until(() => /keepsake #2 is made/.test(page.text("#lane-vault #vault-keepsake-made")), 60);
+  const r2 = [...W.receipts.values()].at(-1), wl2 = r2.logs.find((l) => l.topics[0] === S.topics.wrapped);
+  ok(page.text("#lane-vault #vault-keepsake-made") === `keepsake #2 is made, a gift to ${short(cks(BUYER))} · its number from the Wrapped log` && BigInt(wl2.topics[1]) === 2n && lower("0x" + wl2.topics[3].slice(26)) === lower(BUYER) && await ownerOf(2) === lower(BUYER),
+    "a gift to another account: keepsake #2 is minted to them, named from the Wrapped log, and it is not in the giver's list", page.text("#lane-vault #vault-keepsake-made"));
+
+  t.head("V3 · the keepsakes found from the logs");
+  await c.exec(usdc, "mint(address,uint256)", [trader.from.toString(), 1_000n * U6]);
+  await trader.exec(usdc, "approve(address,uint256)", [K, 1_000n * U6], { label: "approve" });
+  const T3 = now();
+  await trader.exec(K, WRAP, [[[[usdc, 1_000n * U6]], [0, 0, T3 + 100n * DAY], reach1, "for the Reach", [0, 0, 0, 0]]], { label: "wrap" });
+  const m3 = W.calls.length;
+  await repaint(page, vctx);
+  await page.until(() => LL(page, "#vault-keepsakes-list .keepsake").length === 2 && !!L(page, ".keepsake img") && LL(page, "#vault-keepsakes-list .claimable").length === 2, 80);
+  const v1 = await view(1), uris = since(W, m3).filter((x) => x.method === "eth_call" && lower(x.params[0].to) === lower(K) && x.params[0].data.startsWith("0xc87b56dd")), owners = since(W, m3).filter((x) => x.method === "eth_call" && lower(x.params[0].to) === lower(K) && x.params[0].data.startsWith(v.sel("ownerOf(uint256)")));
+  const img = card(page, 1) && card(page, 1).querySelector("img");
+  ok(page.text("#lane-vault #vault-keepsakes-status") === "2 held by this wallet or #1's Reach" && !!card(page, 1) && !card(page, 2) && !!card(page, 3) && owners.length === 2 &&
+    v.sel("tokenURI(uint256)") === "0xc87b56dd" && uris.length >= 1 && !!img && /^data:image\/svg\+xml;base64,/.test(img.src) && /<svg/.test(Buffer.from(img.src.split(",")[1], "base64").toString("utf8")),
+    "the keepsakes are found from the Keepsake's Transfer logs and kept by ownerOf: #1 (this wallet) and #3 (the Reach), never #2 (given away); each orb is its tokenURI image, a data: SVG", `status "${page.text("#lane-vault #vault-keepsakes-status")}" ownerOf ${owners.length} tokenURI ${uris.length}`);
+  ok(cardRow(page, 1, "ETH") === "0.2 ETH" && cardRow(page, 1, "USDC") === "500 USDC" && cardRow(page, 1, "WETH") === "3 WETH" &&
+    ctext(page, 1, ".free") === `0 % free · nothing frees before ${dateOf(v1.start)} · fully free on ${dateOf(v1.end)}` && ctext(page, 1, ".note") === "“for the long road”" &&
+    ctext(page, 1, ".claimable") === "nothing to claim yet" && ctext(page, 1, ".drip") === "no slow sale" && /made by you · held by you/.test(ctext(page, 1)) && !inC(page, 1, "[data-act=claim]") &&
+    cardRow(page, 3, "USDC") === "1000 USDC" && ctext(page, 3, ".note") === "“for the Reach”" && ctext(page, 3).includes("a gift from " + short(cks(trader.from.toString())) + " · held by #1's Reach"),
+    "each keepsake is drawn in words: its coins with symbols and decimals read live, the schedule on the chain's clock, what a claim pays now, its slow sale, its note", `${ctext(page, 1).slice(0, 300)} | ${ctext(page, 3).slice(0, 200)}`);
+  W.refuse("eth_getLogs", new Error("range too large"));
+  await repaint(page, vctx);
+  await page.until(() => /could not be found/.test(page.text("#lane-vault #vault-keepsakes-status")), 60);
+  ok(page.text("#lane-vault #vault-keepsakes-status") === "the keepsakes could not be found on this endpoint: range too large" && LL(page, "#vault-keepsakes-list .keepsake").length === 0,
+    "a refused log range is a sentence, never an empty list", page.text("#lane-vault #vault-keepsakes-status"));
+  W.override("eth_getLogs", null);
+
+  t.head("V4 · time passes: claimable grows, and a claim pays the holder");
+  v.warp(v1.start + 15n * DAY);
+  await repaint(page, vctx);
+  await page.until(() => /^25 % free/.test(ctext(page, 1, ".free")) && !!(card(page, 1) && card(page, 1).querySelector("[data-act=claim]")), 80);
+  ok(ctext(page, 1, ".free") === `25 % free · fully free on ${dateOf(v1.end)}` && ctext(page, 1, ".claimable") === "ready to claim now: 0.05 ETH, 125 USDC and 0.75 WETH" && att(inC(page, 1, "progress"), "value") === "25",
+    "a quarter of the way along, the bar and the sentence read 25 % free and a quarter of every coin is ready to claim", `${ctext(page, 1, ".free")} | ${ctext(page, 1, ".claimable")}`);
+  const u0 = await bal(usdc, ME), w0 = await bal(weth, ME);
+  await press(page, card(page, 1).querySelector("[data-act=claim]"));
+  ok(fn(page) === "claim(uint256)" && word(slabCd(page), 0) === 1n && lower(page.text("#cslab [data-to]")) === lower(K) &&
+    page.text("#cslab [data-sentence]") === "pays keepsake #1's holder, you, what has freed — now 0.05 ETH, 125 USDC and 0.75 WETH; whoever presses is paid nothing",
+    "the claim's sentence says who is paid and what", page.text("#cslab [data-sentence]"));
+  await ready(page); await sign(page, W, ++sent);
+  ok(await bal(usdc, ME) - u0 === 125n * U6 && await bal(weth, ME) - w0 === 3n * WAD / 4n && await c.balanceOf(K) === WAD / 5n - WAD / 20n + WAD / 10n,
+    "the claim paid the holder exactly what had freed", `usdc +${await bal(usdc, ME) - u0} weth +${await bal(weth, ME) - w0}`);
+  {
+    const WS = walletFor(c, stranger);
+    const { page: ps } = await bootToken(1, { wallet: WS });
+    await lane(ps, "vault");
+    await ps.until(() => !!(card(ps, 3) && card(ps, 3).querySelector("[data-act=claim]")), 80);
+    const r0 = await bal(usdc, reach1), s0 = await bal(usdc, STRANGER), due3 = decUint(await c.call(K, enc("claimable(uint256)", [3])), 4);
+    await press(ps, card(ps, 3).querySelector("[data-act=claim]"));
+    const sen3 = ps.text("#cslab [data-sentence]");
+    ok(!card(ps, 1) && LL(ps, "#vault-keepsakes-list details").length === 0 && sen3.startsWith("pays keepsake #3's holder, #1's Reach, what has freed — now ") && sen3.endsWith("; whoever presses is paid nothing"),
+      "a stranger sees the Reach's keepsake, may press its claim, and is told the Reach is paid; no change is offered to them", sen3);
+    await ready(ps); await sign(ps, WS, 1);
+    const paid = (await c.getLogs({ address: K, topics: [S.topics.paid, "0x" + "3".padStart(64, "0")] })).at(-1);
+    ok(await bal(usdc, reach1) - r0 === due3 && due3 > 0n && await bal(usdc, STRANGER) === s0 && !!paid && lower("0x" + paid.topics[2].slice(26)) === lower(reach1),
+      "a stranger's claim pays the keepsake's holder, the Reach, and the stranger nothing", `reach +${await bal(usdc, reach1) - r0} of ${due3}, stranger ${await bal(usdc, STRANGER) - s0}`);
+    ok(ps.innerHTMLWrites === 0 && ps.errors.length === 0, "nothing was assigned through innerHTML and no script threw on the stranger's keepsakes", ps.errors.map((e) => e.message).join("; "));
+    ps.close();
+  }
+  t.ok(V, "after a warp, claimable grows and a claim pays the holder, whoever presses it");
+
+  t.head("V5 · the holder's changes: lengthen, a slow sale, a memory, a give");
+  await repaint(page, vctx);
+  await page.until(() => !!M(page, 1, "more") && !!M(page, 3, "more"), 80);
+  page.type(M(page, 1, "more"), "-30");
+  const e5 = W.count("eth_estimateGas");
+  page.click(card(page, 1).querySelector("[data-act=extend]")); await page.settle(); await page.settle();
+  ok(!slabOpen(page) && tick(page) === "a keepsake only lengthens, by whole days: it never ends sooner" && W.count("eth_estimateGas") === e5,
+    "a shortening extend is refused in words before any slab", tick(page));
+  page.type(M(page, 1, "more"), "30");
+  await press(page, card(page, 1).querySelector("[data-act=extend]"));
+  ok(fn(page) === EXTEND && word(slabCd(page), 0) === 1n && word(slabCd(page), 1) === v1.end + 30n * DAY && lower(page.text("#cslab [data-to]")) === lower(K) &&
+    page.text("#cslab [data-sentence]") === `lengthens keepsake #1 by 30 days: fully free on ${dateOf(v1.end + 30n * DAY)}, not ${dateOf(v1.end)}; it only lengthens, never shortens`,
+    "an extend carries the end plus the days typed, and its sentence says it only lengthens, never shortens", page.text("#cslab [data-sentence]"));
+  await ready(page); await sign(page, W, ++sent);
+  ok((await view(1)).end === v1.end + 30n * DAY, "the end moved out by thirty days on the chain", `${(await view(1)).end}`);
+  await page.until(() => !!M(page, 3, "more"), 60);
+  await press(page, card(page, 3).querySelector("[data-act=extend]"));
+  const x3 = slabCd(page), inner3 = "0x" + x3.slice(10 + 64 * 5, 10 + 64 * 5 + 136);
+  ok(fn(page) === EXEC && lower(page.text("#cslab [data-to]")) === lower(reach1) && lower("0x" + x3.slice(34, 74)) === lower(K) && inner3.slice(0, 10) === v.sel(EXTEND) && word(inner3, 0) === 3n && word(x3, 3) === 0n &&
+    ds(inC(page, 3, "[data-act=extend]"), "spend") === "" && !!inC(page, 1, "[data-act=extend]") && ds(inC(page, 1, "[data-act=extend]"), "spend") === undefined,
+    "the Reach's keepsake is changed through the Reach: execute(Keepsake, 0, extend(3, …), 0), the holder's to propose and, as every execute, a spending control", `fn ${fn(page)} inner ${inner3.slice(0, 10)}`);
+  await dismiss(page);
+  page.type(M(page, 1, "dsell"), "USDC"); page.type(M(page, 1, "dmkt"), "1"); page.type(M(page, 1, "dfloor"), "0.0004"); page.type(M(page, 1, "dmax"), "50");
+  await press(page, card(page, 1).querySelector("[data-act=setDrip]"));
+  const FLOOR = 4n * 10n ** 26n;
+  ok(fn(page) === SETDRIP && slabCd(page) === lower(enc(SETDRIP, [1, [1, 1, FLOOR, 50n * U6]])) && line(page, "Terms") === `asset 1 · market #1 · floor ${FLOOR} per 1e18 · at most ${50n * U6}` &&
+    page.text("#cslab [data-sentence]") === "on keepsake #1, anyone may sell its USDC as it frees, at most 50 USDC each time, into market #1, never below 0.0004 ETH per USDC; what it earns waits there for its holder",
+    "a slow sale typed in human terms is found raw in the calldata: 0.0004 ETH per USDC is the floor 0.0004 × 10^18 × 1e18 / 10^6 = 4e26", `${line(page, "Terms")} | ${page.text("#cslab [data-sentence]")}`);
+  await ready(page); await sign(page, W, ++sent);
+  await page.until(() => /never below/.test(ctext(page, 1, ".drip")), 60);
+  const d1 = (await view(1)).drip;
+  ok(d1.join() === [1n, 1n, FLOOR, 50n * U6].join() && ctext(page, 1, ".drip") === "sells slowly, never below 0.0004 ETH per USDC · at most 50 USDC each time, in market #1" && !!inC(page, 1, "[data-act=clearDrip]"),
+    "the slow sale is read back from the chain in the same words, and the holder may stop it", ctext(page, 1, ".drip"));
+  page.type(M(page, 1, "memory"), "the first day of the long road");
+  await press(page, card(page, 1).querySelector("[data-act=inscribe]"));
+  const body = "0x" + Buffer.from("the first day of the long road", "utf8").toString("hex");
+  ok(fn(page) === INSCRIBE && lower(page.text("#cslab [data-to]")) === lower(J) && slabCd(page) === lower(enc(INSCRIBE, [K, 1, 0, body, "0x" + "0".repeat(64)])) &&
+    page.text("#cslab [data-sentence]") === "writes a memory into keepsake #1, public and for good: “the first day of the long road”",
+    "a memory is written into the keepsake's own journal: inscribe(Keepsake, 1, a note, the text, 0)", page.text("#cslab [data-sentence]"));
+  await ready(page); await sign(page, W, ++sent);
+  const ins = (await c.getLogs({ address: J, topics: [S.topics.inscribed, "0x" + lower(K).slice(2).padStart(64, "0"), "0x" + "1".padStart(64, "0")] })).at(-1);
+  const bodyOf = (d) => { const x = d.slice(2), o = Number(BigInt("0x" + x.substr(5 * 64, 64))) * 2; return Buffer.from(x.substr(o + 64, Number(BigInt("0x" + x.substr(o, 64))) * 2), "hex").toString("utf8"); };
+  ok(decUint(await c.read(J, "countOf(address,uint256)", [K, 1])) === 1n && !!ins && bodyOf(ins.data) === "the first day of the long road" && lower("0x" + ins.data.slice(2 + 64 + 24, 2 + 128)) === lower(ME),
+    "the Journal counts the keepsake's first memory, and its Inscribed log carries the words and names the holder as author", ins && bodyOf(ins.data));
+  await page.until(() => !!M(page, 1, "give"), 60);
+  page.type(M(page, 1, "give"), BUYER);
+  await press(page, card(page, 1).querySelector("[data-act=give]"));
+  ok(fn(page) === TRANSFER && lower(page.text("#cslab [data-to]")) === lower(K) && page.text('#cslab [data-arg="0"]') === cks(ME) && page.text('#cslab [data-arg="1"]') === cks(BUYER) && page.text('#cslab [data-arg="2"]') === "1" &&
+    page.text("#cslab [data-sentence]") === `gives keepsake #1 to ${short(cks(BUYER))}: the keepsake and everything in it becomes theirs` && ds(inC(page, 1, "[data-act=give]"), "spend") === "",
+    "a give is transferFrom(holder, recipient, id), and its sentence: the keepsake and everything in it becomes theirs", page.text("#cslab [data-sentence]"));
+  await ready(page); await sign(page, W, ++sent);
+  await page.until(() => !card(page, 1) && !!card(page, 3), 60);
+  ok(await ownerOf(1) === lower(BUYER) && !card(page, 1) && page.text("#lane-vault #vault-keepsakes-status") === "1 held by this wallet or #1's Reach",
+    "given, the keepsake leaves this wallet's list: ownerOf no longer names it", page.text("#lane-vault #vault-keepsakes-status"));
+  ok(page.innerHTMLWrites === 0 && page.errors.length === 0, "nothing was assigned through innerHTML and no script threw on the keepsakes page", page.errors.map((e) => e.message).join("; "));
+  page.close();
+
+  t.head("V6 · the recipient's page, and the viewer");
+  {
+    const WB = walletFor(c, buyer);
+    const { page: pb } = await bootToken(1, { wallet: WB });
+    await lane(pb, "vault");
+    await pb.until(() => !!card(pb, 2) && !!card(pb, 1) && LL(pb, "#vault-keepsakes-list .claimable").length === 3, 80);
+    ok(ctext(pb, 2, ".note") === "“happy birthday”" && ctext(pb, 2).includes("a gift from " + short(cks(ME)) + " · held by you") && /^100 % free · fully free since/.test(ctext(pb, 2, ".free")) && !!inC(pb, 2, "[data-act=claim]") && !!inC(pb, 2, "details"),
+      "the recipient finds the gift in their own list with its note and its giver, free to claim, and theirs to change", ctext(pb, 2).slice(0, 300));
+    pb.close();
+  }
+  {
+    const WV = walletFor(c, me);
+    const { page: pv } = await bootToken(1, { opaque: true, wallet: WV });
+    await lane(pv, "vault");
+    await pv.until(() => !!card(pv, 3) && LL(pv, "#vault-keepsakes-list .claimable").length === 1, 80);
+    /* W13: "reads the keepsakes" — the Reach's card and what it pays — was the wait's alone; the sentence now checks them */
+    ok(pv.$("body").dataset.mode === "viewer" && !!card(pv, 3) && LL(pv, "#vault-keepsakes-list .claimable").length === 1 &&
+      LL(pv, "[data-act]").length === 0 && !L(pv, "#vault-make") && LL(pv, "#vault-keepsakes details").length === 0 && WV.prompts().length === 0 && pv.errors.length === 0,
+      "the viewer reads the keepsakes and offers no control: no form, no claim, no change", `acts ${LL(pv, "[data-act]").length}`);
+    pv.close();
+  }
+  t.ok(V, "keepsakes: a bundle made with exact approvals, a gift, found from the logs, claimed, lengthened, sold slowly in human terms, remembered and given");
 }

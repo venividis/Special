@@ -25,8 +25,8 @@
       refused at the hash;
     · a data: document with an opaque origin: localStorage throws
       SecurityError, crypto.subtle is undefined, navigator.clipboard is
-      undefined (the Grip's copy button throws there — recorded as an
-      observation, not fixed here), no request leaves it;
+      undefined (the Grip's copy button says so in words there since W10,
+      and the viewer's sweep presses it), no request leaves it;
     · a REAL WebCrypto run of engine/whispers.mjs on the secure context
       127.0.0.1: the P-256 point Chromium derives from the wallet's
       signature equals the one Node derives, a sealed whisper is laid,
@@ -38,7 +38,12 @@
       location.href followed by the browser into the new token's console;
     · the QR as Chromium rasterises the SVG, screenshotted and decoded
       with jsqr; an unhandled rejection inside a Blob panel surfaces as a
-      pageerror (CHECKPOINT observation 2), so every journey asserts none.
+      pageerror (CHECKPOINT observation 2), so every journey asserts none;
+    · the living light (V2, W16): the soul's WebGL on the battery's
+      SwiftShader, a spoofed GPU and a Chromium without WebGL; every
+      animation as getAnimations() reports it, under reduced motion too;
+      a Tab walk at 390×844 sampled with elementFromPoint; the shim has
+      no canvas, no CSS and no layout, so none of it can be asked there.
 
   Design: one in-process chain per group exactly as verify-site.mjs
   (Chain.open → deploySite → mint the cast), fronted by an http.createServer
@@ -64,9 +69,10 @@
   page-side, because a thrown binding error would lose its fields.
 
   Groups: boot, viewer, session, agent, swap, social, identity, vault,
-  launch, journey. Each prints its own count and time; the last line is
-  "  N passed, M failed" and the exit code follows it. The BUILD-PLAN §U11
-  sentences end their blocks verbatim as t.ok(..., "<sentence>").
+  launch, journey, gallery, light. Each prints its own count and time;
+  the last line is "  N passed, M failed" and the exit code follows it.
+  The BUILD-PLAN §U11 sentences end their blocks verbatim as
+  t.ok(..., "<sentence>").
 
     PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers node tools/verify-console.mjs
     node tools/verify-console.mjs --group swap
@@ -91,7 +97,7 @@ import { walletFor, nap } from "./dom-shim.mjs";
 
 const ARGV = process.argv.slice(2);
 const arg = (f) => { const i = ARGV.indexOf(f); return i < 0 ? null : ARGV[i + 1]; };
-export const GROUPS = ["boot", "viewer", "session", "agent", "swap", "social", "identity", "vault", "launch", "journey"];
+export const GROUPS = ["boot", "viewer", "session", "agent", "swap", "social", "identity", "vault", "launch", "journey", "gallery", "light"];
 const MIN_ASSERTIONS = 110;
 const WAD = 10n ** 18n;
 
@@ -117,6 +123,33 @@ export function harness() {
     }
   };
   return t;
+}
+
+/*═══════════════════ the waits ═══════════════════
+  A wait is an expectation (W14, INTEGRATION L15; W13 made the shim's so): pg.until(cond, arg, ms) polls cond in
+  the page every 40 ms and, when it is still falsy after ms, THROWS an UntilTimeout naming the wait — its
+  condition's source on one line, the group (setGroup, called by the runner before each group and by
+  tools/testnet-drive.mjs before its journey), the lines of this file that waited (the helper that holds the
+  wait — press, sign, lane — then its caller) and what the ticker read — so a page that never gets where a wait
+  says fails its group by name. A Playwright error inside the wait (a closed page, a navigation) throws too, with
+  the same names. Until W14 it returned false, and 122 of its 129 waits dropped that answer. { soft: true } keeps
+  the old answer for a wait whose caller reads it (the answer then rides into a sentence) or a deliberate short
+  wait before a negative assertion, and each such call says why in a comment. */
+let GROUP = null;
+/// the group whose pages wait next, so a wait that times out can say where it was
+export const setGroup = (g) => { GROUP = g == null ? null : String(g); };
+const oneLine = (s, n = 200) => { const x = String(s).replace(/\s+/g, " ").trim(); return x.length > n ? x.slice(0, n - 1) + "…" : x; };
+/// the stack's frames in the tools, as repository paths with their lines, past the wait itself: its helper, then its caller
+const callers = (stack) => String(stack).split("\n").slice(2).map((l) => l.trim()).filter((l) => /^at /.test(l) && !/node:internal|\(node:|playwright/.test(l))
+  .map((l) => { const m = l.match(/(\/tools\/[^\s():]+):(\d+):\d+\)?$/); return m ? m[1].replace(/^\//, "") + ":" + m[2] : null; }).filter(Boolean).slice(0, 2);
+/// the error a wait throws when its condition never held: its message names the condition, the group and the lines that waited
+export class UntilTimeout extends Error {
+  constructor(o) {
+    super(`until ${o.cause ? "failed (" + oneLine(o.cause, 160) + ")" : "timed out after " + o.ms + " ms"} in group ${o.group || "(none: outside the runner's groups)"}` +
+      (o.at.length ? ", waiting at " + o.at.join(" ← ") : "") + ": " + oneLine(o.cond) + (o.tick ? ` · the ticker reads "${oneLine(o.tick, 160)}"` : ""));
+    this.name = "UntilTimeout";
+    Object.assign(this, { cond: oneLine(o.cond), group: o.group, at: o.at, ms: o.ms });
+  }
 }
 
 /*═══════════════════ small helpers ═══════════════════*/
@@ -148,6 +181,33 @@ export async function sealKey(key, chainId, hub) {
   const k = await crypto.subtle.importKey("pkcs8", Buffer.from(PK8 + Buffer.from(h).toString("hex"), "hex"), { name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
   const jwk = await crypto.subtle.exportKey("jwk", k);
   return { message: msg.toString("utf8"), pk: "0x04" + Buffer.from(jwk.x, "base64url").toString("hex") + Buffer.from(jwk.y, "base64url").toString("hex") };
+}
+
+/*  The calldata's arguments in the words CONSOLE §4.2 promises the slab's [data-arg] rows — addresses checksummed,
+    numbers decimal, booleans as words, bytes as their length, a tuple or an array in brackets, field by field —
+    decoded by this suite's own head/tail walk, apart from the shell's decoder, so a row that agrees with it agrees
+    with the bytes the wallet signs. Since W14 the slab draws a row for every argument, tuples and arrays of them
+    included (INTEGRATION L7); the verify-site groups import this too. */
+export function argWords(sig, cd) {
+  const split = (s) => { const o = []; let d = 0, c = ""; for (const ch of s) { if (ch === "(") d++; if (ch === ")") d--; if (ch === "," && !d) { o.push(c); c = ""; } else c += ch; } if (c) o.push(c); return o; };
+  const fieldsOf = (t) => split(t.slice(1, -1)), arrOf = (t) => t.match(/^(.*)\[(\d*)\]$/);
+  const dyn = (t) => { const m = arrOf(t); return m ? m[2] === "" || dyn(m[1]) : t === "bytes" || t === "string" || (t[0] === "(" && fieldsOf(t).some(dyn)); };
+  const span = (t) => { const m = arrOf(t); return m ? Number(m[2]) * span(m[1]) : t[0] === "(" ? fieldsOf(t).reduce((n, x) => n + span(x), 0) : 32; };
+  const h = String(cd).replace(/^0x/, "").slice(8), at = (o) => BigInt("0x" + (h.slice(o * 2, o * 2 + 64) || "0"));
+  const seq = (ts, base) => { let p = base; return ts.map((t) => { const v = val(t, dyn(t) ? base + Number(at(p)) : p); p += dyn(t) ? 32 : span(t); return v; }); };
+  function val(t, o) {
+    const m = arrOf(t);
+    if (m) return "[" + seq(Array(m[2] === "" ? Number(at(o)) : Number(m[2])).fill(m[1]), m[2] === "" ? o + 32 : o).join(", ") + "]";
+    if (t[0] === "(") return "[" + seq(fieldsOf(t), o).join(", ") + "]";
+    if (t === "bytes") return at(o) + " bytes";
+    if (t === "string") return Buffer.from(h.slice(o * 2 + 64, o * 2 + 64 + Number(at(o)) * 2), "hex").toString("utf8");
+    const w = h.slice(o * 2, o * 2 + 64), n = BigInt("0x" + w);
+    if (t === "address") return checksum("0x" + w.slice(24));
+    if (t === "bool") return n ? "true" : "false";
+    if (/^bytes\d+$/.test(t)) return "0x" + w.slice(0, 2 * Number(t.slice(5)));
+    return String(/^int/.test(t) && n >> 255n ? n - (1n << 256n) : n);
+  }
+  return seq(split(sig.slice(sig.indexOf("(") + 1, sig.lastIndexOf(")"))), 0);
 }
 
 /*  A PNG decoder for Playwright's screenshots (8-bit, non-interlaced, colour types 0/2/4/6):
@@ -189,10 +249,11 @@ export function decodePng(buf) {
 
 /*═══════════════════ the browser ═══════════════════*/
 
-export async function openBrowser() {
+/// openBrowser({ args }) — `args` are Chromium's own switches (the light group's `--disable-webgl`); none by default
+export async function openBrowser(o = {}) {
   const { chromium } = await import("playwright");
   const exe = path.join(process.env.PLAYWRIGHT_BROWSERS_PATH || "/opt/pw-browsers", "chromium");
-  const browser = await chromium.launch({ headless: true, ...(fs.existsSync(exe) ? { executablePath: exe } : {}) });
+  const browser = await chromium.launch({ headless: true, ...(fs.existsSync(exe) ? { executablePath: exe } : {}), ...(o.args ? { args: o.args } : {}) });
   return browser;
 }
 
@@ -247,19 +308,26 @@ const HOOKS = `(() => {
   window.__dis = (q) => { const e = q1(q); return e ? !!e.disabled : true; };
   window.__on = (q) => { const e = q1(q); return !!e && e.classList.contains("on"); };
   for (const k of Object.keys(window.__ev)) addEventListener("intact:" + k, () => { window.__ev[k]++; });
+  /* every sentence the ticker says, in order, as it says it: a receipt that moves the epoch replaces its own
+     landing sentence within the same receipt (CONSOLE §4.7), so a poll of the ticker's text can miss what the page
+     said; this log cannot (W14, INTEGRATION L15) */
+  window.__ticks = [];
+  new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) window.__ticks.push(n.textContent); }).observe(document.querySelector("#tick"), { childList: true });
   document.addEventListener("securitypolicyviolation", (e) => window.__intactReport("csp", e.violatedDirective + " " + e.blockedURI));
   addEventListener("unhandledrejection", (e) => window.__intactReport("error", "unhandled rejection: " + (e.reason && e.reason.message || e.reason)));
 })()`;
 
 /**
  * A page in a fresh browser context.
- *   openPage(browser, { origin, path, data, wallets, awaitReady })
+ *   openPage(browser, { origin, path, data, wallets, awaitReady, viewport, reducedMotion, init })
  * `data` boots the viewer: the served body as a data: URL (opaque origin). Resolves once
- * INTACT.ui.ready has settled unless awaitReady is false (the picker is up).
+ * INTACT.ui.ready has settled unless awaitReady is false (the picker is up). `viewport` replaces
+ * 1200 × 900, `reducedMotion: "reduce"` is prefers-reduced-motion, and `init` is one more script run
+ * before any document, after the wallet's (the light group's eyes, lightInit).
  */
 export async function openPage(browser, o = {}) {
   const wallets = o.wallets || (o.wallet ? [o.wallet] : []);
-  const context = await browser.newContext({ viewport: { width: 1200, height: 900 }, serviceWorkers: "block" });
+  const context = await browser.newContext({ viewport: o.viewport || { width: 1200, height: 900 }, serviceWorkers: "block", ...(o.reducedMotion ? { reducedMotion: o.reducedMotion } : {}) });
   const byRdns = new Map(wallets.map((W) => [W.info.rdns, W]));
   const log = { errors: [], consoleErrors: [], csp: [], requests: [], navigations: [] };
   await context.exposeBinding("__intactWallet", async (source, rdns, method, params) => {
@@ -277,6 +345,7 @@ export async function openPage(browser, o = {}) {
   });
   await context.exposeBinding("__intactReport", (source, kind, text) => { (kind === "csp" ? log.csp : log.errors).push(String(text)); });
   await context.addInitScript({ content: walletScript(wallets.map((W) => ({ info: W.info, legacy: !!W.legacy, noAnnounce: !!W.noAnnounce, late: !!W.late }))) });
+  if (o.init) await context.addInitScript({ content: o.init });
   const page = await context.newPage();
   /* the frame the shell lives in: the page itself, or — for the viewer — a data: iframe inside a blank
      host page, which is the marketplace's own shape (DESIGN §5.1) and the only one Chromium allows:
@@ -300,9 +369,23 @@ export async function openPage(browser, o = {}) {
     body: () => F().evaluate(() => ({ mode: document.body.dataset.mode, chain: document.body.dataset.chain, rights: document.body.dataset.rights })),
     /* hidden by attribute (its own or an ancestor's): what a person cannot reach */
     hidden: (s) => F().evaluate((q) => { const e = document.querySelector(q); return e ? !!e.closest("[hidden]") : null; }, s),
-    /* visible as CSS paints it: a box with a size and visibility not hidden */
-    visible: (s) => F().evaluate((q) => { const e = document.querySelector(q); return !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden"; }, s),
-    visibleAll: (s) => F().evaluate((q) => [...document.querySelectorAll(q)].map((e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden"), s),
+    /* visible as CSS paints it: a box with a size, visibility not hidden, and not folded away. A closed <details>
+       hides what it holds with content-visibility, and Chromium keeps client rects for it, so the box test alone
+       called a folded field visible (W12 measured it; INTEGRATION L2). checkVisibility() reports the fold, and the
+       walk names it in plain DOM terms too: under a closed <details> only that details' own <summary> is shown (W13) */
+    visible: (s) => F().evaluate((q) => {
+      const e = document.querySelector(q);
+      if (!e || e.getClientRects().length === 0 || getComputedStyle(e).visibility === "hidden") return false;
+      if (typeof e.checkVisibility === "function" && !e.checkVisibility({ visibilityProperty: true })) return false;
+      for (let n = e; n.parentElement; n = n.parentElement) { const d = n.parentElement; if (d.tagName === "DETAILS" && !d.open && !(n.tagName === "SUMMARY" && d.querySelector(":scope > summary") === n)) return false; }
+      return true;
+    }, s),
+    visibleAll: (s) => F().evaluate((q) => [...document.querySelectorAll(q)].map((e) => {
+      if (e.getClientRects().length === 0 || getComputedStyle(e).visibility === "hidden") return false;
+      if (typeof e.checkVisibility === "function" && !e.checkVisibility({ visibilityProperty: true })) return false;
+      for (let n = e; n.parentElement; n = n.parentElement) { const d = n.parentElement; if (d.tagName === "DETAILS" && !d.open && !(n.tagName === "SUMMARY" && d.querySelector(":scope > summary") === n)) return false; }
+      return true;
+    }), s),
     disabled: (s) => F().evaluate((q) => { const e = document.querySelector(q); return e ? e.disabled : null; }, s),
     value: (s) => F().evaluate((q) => { const e = document.querySelector(q); return e ? e.value : null; }, s),
     click: (s, opts = {}) => F().click(s, { timeout: 8000, ...opts }),
@@ -311,7 +394,16 @@ export async function openPage(browser, o = {}) {
        install: a node absent for one frame of a repaint is then "" or undefined, never a throw — Chromium
        reports an exception inside Playwright's polled predicate as an unhandled rejection on the page,
        which these journeys assert never happens (measured: the launch lane's countdown mid-repaint) */
-    until: async (fn, a, ms = 10000) => { try { await F().waitForFunction(fn, a === undefined ? null : a, { timeout: ms, polling: 40 }); return true; } catch { return false; } },
+    /* the stack is taken at entry, while the helper that waits (press, sign, lane) is still on it */
+    until: async (fn, a, ms = 10000, o = {}) => {
+      const at = o.soft ? null : new Error().stack;
+      try { await F().waitForFunction(fn, a === undefined ? null : a, { timeout: ms, polling: 40 }); return true; }
+      catch (e) {
+        if (o.soft) return false;
+        let tick = ""; try { tick = await F().evaluate(() => (document.querySelector("#tick") || { textContent: "" }).textContent); } catch {}
+        throw new UntilTimeout({ cond: String(fn), group: GROUP, at: callers(at), ms, tick, cause: /Timeout \d+ms exceeded/.test(String(e && e.message)) ? null : String(e && e.message || e) });
+      }
+    },
     settle: (ms = 60) => page.waitForTimeout(ms),
     hash: (name) => F().evaluate((h) => { location.hash = h; }, "#" + name),
     events: () => F().evaluate(() => Object.assign({}, window.__ev)),
@@ -327,6 +419,11 @@ export async function openPage(browser, o = {}) {
     setChain: async (W, id) => { W.setChain(id); await pg.emit(W, "chainChanged", hexN(id)); },
     setAccounts: async (W, list) => { W.setAccounts(list); await pg.emit(W, "accountsChanged", list); },
     propose: (tx) => F().evaluate((t) => window.INTACT.ui.propose(t), tx),
+    /* the slab's [data-arg] rows, one per argument and in order, are the calldata as this suite decodes it (argWords) */
+    argsAgree: async (sig) => {
+      const rows = await F().evaluate(() => [...document.querySelectorAll("#cslab [data-arg]")].map((r) => [r.dataset.arg, r.textContent])), want = argWords(sig, await pg.slabCd());
+      return rows.length === want.length && rows.every(([i, x], k) => i === String(k) && x === want[k]);
+    },
     clean: () => log.errors.length === 0 && log.consoleErrors.length === 0 && log.csp.length === 0,
     problems: () => [...log.errors, ...log.consoleErrors, ...log.csp].join(" | ").slice(0, 500),
     close: () => context.close()
@@ -359,24 +456,39 @@ export async function openPage(browser, o = {}) {
     await page.waitForTimeout(80);
     return F().evaluate((n) => !!(window.INTACT.loaded && window.INTACT.loaded[n] === true), name);
   };
-  /* press a lane control and wait for the slab with its estimate answered */
+  /* press a lane control and wait for the slab with its estimate answered; soft, because the answer is read here and
+     a slab that never came throws by its own name, the control that was pressed */
   pg.press = async (s) => {
     await pg.click(s);
-    const ok = await pg.until(() => __on("#cbox") && (document.querySelector("#cslab [data-gas]") || { textContent: "" }).textContent !== "estimating…", null, 15000);
-    if (!ok) throw new Error("no estimated slab after pressing " + s + "; the ticker reads: " + await pg.tick());
+    const ok = await pg.until(() => __on("#cbox") && (document.querySelector("#cslab [data-gas]") || { textContent: "" }).textContent !== "estimating…", null, 15000, { soft: true });
+    if (!ok) throw new Error("no estimated slab after pressing " + s + " in group " + GROUP + "; the ticker reads: " + await pg.tick());
     return pg.gasRow();
   };
+  /* Sign enabled: a wait that throws by name when the estimate never let it be pressed */
   pg.ready = () => pg.until(() => !__dis("#cslab [data-go]"), null, 8000);
   pg.dismiss = async () => { await pg.click("#cslab [data-no]"); await pg.settle(); };
-  /* sign the open slab: wait for the wallet's send, the receipt sentence, the rights re-read and the panel's repaint */
-  pg.sign = async (W, n) => {
-    if (!(await pg.ready())) throw new Error("Sign stayed disabled; the gas row reads: " + await pg.gasRow());
-    const before = await pg.tick(), ev = (await pg.events()).rights;
+  /* the ticker's sentences since a mark, from the page's own log of everything it said (HOOKS) */
+  pg.ticks = async (mark = 0) => (await F().evaluate(() => window.__ticks || [])).slice(mark);
+  /*  sign the open slab: wait for the wallet's send, the receipt's sentence, the rights re-read and the panel's repaint.
+      The receipt's sentence is read from the ticker's log, never from one poll of its text: a receipt that moves the
+      custody epoch or this wallet's rights (a panic, a buy, a sale) replaces "landed in block n — …" with "ownership
+      or epoch changed — review again" within the same receipt (CONSOLE §4.7), so the landing was on screen only while
+      two reads crossed to Node and back, and a 40 ms poll caught it by luck (W13's report §7). Such a call passes
+      { moved: true } and waits for that sentence after the landing; any other call that ends on it throws by name,
+      so each sign says which of the two the page did. */
+  const REVIEW = "ownership or epoch changed — review again";
+  pg.sign = async (W, n, o = {}) => {
+    await pg.ready();
+    const mark = (await pg.ticks()).length, ev = (await pg.events()).rights;
     await pg.click("#cslab [data-go]");
     for (let i = 0; i < 400 && W.sent() < n; i++) await nap(25);
-    await pg.until(([b]) => { const t = __t("#tick"); return t !== b && /landed in block|reverted in block/.test(t); }, [before], 20000);
+    await pg.until(([m]) => window.__ticks.slice(m).some((s) => /^(landed|reverted) in block /.test(s)), [mark], 20000);
     await pg.until((e) => window.__ev.rights > e, ev, 8000);
+    if (o.moved) await pg.until(([m, r]) => { const l = window.__ticks.slice(m), i = l.findIndex((s) => /^landed in block /.test(s)); return i >= 0 && l.slice(i + 1).includes(r); }, [mark, REVIEW], 8000);
     await page.waitForTimeout(150);
+    const said = await pg.ticks(mark), at = said.findIndex((s) => /^(landed|reverted) in block /.test(s));
+    if (!o.moved && said.slice(at + 1).includes(REVIEW))
+      throw new Error(`sign ${n} in group ${GROUP}: the receipt moved the epoch or the rights and the ticker said "${REVIEW}" after "${oneLine(said[at], 120)}" — a sign after such a transaction passes { moved: true }`);
   };
   const url = o.data ? "data:text/html;base64," + Buffer.from(o.data).toString("base64") : (o.origin || "") + (o.path || "/token/1/live");
   try { await pg.goto(url, o.awaitReady !== false); }
@@ -405,6 +517,18 @@ export async function qrDecode(pg, s) {
   const jsQR = (await import("jsqr")).default;
   const r = jsQR(img.data, img.width, img.height);
   return { text: r ? r.data : null, width: img.width, height: img.height, loaded };
+}
+
+/*  The same code read where it is painted: scrolled to the middle of the viewport (clear of the crest bar, the dock and the
+    ticker), screenshotted in place at its own size with whatever ground the page gives it, and decoded with jsqr. qrDecode
+    above rasterises a copy on white, so it cannot see a dark ground; this can (W14, INTEGRATION W12-3). */
+export async function qrInPlace(pg, s) {
+  await pg.frame.evaluate((q) => { const e = document.querySelector(q); if (e) e.scrollIntoView({ block: "center" }); }, s);
+  await pg.settle(120);
+  const png = await pg.frame.locator(s).screenshot({ type: "png" });
+  const img = decodePng(png), jsQR = (await import("jsqr")).default, r = jsQR(img.data, img.width, img.height);
+  let light = 0; for (let i = 0; i < img.data.length; i += 4) if (img.data[i] > 200 && img.data[i + 1] > 200 && img.data[i + 2] > 200) light++;
+  return { text: r ? r.data : null, width: img.width, height: img.height, light: Math.round(100 * light / (img.width * img.height)) };
 }
 
 /*═══════════════════ the gateway: GET → Premises.request, in-process ═══════════════════*/
@@ -512,7 +636,7 @@ async function groupBoot(t, ctx) {
     const re = new RegExp("^engine " + esc(short(checksum(S1.engine))) + " pins these bytes at block (\\d+)$");
     const m = verified.match(re);
     t.ok(!!m && BigInt(m[1]) === EVM.BLOCK.header.number && W.callsTo(S1.engine, sel("engineHash()")).length === 1, "the self-hash footer: Chromium's keccak of the bytes that ran equals the baked hash and the engine's live answer, at the chain's block", verified);
-    t.ok(probe.lanes === 5 && (await pg.evaluate(() => [...document.querySelectorAll("#lanes a")].every((a) => a.getAttribute("aria-disabled") !== "true"))) && (S1.absent & S1.bits.agentcard) !== 0, "the five lanes are offered in the console, the agent link withheld while the AgentCard has no code", String(probe.lanes));
+    t.ok(probe.lanes === 6 && (await pg.evaluate(() => [...document.querySelectorAll("#lanes a")].every((a) => a.getAttribute("aria-disabled") !== "true"))) && (S1.absent & S1.bits.agentcard) !== 0, "the six lanes are offered in the console, the Gallery first, the agent link withheld while the AgentCard has no code", String(probe.lanes));
     const off = pg.log.requests.filter((u) => !u.startsWith(ctx.web.origin + "/") && !/^(data|blob):/.test(u));
     t.ok(pg.log.requests.length >= 1 && off.length === 0, `nothing points off-origin: every request Chromium made went to 127.0.0.1:${ctx.web.port} (${pg.log.requests.length} requests)`, off.join(","));
     t.ok(pg.clean(), "no script threw, no console error and no CSP violation on the holder's page", pg.problems());
@@ -578,10 +702,11 @@ async function groupBoot(t, ctx) {
     await pg.announce(WB); await pg.settle();
     await pg.click("#connect");
     await pg.until(() => __n("#picker button[data-rdns]") === 2, null, 3000);
-    const askedNothing = WA.count("eth_requestAccounts") === 0 && WB.count("eth_requestAccounts") === 0;
+    const askedNothing = WA.count("eth_requestAccounts") === 0 && WB.count("eth_requestAccounts") === 0, offered = await pg.count("#picker button[data-rdns]");
     await pg.click("#picker button[data-rdns='io.b']");
     await pg.until(() => document.body.dataset.rights === "1", null, 5000);
-    t.ok(chainOnA && askedNothing && WB.count("eth_requestAccounts") === 1 && WA.count("eth_requestAccounts") === 0 && WB.count("eth_call") >= 1,
+    /* W14 (INTEGRATION L15): the claim only the wait above had checked is now the sentence's too */
+    t.ok(chainOnA && askedNothing && offered === 2 && (await pg.body()).rights === "1" && WB.count("eth_requestAccounts") === 1 && WA.count("eth_requestAccounts") === 0 && WB.count("eth_call") >= 1,
       "a late wallet joins, and the gesture asks: the picker opens and eth_requestAccounts goes to the wallet the person picked", `A.req ${WA.count("eth_requestAccounts")} B.req ${WB.count("eth_requestAccounts")} B.calls ${WB.count("eth_call")}`);
     await pg.close();
   }
@@ -607,7 +732,7 @@ async function groupBoot(t, ctx) {
     await pg.until(() => document.body.dataset.chain === "ok" && document.body.dataset.rights === "1", null, 5000);
     const sw = W.calls.filter((x) => x.method === "wallet_switchEthereumChain");
     t.ok(pre && sw.length === 1 && sw[0].params[0].chainId === "0x1" && W.count("wallet_addEthereumChain") === 0, "the wrong chain is refused before any read, the footer says self-consistent, and #switch sends wallet_switchEthereumChain only — never wallet_addEthereumChain", `pre ${pre} chain ${b0.chain} crest "${crest}" verified "${ver}" sw ${sw.length} add ${W.count("wallet_addEthereumChain")}`);
-    t.ok(rightsCalls(W).length === 1 && (await pg.body()).chain === "ok" && W.count("eth_chainId") === 2 && W.count("eth_accounts") === 1, "chainChanged recomputes, and a successful #switch refreshes every read once", `rightsOf ${rightsCalls(W).length} eth_chainId ${W.count("eth_chainId")} eth_accounts ${W.count("eth_accounts")}`);
+    t.ok(rightsCalls(W).length === 1 && (await pg.body()).chain === "ok" && (await pg.body()).rights === "1" && W.count("eth_chainId") === 2 && W.count("eth_accounts") === 1, "chainChanged recomputes, and a successful #switch refreshes every read once", `rightsOf ${rightsCalls(W).length} eth_chainId ${W.count("eth_chainId")} eth_accounts ${W.count("eth_accounts")}`);
     await pg.setAccounts(W, [renter.from.toString()]);
     await pg.until(() => document.body.dataset.rights === "4", null, 5000);
     const rc = rightsCalls(W), lastArg = rc.length ? lower(addrWord(rc[rc.length - 1].params[0].data, 1)) : "";
@@ -689,6 +814,27 @@ async function groupBoot(t, ctx) {
     const price = decUint(await c.read(hub, "price()"));
     t.ok(W.callsTo(hub, sel("price()")).length >= 1 && await pg.ds("#cslab [data-value]", "wei") === String(price) && await pg.fn() === "mint(address)" && await pg.text("#cslab [data-arg='0']") === checksum(buyer.from.toString()) && /^\d+ units$/.test(await pg.gasRow()),
       "the mint re-reads the price and proposes exactly it, the minter decoded from the bytes, estimated before the wallet", `wei ${await pg.ds("#cslab [data-value]", "wei")} fn ${await pg.fn()} gas "${await pg.gasRow()}"`);
+    /* W13: the harness's own visible() is honest about a fold. The slab's "the facts it signs" is a closed <details>
+       whose rows keep client rects in Chromium, so the box test alone called them visible; opened, the row is shown,
+       and closed again the slab is as it was */
+    const fold = [await pg.visible("#cslab [data-to]"), await pg.visible("#cslab details > summary"), await pg.visible("#cslab [data-gas]")];
+    await pg.click("#cslab details > summary");
+    const unfolded = await pg.visible("#cslab [data-to]");
+    await pg.click("#cslab details > summary");
+    t.ok(fold.join() === "false,true,true" && unfolded === true,
+      "the harness's visible() reads a row inside the slab's closed details as not visible, the details' summary and the gas row as visible, and the row as visible once the details is opened",
+      `closed: To, summary, Gas ${fold.join(", ")}; opened: To ${unfolded}`);
+    /* W14 (INTEGRATION L3): the mint's sentence carries the minter's full address, one word wider than a 390 px sheet;
+       it breaks anywhere rather than run off the edge. The sheet's slide (.55 s) ends before the box is read */
+    await pg.page.setViewportSize({ width: 390, height: 844 });
+    await pg.settle(700);
+    const fit = await pg.evaluate(() => {
+      const e = document.querySelector("#cslab [data-sentence]"), sl = document.querySelector("#cslab").getBoundingClientRect(), rg = document.createRange(); rg.selectNodeContents(e);
+      return { text: e.textContent, sw: e.scrollWidth, cw: e.clientWidth, textRight: Math.round(rg.getBoundingClientRect().right), slabRight: Math.round(sl.right), vw: innerWidth };
+    });
+    await pg.page.setViewportSize({ width: 1200, height: 900 });
+    t.ok(fit.text.includes(checksum(buyer.from.toString())) && fit.sw <= fit.cw && fit.textRight <= fit.slabRight && fit.slabRight <= fit.vw,
+      "at 390 px a signing sentence that carries a full address wraps inside the sheet: its box does not overflow and no word runs past the edge", JSON.stringify(fit));
     await pg.ready();
     await pg.click("#cslab [data-go]");
     await pg.navigated(/\/token\/4\/live$/);
@@ -705,6 +851,26 @@ async function groupBoot(t, ctx) {
     const label = await pg.attr("#qr svg[role=img]", "aria-label");
     const q = await qrDecode(pg, "#qr svg");
     t.ok(label === WEB3 && q.text === WEB3 && q.width >= 300, "the QR as Chromium paints it decodes to the web3:// link", `decoded ${q.text} (${q.width}×${q.height}) label ${label}`);
+    await pg.close();
+  }
+
+  t.head("W · the harness's own waits, and the ticker's log (W14, INTEGRATION L15)");
+  {
+    const pg = await ctx.open({ wallet: ctx.wallet(me) });
+    let thrown = null;
+    try { await pg.until(() => document.body.dataset.never === "1", null, 300); } catch (e) { thrown = e; }
+    const soft = await pg.until(() => document.body.dataset.never === "1", null, 300, { soft: true }), met = await pg.until(() => document.body.dataset.mode === "console", null, 300);
+    t.ok(!!thrown && thrown.name === "UntilTimeout" && /^until timed out after 300 ms in group boot, waiting at tools\/verify-console\.mjs:\d+/.test(thrown.message) && thrown.message.includes('document.body.dataset.never === "1"'),
+      "a wait in Chromium that times out throws, naming its timeout, its group, the line that waited and its condition", thrown ? thrown.message : "did not throw");
+    t.ok(soft === false && met === true, "the soft form answers false where the wait would throw, and a wait that is met answers true", `soft ${soft} met ${met}`);
+    /* two sentences said in one task, as a receipt that moves the epoch says them: the ticker's text keeps the second,
+       its log keeps both, in order — which is how sign reads a landing however briefly it was on screen */
+    const before = (await pg.ticks()).length;
+    await pg.evaluate(() => { window.INTACT.ui.say("landed in block 1 — the log's own test"); window.INTACT.ui.say("ownership or epoch changed — review again", "err"); });
+    await pg.settle(60);
+    const said = await pg.ticks(before);
+    t.ok(said.join(" | ") === "landed in block 1 — the log's own test | ownership or epoch changed — review again" && await pg.tick() === "ownership or epoch changed — review again",
+      "the ticker's log keeps a sentence the page replaced within the same task, though the ticker itself reads only the second", JSON.stringify(said));
     await pg.close();
   }
 }
@@ -748,13 +914,18 @@ async function groupViewer(t, ctx) {
     const loaded = await pg.evaluate(() => Object.keys(window.INTACT.panels).every((n) => window.INTACT.loaded[n] === true));
     v(loaded && W.callsTo(S1.engine, sel("panel(uint256)")).length >= 6 && await pg.count("script[src^='blob:']") >= 6 && httpReqs(pg).length === 0,
       "every panel came through eth_call engine.panel(i), hash-checked and injected as a blob: script, and still nothing was fetched", `panel calls ${W.callsTo(S1.engine, sel("panel(uint256)")).length} blob ${await pg.count("script[src^='blob:']")} http ${httpReqs(pg).length}`);
-    /* every button a person could reach, pressed; every lane opened; the wallet was never asked to prompt */
+    /* every button a person could reach, pressed; every lane opened; the wallet was never asked to prompt. A lane's own
+       visible buttons are counted again before each press, a read of one waits 1.5 s at most, as the click beside it
+       does, and a sheet's ✕ is pressed last. Until W16 the sweep counted the page's buttons once and pressed in document
+       order: the agent sheet's ✕ came first and closed it, its other buttons were never pressed, and the nth() past the
+       new end waited out Playwright's default 30 s inside the try (W7's request 6; measured, 30.0 s of the group's 43–49 s) */
     const pressed = [];
     for (const n of Object.keys(S1.panels)) {
       await pg.hash(n); await pg.settle(40);
-      const btns = pg.frame.locator("button:visible");
-      const k = await btns.count();
-      for (let i = 0; i < k; i++) { try { const b = btns.nth(i); pressed.push(await b.textContent()); await b.click({ timeout: 1500 }); } catch {} }
+      const btns = pg.frame.locator(`#lane-${n} button:visible`);
+      for (let i = 0; i < 40 && i < await btns.count(); i++) { try { const b = btns.nth(i); pressed.push(await b.textContent({ timeout: 1500 })); await b.click({ timeout: 1500 }); } catch {} }
+      const x = pg.frame.locator("#room-x:visible");
+      if (await x.count()) { try { pressed.push(await x.textContent({ timeout: 1500 })); await x.click({ timeout: 1500 }); } catch {} }
     }
     await pg.settle(300);
     v(W.prompts().length === 0 && await pg.count("[data-go]") === 0 && await pg.count("[data-act]") === 0 && !(await pg.slabOpen()) && await pg.count("textarea") === 0,
@@ -765,14 +936,12 @@ async function groupViewer(t, ctx) {
     ]), hub);
     v(/nothing here can sign; open the console at web3:/.test(refused[0]) && /nothing here can sign/.test(refused[1] || "") && !(await pg.slabOpen()) && W.prompts().length === 0,
       "propose and sealSignature refuse in the viewer with the §1 sentence: no slab, no personal_sign", JSON.stringify(refused));
-    /* OBSERVATION (reported, not fixed here — engine/panels/vault.js is U9's): a data: frame is not a secure
-       context, so navigator.clipboard is undefined in Chromium and the Grip's copy button throws an uncaught
-       TypeError when pressed in a marketplace frame. It is the one error this block sets aside, by name. */
-    const clip = pg.log.errors.filter((e) => /clipboard|writeText/.test(e));
-    if (clip.length) t.note(`observation: the Grip's copy button threw in the data: frame — ${clip[0]} (navigator.clipboard is undefined on an opaque origin; engine/panels/vault.js writeText is unguarded)`);
-    const rest = pg.log.errors.filter((e) => !/clipboard|writeText/.test(e));
-    v(httpReqs(pg).length === 0 && rest.length === 0 && pg.log.consoleErrors.filter((e) => !/clipboard|writeText/.test(e)).length === 0 && pg.log.csp.length === 0,
-      "fetch was never called: no http request left the data: page, no CSP violation, and no script threw (the clipboard observation set aside)", `http ${httpReqs(pg).length} ${rest.join(" | ")}`);
+    /* a data: frame is no secure context, so navigator.clipboard is undefined there; since W10 the Grip's copy button
+       says so in words and throws nothing, so this block sets no error aside (INTEGRATION L13) — and the sweep above
+       pressed it with every other */
+    v(httpReqs(pg).length === 0 && pressed.includes("copy") && pg.log.errors.length === 0 && pg.log.consoleErrors.length === 0 && pg.log.csp.length === 0,
+      "fetch was never called: no http request left the data: page, no CSP violation, and no script threw, the Grip's copy button among the buttons pressed",
+      `http ${httpReqs(pg).length} copy pressed ${pressed.includes("copy")} ${[...pg.log.errors, ...pg.log.consoleErrors].join(" | ").slice(0, 300)}`);
     await pg.close();
   }
   {
@@ -944,7 +1113,7 @@ async function agentGroup(t, ctx) {
     await pg.click("#lane-agent #agent-doors");
     await pg.until(() => /doors open for key/.test(__t("#lane-agent #agent-allowed")), null, 30000);
     const doors = await pg.evaluate(() => [...document.querySelectorAll("#lane-agent #agent-allowed .row")].map((r) => r.dataset.row).sort().join());
-    t.ok(new RegExp("/token/1/live\\?as=" + lower(AGENT) + "$").test(url) && (await pg.body()).mode === "session" && /^allowlist · expires/.test(kf) && /granted at epoch 1 \(the token is at epoch 1\)/.test(kf) && /native cap 1 ETH/.test(kf) &&
+    t.ok(new RegExp("/token/1/live\\?as=" + lower(AGENT) + "$").test(url) && (await pg.body()).mode === "session" && /^allowlist · expires/.test(kf) && /SESSION right yes/.test(kf) && /granted at epoch 1 \(the token is at epoch 1\)/.test(kf) && /native cap 1 ETH/.test(kf) &&
       doors === "parley.speak,pool.swapExactIn" && await pg.count("[data-act]") === 0 && await pg.count("[data-go]") === 0 && /this page reads only: the act is offered in the console/.test(await pg.text("#lane-agent")) && W.prompts().length === 0 && W.sent() === 0 && pg.clean(),
       "the /k/<id>/<key> door, followed by Chromium, prints the key's envelope and the doors its grant opens, and offers no write",
       `url ${url} doors ${doors} acts ${await pg.count("[data-act]")} facts "${kf.slice(0, 160)}" ${pg.problems()}`);
@@ -970,7 +1139,7 @@ async function agentGroup(t, ctx) {
     await pg.lane("agent");
     await pg.until(() => __n("#lane-agent #agent-sessions .row") === 2 && /SESSION right no/.test(__t("#lane-agent #agent-key-facts")), null, 15000);
     t.ok(before === 0n && await rightsOf(STRANGER) === 0n && lower(decAddr(await c.read(nft, "ownerOf(uint256)", [1n]))) === lower(reach1) && await c.balanceOf(grip1) === WAD &&
-      (await pg.body()).rights === "0" && await keysOf(pg) === [lower(AGENT), lower(TRADER)].sort().join() && await pg.count("#lane-agent [data-act]") === 0 && /revoked or never granted/.test(await T(pg, "agent-key-facts")) && pg.clean(),
+      (await pg.body()).rights === "0" && await keysOf(pg) === [lower(AGENT), lower(TRADER)].sort().join() && await pg.count("#lane-agent [data-act]") === 0 && /revoked or never granted/.test(await T(pg, "agent-key-facts")) && /SESSION right no/.test(await T(pg, "agent-key-facts")) && pg.clean(),
       "a stranger's NFT in the Reach and ether in the Grip change nothing the lane reads: rights 0, the same keys, no new session",
       `rights ${before} → ${await rightsOf(STRANGER)} body ${(await pg.body()).rights} keys ${await keysOf(pg)} facts "${(await T(pg, "agent-key-facts")).slice(0, 120)}"`);
     await pg.close();
@@ -1003,7 +1172,7 @@ async function groupSwap(t, ctx) {
     const pg = await ctx.open({ wallet: W, path: "/token/2/live" });
     await pg.lane("swap");
     const tab = await pg.evaluate(() => { const e = document.querySelector("#lane-swap [data-tab=elsewhere]"); return e ? !!e.closest("[hidden]") : "absent"; });
-    t.ok(S2.router === ZERO && (tab === "absent" || tab === true) && await pg.count(L("[data-act=swapElsewhere]")) === 0 && /not deployed on this chain/.test(await pg.text("#lane-swap")) && await pg.text("#chips .chip[data-bit=router]") === "router: not deployed on this chain",
+    t.ok(S2.router === ZERO && (tab === "absent" || tab === true) && await pg.count(L("[data-act=swapElsewhere]")) === 0 && /router: not deployed on this chain/.test(await pg.text("#lane-swap")) && await pg.text("#chips .chip[data-bit=router]") === "router: not deployed on this chain",
       "an absent Router hides the Elsewhere tab and sets the chip to not deployed on this chain", `tab ${tab} chip "${await pg.text("#chips .chip[data-bit=router]")}"`);
     await pg.close();
   }
@@ -1096,7 +1265,7 @@ async function groupSwap(t, ctx) {
     await pg.until(() => !__on("#cbox"), null, 8000);
     await pg.settle(100);
     const epochReads = W.callsTo(hub, sel("custodyEpoch(uint256)")).map((x) => W.calls.indexOf(x)).filter((i) => i >= mark);
-    ep(/^\d+ units$/.test(passed) && epochReads.length === 1 && /ownership or epoch changed — review again/.test(await pg.tick()) && W.sent() === 0 && W.prompts().length === 0,
+    ep(/^\d+ units$/.test(passed) && epochReads.length === 1 && !(await pg.slabOpen()) && /ownership or epoch changed — review again/.test(await pg.tick()) && W.sent() === 0 && W.prompts().length === 0,
       "the epoch is re-read immediately before Sign, and a sale landed under the open slab closes it unsent", `gas "${passed}" epochReads ${epochReads.length} tick "${await pg.tick()}" sent ${W.sent()}`);
     /* the page still believes its stale rights; the chain does not: the estimate names the error before the wallet */
     await pg.until(() => __e("#lane-swap #swap-your-market input[name=feeBps]"), null, 5000);
@@ -1122,7 +1291,8 @@ async function groupSwap(t, ctx) {
     for (let i = 0; i < 400 && W.sent() < 1; i++) await nap(25);
     /* inside the watcher's two seconds: a second slab, estimated and ready */
     const second = pg.evaluate(([w, p]) => window.INTACT.ui.propose({ to: w, key: "erc20.approve", args: [p, "1"], lines: [["Lets", "x"]], sentence: "approves one wei" }).then(() => "closed"), [weth, pool]);
-    const open2 = await pg.until(() => __on("#cbox") && /units/.test(__t("#cslab [data-gas]")), null, 1500);
+    /* soft: a short wait inside the watcher's two seconds, raced against the receipt; its answer is the sentence's */
+    const open2 = await pg.until(() => __on("#cbox") && /units/.test(__t("#cslab [data-gas]")), null, 1500, { soft: true });
     await pg.until((e) => window.__ev.rights > e, ev, 20000);
     await pg.settle(150);
     const outcome = await Promise.race([second, nap(3000).then(() => "still open")]);
@@ -1135,6 +1305,100 @@ async function groupSwap(t, ctx) {
   }
   t.ok(G, "a non-holder never reaches a wallet prompt");
   t.ok(EP, "the console re-reads the epoch after every receipt and discards stale slabs");
+
+  /*  V2 (W9, the Trade lane): lock what I receive and write a memory, clicked through as a person clicks,
+      on a chain of its own whose site carries the Keepsake and the Journal (deploySite's v2: true) — the
+      holder of #2 pays 0.5 ETH, locks the WETH 30 days then frees it over 30, sells it slowly never below
+      a floor, and writes a memory; on the way, one refusal in words (a drip asked for a gift). */
+  t.head("V · lock what I receive, then a memory of the trade (V2: the Keepsake and the Journal on chain)");
+  let V = true;
+  const vv = (cond, name, d) => { t.ok(cond, name, d); V = V && !!cond; };
+  const SAW = "swapAndWrap((uint256,bool,uint256,uint256,uint64,(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))";
+  const INSCRIBE = "inscribe(address,uint256,uint8,bytes,bytes32)", MEMO = "locked 30 days: not selling the top this time";
+  const x2 = await fresh({ v2: true });
+  try {
+    const c2 = x2.c, s2 = x2.site, w2 = x2.weth, ME2 = x2.actors.me.from.toString();
+    await mint(c2, s2, ME2); await mint(c2, s2, ME2);
+    await c2.exec(w2, "mint(address,uint256)", [ME2, 1000n * WAD]);
+    await c2.exec(w2, "approve(address,uint256)", [s2.pool, 200n * WAD]);
+    await c2.exec(s2.pool, OPEN, [2, w2, ZERO, 30, 0, 0, 0], { label: "openMarket" });
+    await c2.exec(s2.pool, DEPOSIT, [2, 100n * WAD, 10n * WAD], { value: 10n * WAD, label: "deposit" });
+    const W = x2.wallet(x2.actors.me);
+    const pg = await x2.open({ wallet: W, path: "/token/2/live" });
+    await pg.lane("swap");
+    await pg.click(L("#swap-flip")); await pg.settle(50);
+    await quote(pg, "0.5");
+    await pg.click(L("#swap-lock-on"));
+    await pg.until(() => __e("#lane-swap input[name=lockDays]"), null, 5000);
+    await pg.fill(L("input[name=lockDays]"), "30"); await pg.fill(L("input[name=freeDays]"), "30");
+    await pg.click(L("#swap-drip-on"));
+    await pg.until(() => __e("#lane-swap input[name=floor]"), null, 5000);
+    await pg.fill(L("input[name=floor]"), "0.09");
+    await pg.fill(L("textarea[name=memory]"), MEMO);
+    const q = decUint(await c2.read(s2.pool, "quote(uint256,bool,uint256)", [2, false, WAD / 2n])), lim = q - q * 50n / 10000n;
+    const say = "You pay 0.5 ETH and receive at least " + full(lim) + " WETH, locked for 30 days, then freed slowly over 30 days; it sells itself slowly, never below 0.09 ETH per WETH.";
+    await pg.until((s) => __t("#lane-swap #swap-say") === s, say, 5000);
+    vv(await pg.text(L("#swap-say")) === say && await pg.attr(L("#swap-lock-on"), "aria-checked") === "true" && await pg.text(L("#swap-go")) === "Swap and lock" && await pg.visible(L("#swap-lock-dates")),
+      "the lock is a switch a person turns on; its days, its floor and the memory are typed, and the card says in one breath what the slab will", await pg.text(L("#swap-say")));
+    /* W14 (INTEGRATION L4): the switch, the one breath and the orb are the shell's stylesheet; the panel writes no <style> */
+    const look = await pg.evaluate(() => {
+      const b = document.querySelector("#lane-swap #swap-lock-on"), cs = getComputedStyle(b), k = getComputedStyle(b, "::after");
+      return { styles: document.querySelectorAll("style").length, own: !!document.querySelector("#swap-style"), display: cs.display, pad: cs.paddingTop + " " + cs.paddingLeft,
+        knob: k.width + " " + k.height, on: /radial-gradient.*linear-gradient/.test(k.backgroundImage), say: getComputedStyle(document.querySelector("#lane-swap #swap-say")).fontSize };
+    });
+    t.ok(!look.own && look.styles === 1 && look.display === "flex" && look.pad === "12px 14px" && look.knob === "40px 22px" && look.on && look.say === "17px",
+      "in Chromium the switch is the shell's: a row with its knob 40 × 22 px, on the token's two hues once turned on, the one breath at 17 px, and the panel wrote no stylesheet", JSON.stringify(look));
+    /* the refusal: a gift with the drip on is refused in words, under the switch and at the press, before any wallet */
+    const why = "a drip is only for a keepsake you keep: a giver never sells a recipient's gift";
+    await pg.click(L("#swap-gift-on"));
+    await pg.until(() => __e("#lane-swap input[name=giftTo]"), null, 5000);
+    await pg.fill(L("input[name=giftTo]"), x2.actors.buyer.from.toString());
+    await pg.until((s) => __t("#lane-swap #swap-lock-why") === s, why, 5000);
+    const est0 = W.count("eth_estimateGas");
+    await pg.click(L("#swap-go")); await pg.settle(300);
+    vv(await pg.tick() === why && await pg.text(L("#swap-lock-why")) === why && !(await pg.slabOpen()) && W.count("eth_estimateGas") === est0 && W.prompts().length === 0 && await pg.visible(L("#swap-lock-why")),
+      "a drip asked for a gift is refused in words in Chromium: under the switch and in the ticker, no slab, no estimate, no prompt", await pg.tick());
+    await pg.click(L("#swap-gift-on"));
+    await pg.until((s) => __t("#lane-swap #swap-say") === s, say, 5000);
+    /* the lock: one slab, the ether as its value, the card's breath as its sentence */
+    const gas = await pg.press(L("#swap-go"));
+    const scd = await pg.slabCd();
+    vv(await pg.fn() === SAW && lower(await pg.text("#cslab [data-to]")) === lower(s2.keepsake) && await pg.text("#cslab [data-sentence]") === say && await pg.ds("#cslab [data-value]", "wei") === String(WAD / 2n) &&
+      await pg.argsAgree(SAW) && /^\d+ units$/.test(gas) && /never below 0\.09 ETH per WETH/.test(await pg.line("Sells") || ""),
+      "pressed, the lock is one Keepsake.swapAndWrap slab: the ether as its value, the one breath as its sentence, every field a line", `${await pg.fn()} | ${gas}`);
+    await pg.sign(W, 1);
+    const swap = [...W.receipts.values()].pop(), WRAPPED = kec("Wrapped(uint256,address,address,uint64,uint64,uint64,uint256,string)");
+    const wl = swap.logs.find((l) => lower(l.address) === lower(s2.keepsake) && l.topics[0] === WRAPPED), id = wl ? BigInt(wl.topics[1]) : 0n;
+    /* soft: the answer rides into the sentence below, which names the second slab it waited for */
+    const offered = await pg.until((f) => __on("#cbox") && __t("#cslab [data-function]") === f && __t("#cslab [data-gas]") !== "estimating…", INSCRIBE, 15000, { soft: true });
+    vv(swap.status === "0x1" && id > 0n && await pg.ds(L("#swap-kept .keepsake"), "id") === String(id) && offered && /public/.test(await pg.text("#cslab [data-sentence]")) &&
+      lower((await pg.slabCd()).slice(10 + 4 * 64, 10 + 5 * 64)) === lower(swap.transactionHash.slice(2)) && W.callsTo(s2.keepsake).length === 0,
+      "the receipt lands: the keepsake's id from its Wrapped log, and a second slab offers the memory with the swap's transaction as its ref", `id ${id} offered ${offered}`);
+    /* W17 (its f21-orb): the keepsake's orb is app.css's ::before on the card, a round box floated before the card's
+       words, read where the card stands once the locked swap has landed; the shim has no stylesheet and no layout. The
+       words start where the orb and its 12 px margin end */
+    const orb = await pg.evaluate(() => {
+      const k = document.querySelector("#lane-swap #swap-kept .keepsake");
+      if (!k) return null;
+      const o = getComputedStyle(k, "::before"), cs = getComputedStyle(k), tw = document.createTreeWalker(k, NodeFilter.SHOW_TEXT);
+      let n = tw.nextNode(); while (n && !n.textContent.trim()) n = tw.nextNode();
+      const r = document.createRange(); if (n) r.selectNodeContents(n);
+      const first = n ? r.getClientRects()[0] : null, inner = k.getBoundingClientRect().left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft);
+      return { content: o.content, w: o.width, h: o.height, radius: o.borderRadius, float: o.cssFloat, lit: /radial-gradient/.test(o.backgroundImage), words: n ? n.textContent.trim().slice(0, 48) : "", indent: first ? Math.round(first.left - inner) : null };
+    });
+    t.ok(!!orb && orb.content === '""' && orb.w === "46px" && orb.h === "46px" && orb.radius === "50%" && orb.float === "left" && orb.lit && orb.words.startsWith(`keepsake #${id} holds what arrived`) && orb.indent === 58,
+      "in Chromium the keepsake's orb is the shell's: a 46 × 46 px circle before the keepsake's words", JSON.stringify(orb));
+    await pg.sign(W, 2);
+    await pg.until(() => /memory #1 is in #2's journal/.test(__t("#lane-swap #swap-kept")), null, 15000);
+    const ins = c2.getLogs({ address: s2.journal, topics: [kec("Inscribed(address,uint256,uint256,uint8,address,uint64,bytes32,bytes32,bytes)")] }).pop();
+    const d = ins ? ins.data.slice(2) : "";
+    vv(!!ins && BigInt(ins.topics[2]) === 2n && lower("0x" + d.slice(3 * 64, 4 * 64)) === lower(swap.transactionHash) && Buffer.from(d.slice(7 * 64, 7 * 64 + MEMO.length * 2), "hex").toString("utf8") === MEMO &&
+      /memory #1 is in #2's journal/.test(await pg.text(L("#swap-kept"))) && word(scd, 0) === 32n,
+      "signed, the memory lands in #2's journal: the Inscribed log carries the words and the swap's transaction", ins ? ins.transactionHash : "no log");
+    vv(pg.clean(), "nothing threw on the lock's page", pg.problems());
+    await pg.close();
+  } finally { await x2.close(); }
+  t.ok(V, "lock what I receive and write a memory of the trade, clicked through in Chromium: one slab locks, the id comes from the Wrapped log, the memory follows the receipt");
 }
 
 /*──────────────── social ────────────────*/
@@ -1185,7 +1449,8 @@ async function groupSocial(t, ctx) {
     d(await pg.fn() === SPEAK && word(cd, 0) === 0n && word(cd, 1) === 1n && word(cd, 5) === 0xc0n && /the commons/.test(await pg.text("#cslab")) && /^\d+ units$/.test(await pg.gasRow()), "speaking raises a slab naming the commons and speak, the body at 0xc0, estimated", `fn ${await pg.fn()} gas "${await pg.gasRow()}"`);
     const c1 = await count(0n);
     await pg.sign(W, 1);
-    const grew = await pg.until(() => __n("#lane-social #social-commons .row") === 3, null, 15000);
+    /* soft: the answer rides into the sentence below, which names the row count it waited for */
+    const grew = await pg.until(() => __n("#lane-social #social-commons .row") === 3, null, 15000, { soft: true });
     const cr = await rows(pg, "#social-commons"), rc = [...W.receipts.values()].pop();
     d(grew && await count(0n) === c1 + 1n && cr.length === 3 && cr[2][1] === "a word from Chromium" && cr[2][0] === "#1" && await pg.value(L("#social-composer textarea")) === "" && /landed in block/.test(await pg.tick()) && rc.status === "0x1",
       "Sign → stateOf(0) moves by one, the walk shows the word under #1, the composer is cleared", `grew ${grew} count ${c1} → ${await count(0n)} rows ${JSON.stringify(cr)} status ${rc && rc.status} revert ${rc && rc.revert} tick "${await pg.tick()}" errors ${pg.problems()}`);
@@ -1225,7 +1490,7 @@ async function groupSocial(t, ctx) {
     await pg.fill(L("#social-dm-to"), "3");
     await pg.until(() => __e("#lane-social #social-dm-derive"), null, 10000);
     const status = () => pg.text(L("#social-dm-status"));
-    i(/both keys are bound/.test(await status()) && await pg.count(L("[data-act=whisper]")) === 0, "both keys bound: the key must be derived first and nothing is offered in the clear", await status());
+    i(/both keys are bound/.test(await status()) && await pg.exists(L("#social-dm-derive")) && await pg.count(L("[data-act=whisper]")) === 0, "both keys bound: the key must be derived first and nothing is offered in the clear", await status());
     await pg.click(L("#social-dm-derive"));
     await pg.until(() => /^sealed/.test(__t("#lane-social #social-dm-status")), null, 15000);
     const ps2 = W.prompts().filter((p) => p.method === "personal_sign");
@@ -1279,6 +1544,74 @@ async function groupSocial(t, ctx) {
     await pg.close();
   }
   t.ok(I, "the sealed DM re-reads the key before every send and refuses after rotation");
+
+  /*  A · Agora (V2, W11), on a chain of its own (deploySite's v2: true): the lane speaks Agora, and a
+      person's path through it — a tap on the commons chip, words typed and signed, a ✦ with a tip on
+      another token's word, a follow typed and signed — every step a Playwright click or fill on what
+      Chromium paints, the wallet answering over EIP-6963 as everywhere in this battery. */
+  t.head("A · Agora in Chromium: a person speaks, reacts with a tip and follows");
+  let AJ = true;
+  const aj = (cond, name, x) => { t.ok(cond, name, x); AJ = AJ && !!cond; };
+  {
+    const X = await ctx.fresh({ v2: true });
+    try {
+      const c2 = X.c, s2 = X.site, me2 = X.actors.me, ME2 = me2.from.toString(), hub2 = s2.hub, agora = s2.agora;
+      const P = (coll, id) => (BigInt(coll) << 96n) | BigInt(id), P1 = P(hub2, 1), P2 = P(hub2, 2);
+      await mint(c2, s2, ME2); await mint(c2, s2, ME2);
+      await c2.exec(agora, SPEAK, [0, P2, 0, 0, 0, hexOf("two says hello")], { label: "speak" });
+      EVM.roll(EVM.BLOCK.header.number + 2n);
+      const sink = decAddr(await c2.read(hub2, "feeSink(uint256)", [2])), reach2 = decAddr(await c2.read(hub2, "account(uint256)", [2]));
+      const W = X.wallet(me2);
+      const pg = await X.open({ wallet: W });
+      await pg.lane("social");
+      await pg.until(() => __n("#lane-social #social-tabs button") === 6 && __on("#lane-social #social-tabs [data-tab=feed]"), null, 15000);
+      aj(await pg.count(L("#social-tabs button")) === 6 && await pg.visible(L("#social-tabs [data-tab=commons]")) && await pg.attr(L("#social-tabs [data-tab=feed]"), "aria-pressed") === "true" && !(await pg.exists(L("#social-inbox"))),
+        "with Agora reported the lane opens on the feed, the rooms one tap away as chips Chromium paints, and no Parley inbox", `chips ${await pg.count(L("#social-tabs button"))}`);
+      await pg.click(L("#social-tabs [data-tab=commons]"));
+      await pg.until(() => __n("#lane-social #social-commons .row") === 1 && __e("#lane-social #social-composer textarea"), null, 15000);
+      await pg.fill(L("#social-composer textarea"), "hello from Chromium");
+      await pg.press(L("#social-composer [data-act=speak]"));
+      aj(await pg.fn() === SPEAK && lower(await pg.text("#cslab [data-to]")) === lower(agora) && word(await pg.slabCd(), 0) === 0n && word(await pg.slabCd(), 1) === P1 && /as #1, in the commons, forever/.test(await pg.text("#cslab [data-sentence]")) && /^\d+ units$/.test(await pg.gasRow()),
+        "tapping the commons and speaking raises Agora's speak(0, #1's persona, …) with the sentence first, and the estimate passes", `fn ${await pg.fn()} gas "${await pg.gasRow()}"`);
+      await pg.sign(W, 1);
+      await pg.until(() => __n("#lane-social #social-commons .row") === 2, null, 15000);
+      const cr = await rows(pg, "#social-commons");
+      aj(cr.length === 2 && cr[1][0] === "#1" && cr[1][1] === "hello from Chromium" && /landed in block/.test(await pg.tick()) && decUint(await c2.read(agora, "stateOf(uint256)", [0]), 1) === 2n,
+        "signed, the word lands in Agora's commons and the walk shows it under #1", JSON.stringify(cr));
+      /* W14 (INTEGRATION L4): a post's rule is the shell's .post; the lane sets no style on a row */
+      const post = await pg.evaluate(() => [...document.querySelectorAll("#lane-social #social-commons .row")].map((r) => { const cs = getComputedStyle(r); return [r.className, r.getAttribute("style"), cs.paddingTop, cs.paddingLeft, cs.borderBottomWidth, cs.borderBottomStyle]; }));
+      t.ok(post.length === 2 && post.every((x) => /\bpost\b/.test(x[0]) && x[1] === null && x[2] === "10px" && x[3] === "0px" && x[4] === "1px" && x[5] === "solid"),
+        "in Chromium an Agora post is drawn by the shell's .post rule: 10 px above and below, a rule beneath, and no style of the row's own", JSON.stringify(post));
+      /* the tip is one tap away: the disclosure's line says what a ✦ does now, and opening it shows the two fields */
+      const opened = () => pg.evaluate(() => document.querySelector("#lane-social #social-react").open);
+      const before = [await opened(), await pg.text(L("#social-react summary"))];
+      await pg.click(L("#social-react summary"));
+      await pg.fill(L("#social-tip"), "0.0001");
+      aj(before[0] === false && before[1] === "react with ✦ · no tip" && await opened() === true && await pg.text(L("#social-react summary")) === "react with ✦ · tip 0.0001 ETH",
+        "the glyph and the tip wait one tap away, under a line that says what a ✦ does: react with ✦ · no tip, then · tip 0.0001 ETH once typed", `before ${JSON.stringify(before)} after "${await pg.text(L("#social-react summary"))}"`);
+      const b0 = await c2.balanceOf(sink);
+      await pg.press(L("#social-commons .row:first-child [data-act=react]"));
+      const rcd = await pg.slabCd();
+      aj(await pg.fn() === "react(uint256,uint256,uint64,uint256,bytes4)" && word(rcd, 1) === P1 && word(rcd, 3) === P2 && await pg.ds("#cslab [data-value]", "wei") === String(WAD / 10000n) &&
+        await pg.text("#cslab [data-sentence]") === "#1 puts ✦ on #2's message 1 and tips 0.0001 ETH to the author's fee sink, its Reach " + short(checksum(reach2)) + ", in the same call" && /^\d+ units$/.test(await pg.gasRow()),
+        "a ✦ pressed on #2's word, with a tip typed, raises react carrying exactly 0.0001 ETH, and the sentence names the payee: the author's fee sink, its Reach", `"${await pg.text("#cslab [data-sentence]")}"`);
+      await pg.sign(W, 2);
+      aj((await c2.balanceOf(sink)) - b0 === WAD / 10000n && lower(sink) === lower(reach2) && (await c2.balanceOf(agora)) === 0n,
+        "signed, the tip lands in #2's Reach in the same call and nothing stays in Agora", `delta ${(await c2.balanceOf(sink)) - b0}`);
+      await pg.fill(L("#social-follow"), "2");
+      await pg.press(L("#social-follows [data-act=follow]"));
+      const fcd = await pg.slabCd();
+      aj(await pg.fn() === "follow(uint256,uint256,bool)" && word(fcd, 0) === P1 && word(fcd, 1) === P2 && word(fcd, 2) === 1n && /stays with #1 through a sale/.test(await pg.text("#cslab [data-sentence]")),
+        "following #2, typed into the follow field, raises follow(#1's persona, #2's persona, true) and says the follow stays with the token through a sale", await pg.text("#cslab [data-sentence]"));
+      await pg.sign(W, 3);
+      await pg.until(() => __t("#lane-social #social-follow-count") === "0 followers · following 1", null, 15000);
+      aj(decUint(await c2.read(agora, "followerCount(uint256)", [P2])) === 1n && await pg.text(L("#social-follow-count")) === "0 followers · following 1" && await pg.text(L("#social-following .token")) === "#2",
+        "signed, Agora counts the follow and the lane reads the same counts: 0 followers · following 1, #2", await pg.text(L("#social-follows")));
+      aj(pg.clean(), "no script threw, no unhandled rejection, no CSP violation across the Agora journey", pg.problems());
+      await pg.close();
+    } finally { await X.close(); }
+  }
+  t.ok(AJ, "on Agora a person speaks, reacts with a tip and follows, in Chromium");
 }
 
 /*──────────────── identity ────────────────*/
@@ -1383,6 +1716,7 @@ async function groupIdentity(t, ctx) {
       const cd = await pg.slabCd(), listed = await pg.fn() === "list(uint256,uint256,uint64,bytes32,(address,uint256)[])" && word(cd, 0) === 1n && word(cd, 1) === PRICE && word(cd, 4) === 160n && word(cd, 5) === 0n && /^\d+ units$/.test(gas);
       await pg.sign(W, 1);
       await pg.until(() => /^0\.25 ETH until /.test(__t("#lane-identity #identity-offer")), null, 15000);
+      const offer = await pg.text("#lane-identity #identity-offer");
       await pg.close();
       const WB = F.wallet(fb);
       const pb = await F.open({ wallet: WB });
@@ -1390,9 +1724,11 @@ async function groupIdentity(t, ctx) {
       await pb.until(() => __e("#lane-identity [data-act=buy]"), null, 15000);
       await pb.press("#lane-identity [data-act=buy]");
       const wei = await pb.ds("#cslab [data-value]", "wei");
-      await pb.sign(WB, 1);
+      /* the buy moves #1's epoch and the buyer's rights: the landing is followed by review again (CONSOLE §4.7) */
+      await pb.sign(WB, 1, { moved: true });
       const owner = lower(decAddr(await F.c.read(fh, "ownerOf(uint256)", [1]))), owed = decUint(await F.c.read(MK, "owed(address)", [FME]));
-      t.ok(listed && wei === String(PRICE) && owner === lower(FB) && owed === PRICE && decUint(await F.c.read(fh, "custodyEpoch(uint256)", [1])) === 2n && pb.clean(),
+      /* W14 (INTEGRATION L15): the claim only the wait above had checked is now the sentence's too */
+      t.ok(listed && /^0\.25 ETH until /.test(offer) && wei === String(PRICE) && owner === lower(FB) && owed === PRICE && decUint(await F.c.read(fh, "custodyEpoch(uint256)", [1])) === 2n && pb.clean(),
         "in Chromium the holder lists through the hand-laid list(…, floors) and a stranger buys at exactly the price: the token is the buyer's at the next epoch and the seller's ledger holds the price",
         `listed ${listed} value ${wei} owner ${owner} owed ${owed} ${pb.problems()}`);
       await pb.close();
@@ -1438,11 +1774,17 @@ async function groupVault(t, ctx) {
     k(await pg.fn() === "revokeOpenApprovals()" && await pg.ds(L("#vault-revoke-all"), "act") === "revokeOpenApprovals" && lower(await pg.text("#cslab [data-to]")) === lower(reach1) && W.sent() === 0 && /^\d+ units$/.test(gas), "one press proposes revokeOpenApprovals to the Reach, estimated, nothing sent", `fn ${await pg.fn()} gas "${gas}"`);
     await pg.sign(W, 1);
     await pg.until(() => /nothing may leave/.test(__t("#lane-vault #vault-approvals")), null, 10000);
-    k(W.sent() === 1 && [...W.receipts.values()][0].status === "0x1" && await ledgerLen() === 0n && await allowance() === 0n && await pg.count(L("#vault-approvals .row")) === 0, "Sign revokes in one transaction: the ledger is empty, the allowance zero, and the list says nothing may leave", `ledger ${await ledgerLen()} allowance ${await allowance()}`);
+    k(W.sent() === 1 && [...W.receipts.values()][0].status === "0x1" && await ledgerLen() === 0n && await allowance() === 0n && await pg.count(L("#vault-approvals .row")) === 0 && /nothing may leave/.test(await pg.text(L("#vault-approvals"))), "Sign revokes in one transaction: the ledger is empty, the allowance zero, and the list says nothing may leave", `ledger ${await ledgerLen()} allowance ${await allowance()}`);
     /* the Grip: the warning before the address, the QR decoded as Chromium paints it */
     const q = await qrDecode(pg, L("#vault-grip svg[role=img]"));
     const order = await pg.evaluate(() => { const all = [...document.querySelectorAll("#lane-vault #vault-grip *")]; return [all.indexOf(document.querySelector("#vault-grip-warning")), all.indexOf(document.querySelector("#vault-grip-address")), all.indexOf(document.querySelector("#vault-grip svg"))]; });
     k(q.text === "ethereum:" + S1.grip + "@1" && order[0] < order[1] && order[1] < order[2] && lower(await pg.text(L("#vault-grip-address"))) === lower(S1.grip), "the Grip's QR as Chromium paints it decodes to ethereum:<grip>@1, and the warning precedes the address", `decoded ${q.text} order ${order}`);
+    /* W14 (INTEGRATION W12-3): in the lane itself the code sits on a white card of the shell's (.qr); without it the
+       modules, which carry no fill of their own, were drawn dark on the lane's dark glass */
+    const card = await pg.evaluate(() => { const s = document.querySelector("#lane-vault #vault-grip svg[role=img]"), r = s.getBoundingClientRect(); return { bg: getComputedStyle(s).backgroundColor, w: Math.round(r.width), h: Math.round(r.height) }; });
+    const here = await qrInPlace(pg, L("#vault-grip svg[role=img]"));
+    t.ok(card.bg === "rgb(255, 255, 255)" && card.w === 184 && card.h === 184 && here.text === "ethereum:" + S1.grip + "@1" && here.light >= 50,
+      "in the lane itself the Grip's QR is painted on a white card, 184 px square, and the code read off the screen where it stands decodes to ethereum:<grip>@1", `${JSON.stringify(card)} in place "${here.text}" ${here.width}×${here.height}, ${here.light} % light`);
     /* the sell-time checklist renders before any transferFrom, and no prompt moves while it renders */
     const p0 = W.prompts().length;
     await pg.fill(L("#vault-sell input[name=to]"), BUYER);
@@ -1482,7 +1824,8 @@ async function groupVault(t, ctx) {
     const gas = await pg.press(L("#vault-panic"));
     l(await pg.fn() === "panic(uint256)" && word(await pg.slabCd(), 0) === 1n && lower(await pg.text("#cslab [data-to]")) === lower(hub) && W.sent() === 0 && /^\d+ units$/.test(gas), "the second press proposes panic(uint256), nothing sent until Sign", await pg.fn());
     const T0 = ctx.now();
-    await pg.sign(W, 1);
+    /* the panic moves #1's custody epoch: the landing is followed by review again (CONSOLE §4.7) */
+    await pg.sign(W, 1, { moved: true });
     const ok6 = decUint(await c.read(hub, "custodyEpoch(uint256)", [1])) === 2n && decUint(await c.read(hub, "statusOf(uint256)", [1])) === 1n && decUint(await c.read(reach1, "sealedUntil()")) === T0 + 365n * 86400n &&
       decBool(await c.read(reach1, "sessionAllows(address,address,bytes4)", [AGENT, pool, sel(SWAP_IN)])) === false && decUint(await c.read(postage, "inboxOf(uint256)", [1]), 1) === 0n && lower(decAddr(await c.read(hub, "userOf(uint256)", [1]))) === ZERO;
     l(ok6 && W.sent() === 1 && [...W.receipts.values()][0].status === "0x1", "one transaction does all of it: epoch 2, Paused, the Reach sealed a year, the session, inbox price, approvee and user gone", `epoch ${decUint(await c.read(hub, "custodyEpoch(uint256)", [1]))}`);
@@ -1516,6 +1859,115 @@ async function groupVault(t, ctx) {
     await pg.close();
   }
   t.ok(Lp, "panic lists what it revokes");
+
+  /* V2 (W10): keepsakes, on a band with the V2 satellites, by a person's path */
+  const v2 = await ctx.fresh({ v2: true });
+  try { await keepsakeJourney(t, v2); } finally { await v2.close(); }
+}
+
+/*  The make-a-gift journey and the claim, every control clicked or filled as a person would (Playwright's
+    actionability: visible, enabled, not covered), on a chain deployed with the V2 satellites: #1's holder
+    locks 0.1 ETH and 100 USDC as a gift to `buyer` with a note (the exact approval first, then wrap), the
+    page names the new keepsake from the Wrapped log; the buyer finds it in their own vault, time passes,
+    and the buyer's claim pays the buyer. Then the Grip's copy button in a data: frame, where
+    navigator.clipboard is undefined: it says so in words and throws nothing (W7's observation). */
+async function keepsakeJourney(t, v) {
+  const { c, site, A } = v;
+  const { me, buyer } = v.actors;
+  const ME = me.from.toString(), BUYER = buyer.from.toString(), K = site.keepsake, U6 = 10n ** 6n, DAY = 86400n;
+  const usdc = await c.deploy(A("test/mocks/MockERC20.sol", "MockERC20").bytecode, encodeParams("string,string,uint8,uint256,bool", ["USD Coin", "USDC", 6, 0, false]), "USDC");
+  await mint(c, site, ME);
+  await c.exec(usdc, "mint(address,uint256)", [ME, 1_000n * U6]);
+  const L = (s) => "#lane-vault " + s, bal = async (who) => decUint(await c.read(usdc, "balanceOf(address)", [who]));
+  let G = true, T = 0n;
+  const g = (cond, name, d) => { t.ok(cond, name, d); G = G && !!cond; };
+  t.head("V · keepsakes: a gift made and claimed, by a person's path");
+  {
+    const W = v.wallet(me);
+    const pg = await v.open({ wallet: W });
+    await pg.lane("vault");
+    await pg.until(() => /none held by/.test(__t("#lane-vault #vault-keepsakes-status")) && __e("#lane-vault #vault-make input[name=eth]"), null, 15000);
+    await pg.fill(L("#vault-make input[name=eth]"), "0.1");
+    await pg.fill(L("#vault-make input[name=token]"), usdc);
+    await pg.fill(L("#vault-make input[name=amount]"), "100");
+    await pg.fill(L("#vault-make input[name=lock]"), "0");
+    await pg.fill(L("#vault-make input[name=over]"), "10");
+    await pg.fill(L("#vault-make input[name=to]"), BUYER);
+    await pg.fill(L("#vault-make input[name=note]"), "for your first day");
+    await pg.until(() => __t("#lane-vault #vault-make .coin p.s") === "USDC · 6 decimals", null, 10000);
+    g(await pg.text(L("#vault-make .coin p.s")) === "USDC · 6 decimals" && await pg.visible(L("[data-act=wrap]")), "the coin typed by its address is named from the chain, and the review button is in view", await pg.text(L("#vault-make .coin p.s")));
+    await pg.press(L("[data-act=wrap]"));
+    g(await pg.fn() === "approve(address,uint256)" && lower(await pg.text("#cslab [data-to]")) === lower(usdc) && word(await pg.slabCd(), 1) === 100n * U6 && await pg.line("Never") === "unlimited", "the first press asks for the exact approval of 100 USDC to the Keepsake", await pg.fn());
+    /* W14 (INTEGRATION L7): the approval's line names who pulls, not "the market" */
+    t.ok(await pg.line("Lets") === "the Keepsake pull exactly 100 USDC", "in Chromium the exact approval's line names who pulls it: Lets · the Keepsake pull exactly 100 USDC", await pg.line("Lets"));
+    await pg.sign(W, 1);
+    T = v.now();   // the gift starts in the block the wrap lands in: this one, since nothing is sent before it
+    await pg.press(L("[data-act=wrap]"));
+    const sen = await pg.text("#cslab [data-sentence]");
+    g(await pg.fn() === "wrap(((address,uint256)[],(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))" && sen === `You lock 0.1 ETH and 100 USDC; they free slowly over 10 days; it is a gift to ${short(checksum(BUYER))} with your note.` && await pg.line("For") === "a gift to " + checksum(BUYER) &&
+      await pg.ds("#cslab [data-value]", "wei") === String(10n ** 17n) && await pg.line("Note") === "for your first day" && await pg.line("Schedule") === `starts when it lands; all free on ${dateOf(T + 10n * DAY)}`,
+      "the same button again shows the gift in one plain sentence before the signature: what is locked, how it frees, for whom, with a note", sen);
+    await pg.sign(W, 2);
+    await pg.until(() => /is made/.test(__t("#lane-vault #vault-keepsake-made")), null, 10000);
+    g(await pg.text(L("#vault-keepsake-made")) === `keepsake #1 is made, a gift to ${short(checksum(BUYER))} · its number from the Wrapped log` && lower(decAddr(await c.read(K, "ownerOf(uint256)", [1]))) === lower(BUYER) && [...W.receipts.values()].every((r) => r.status === "0x1") && pg.clean(),
+      "the gift lands: the page names keepsake #1 from the Wrapped log, the buyer holds it, and nothing threw", `${await pg.text(L("#vault-keepsake-made"))} ${pg.problems()}`);
+    await pg.close();
+  }
+  {
+    v.warp(T + 5n * DAY);
+    const WB = v.wallet(buyer);
+    const pb = await v.open({ wallet: WB });
+    await pb.lane("vault");
+    const C = L('.keepsake[data-id="1"]');
+    await pb.until((s) => { const k = document.querySelector(s); return !!k && !!k.querySelector("[data-act=claim]") && !!k.querySelector("img"); }, C, 15000);
+    const card = await pb.text(C), alt = await pb.attr(C + " img", "alt"), src = await pb.attr(C + " img", "src"), drawn = await pb.evaluate((s) => { const i = document.querySelector(s); return !!i && i.complete && i.naturalWidth > 0; }, C + " img");
+    g(card.includes("“for your first day”") && card.includes("a gift from " + short(checksum(ME)) + " · held by you") && /^data:image\/svg\+xml;base64,/.test(src || "") && drawn && /orb/.test(alt || "") && /^\d+ % free · fully free on /.test(await pb.text(C + " .free")),
+      "the buyer finds the gift in their own vault: its orb drawn by Chromium from the data: SVG, its note, its giver, and how far it has freed", card.slice(0, 260));
+    /* claimable(1): two offsets, then the freed array — its length, (ETH, amount), (USDC, amount) — so word 6 is the USDC */
+    const u0 = await bal(BUYER), due = decUint(await c.call(K, enc("claimable(uint256)", [1])), 6);
+    await pb.click(C + " [data-act=claim]");
+    await pb.until(() => __on("#cbox") && (document.querySelector("#cslab [data-gas]") || { textContent: "" }).textContent !== "estimating…", null, 15000);
+    const cs = await pb.text("#cslab [data-sentence]");
+    g(await pb.fn() === "claim(uint256)" && cs.startsWith("pays keepsake #1's holder, you, what has freed — now ") && cs.endsWith("; whoever presses is paid nothing"), "the claim, pressed by the buyer, says who is paid before the signature", cs);
+    await pb.sign(WB, 1);
+    g(await bal(BUYER) - u0 === due && due === 50n * U6 && pb.clean(), "half way through its ten days the claim pays the buyer exactly half the coins, and nothing threw", `+${await bal(BUYER) - u0} of ${due} ${pb.problems()}`);
+    /* the keyboard on a phone: every control of the section, its four disclosures open, is tabbed to; each focused one
+       must be in view, not under the crest bar or the dock (its centre hits itself), and show its focus ring */
+    await pb.page.setViewportSize({ width: 390, height: 844 });
+    await pb.until(() => __e("#lane-vault #vault-make input[name=eth]") && __e('#lane-vault .keepsake[data-id="1"] details'), null, 10000);
+    await pb.evaluate(() => { for (const d of document.querySelectorAll("#lane-vault #vault-keepsakes details")) d.open = true; document.querySelector("#lane-vault #vault-keepsakes").querySelector("summary,button,input").focus(); });
+    await pb.page.keyboard.press("Shift+Tab"); await pb.page.keyboard.press("Tab"); await pb.page.waitForTimeout(60);
+    const seen = [];
+    for (let i = 0; i < 80; i++) {
+      const f = await pb.evaluate(() => {
+        const e = document.activeElement; if (!e || !e.closest("#vault-keepsakes")) return null;
+        const r = e.getBoundingClientRect(), h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2), cs = getComputedStyle(e);
+        return { what: e.tagName + (e.name ? "[" + e.name + "]" : e.dataset.act ? "[" + e.dataset.act + "]" : ""), seen: !!h && (h === e || e.contains(h)) && r.top >= 0 && r.bottom <= innerHeight, ring: cs.outlineStyle !== "none" && cs.outlineWidth !== "0px" || cs.boxShadow !== "none" };
+      });
+      if (!f) break;
+      seen.push(f);
+      await pb.page.keyboard.press("Tab");
+      await pb.page.waitForTimeout(60);
+    }
+    const hidden = seen.filter((f) => !f.seen), bare = seen.filter((f) => !f.ring);
+    g(seen.length >= 25 && hidden.length === 0 && bare.length === 0, `at 390×844 every control of the keepsakes takes focus in view and ringed, never under the crest bar or the dock (${seen.length} tabbed)`, `hidden ${hidden.map((f) => f.what).join(",")} unringed ${bare.map((f) => f.what).join(",")}`);
+    await pb.close();
+  }
+  {
+    /* a marketplace's data: frame: no secure context, no navigator.clipboard */
+    const pv = await v.openData("/token/1/live", { wallet: v.wallet(me) });
+    await pv.lane("vault");
+    await pv.until(() => __e("#lane-vault #vault-grip button.copy"), null, 15000);
+    const clip = await pv.evaluate(() => typeof navigator.clipboard);
+    await pv.click(L("#vault-grip button.copy"));
+    /* soft: the sentence reads the ticker's words and the page's errors itself, so a copy button that throws (W10's c1)
+       fails it by name instead of stopping the group here */
+    await pv.until(() => /copying is not available/.test(__t("#tick")), null, 5000, { soft: true });
+    g(clip === "undefined" && await pv.text("#tick") === "copying is not available in this frame; select the address above to copy it" && pv.log.errors.length === 0,
+      "in a data: frame, where navigator.clipboard is undefined, the Grip's copy button says in words that copying is unavailable, and throws nothing", `${clip} "${await pv.text("#tick")}" ${pv.log.errors.join(" | ")}`);
+    await pv.close();
+  }
+  t.ok(G, "a keepsake made as a gift with its exact approval, found by its recipient and claimed, clicked by a person's path");
 }
 
 /*──────────────── launch ────────────────*/
@@ -1564,6 +2016,9 @@ async function groupLaunch(t, ctx) {
     W.override("eth_getBlockByNumber", null);
     await repaint(pg);
     await pg.until(() => /in (99\d|1000) s$/.test(__t("#lane-launch #launch-tax-countdown")), null, 8000);
+    /* W14 (INTEGRATION L15): a claim of the lane that only this wait had checked, and no sentence stated */
+    const back = (await pg.text(L("#launch-tax-countdown"))).match(/in (\d+) s$/);
+    j(!!back && Number(back[1]) >= 990 && Number(back[1]) <= 1000, "and once the clock answers as the chain does again, the countdown is back on the chain's own clock: about 1000 s, not 900", await pg.text(L("#launch-tax-countdown")));
     /* the buy: the curve preview is quoteBuy, the slab's deadline is the chain's clock moved first */
     await pg.fill(L("#launch-buy-in"), "1");
     await pg.until(() => __d("#lane-launch #launch-buy-out", "raw") !== undefined && !__dis("#lane-launch [data-act=buy]"), null, 10000);
@@ -1616,6 +2071,100 @@ async function groupLaunch(t, ctx) {
     await pg.close();
   }
   t.ok(J, "the raise shows the tax as a countdown");
+
+  /*  V2 (W12): the collection journey, clicked as a person would, on a chain of its own where the Studio
+      reports — three fields typed, Launch, the one sentence, Sign; the list's link opened by another wallet
+      and minted through; the creator's claim; the 24,000-byte bound refused before any slab. */
+  t.head("W · a collection: typed, launched, minted through its link, claimed");
+  const V = await ctx.fresh({ v2: true });
+  try {
+    const vc = V.c, vs = V.site, ST = vs.studio, HUBA = vs.hub, VME = V.actors.me.from.toString(), VBUYER = V.actors.buyer.from.toString();
+    await mint(vc, vs, VME); await mint(vc, vs, VME);
+    const P1 = (BigInt(HUBA) << 96n) | 1n, PRICE = WAD / 100n, LINK = `web3://${lower(vs.premises)}:1/token/1/live?via=1#launch`;
+    const EXAMPLE = "You launch Moonlit: 100 tokens at 0.01 ETH, each a website; 5 % of every mint goes to whoever shared it, the rest to #1's fee sink; 2.5 % of every resale.";
+    const STUDIO_LAUNCH = "launch(uint256,(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes),bytes32)";
+    const W = V.wallet(V.actors.me);
+    const pg = await V.open({ wallet: W });
+    await pg.lane("launch");
+    await pg.until(() => __e("#lane-launch #launch-collection-form input[name=name]") && /^0x[0-9a-fA-F]{40}$/.test(__t("#lane-launch #launch-collection-at")), null, 15000);
+    const seg = await pg.evaluate(() => [...document.querySelectorAll("#lane-launch #launch-mode button")].map((b) => b.textContent + ":" + b.getAttribute("aria-pressed")).join(","));
+    const fold = await pg.evaluate(() => ["supply", "price", "opens", "closes", "limit", "share", "royalty", "page", "art"].map((n) => { const i = document.querySelector(`#lane-launch #launch-collection-form [name=${n}]`); return !i ? n + ":absent" : !i.closest("details") ? n + ":unfolded" : i.closest("details").open ? n + ":open" : i.checkVisibility() ? n + ":painted" : ""; }).join("")), folded = fold === "";
+    t.ok(seg === "A collection:true,A coin:false" && folded && await pg.visible("#lane-launch #launch-collection-form input[name=symbol]") && await pg.visible("#lane-launch #launch-collection-form input[name=about]"),
+      "the Studio room opens on A collection: name, symbol and what it is in view, every other term folded with its default", `${seg} fold "${fold}" symbol ${await pg.visible("#lane-launch #launch-collection-form input[name=symbol]")} about ${await pg.visible("#lane-launch #launch-collection-form input[name=about]")}`);
+    await pg.fill("#lane-launch #launch-collection-form input[name=name]", "Moonlit");
+    await pg.fill("#lane-launch #launch-collection-form input[name=symbol]", "MOON");
+    await pg.fill("#lane-launch #launch-collection-form input[name=about]", "A map of the night it was minted.");
+    const T = ctx.EVM.BLOCK.header.timestamp, salt = "0x" + Buffer.from("Moonlit", "utf8").toString("hex").padEnd(48, "0") + T.toString(16).padStart(16, "0");
+    const want = decAddr(await vc.read(ST, "predict(uint256,bytes32)", [P1, salt]));
+    await pg.until((w) => __t("#lane-launch #launch-collection-at").toLowerCase() === w, lower(want), 10000);
+    const shown = await pg.text("#lane-launch #launch-collection-at");
+    const gas = await pg.press("#lane-launch [data-act=collectionLaunch]");
+    t.ok(lower(shown) === lower(want) && await pg.text("#cslab [data-sentence]") === EXAMPLE && /^\d+ units$/.test(gas) && await pg.fn() === STUDIO_LAUNCH && await pg.argsAgree(STUDIO_LAUNCH) && await pg.line("Lands at") === shown,
+      "three fields and Launch: the slab says the one sentence and the address it lands at, the address shown before the press", `${await pg.text("#cslab [data-sentence]")} | ${shown} vs ${want}`);
+    await pg.sign(W, 1);
+    const moon = decAddr(await vc.read(ST, "collectionsOf(uint256)", [P1]), 2);
+    await pg.until(() => __n("#lane-launch #launch-collections .collection") === 1 && /0 of 100/.test(__t("#lane-launch #launch-collections .collection")), null, 15000);
+    const ground = await pg.evaluate(() => { const s = document.querySelector("#lane-launch #launch-collections svg[role=img]"); return s ? getComputedStyle(s).backgroundColor + " " + Math.round(s.getBoundingClientRect().width) : null; });
+    const qr = await qrDecode(pg, "#lane-launch #launch-collections svg[role=img]");
+    t.ok(lower(moon) === lower(shown) && (await pg.text("#lane-launch #launch-collections .collection")).includes(LINK) && qr.text === LINK && ground === "rgb(255, 255, 255) 184",
+      "it landed where it was shown, and its row prints the mint link and a QR Chromium paints on white and jsqr reads back as the link", `landed ${moon} shown ${shown} qr "${qr.text}" ground ${ground}`);
+    /* another wallet opens the link as written: the Studio room, the collection, "mint one" names #1 as the referrer */
+    const WB = V.wallet(V.actors.buyer);
+    const pb = await V.open({ wallet: WB, path: "/token/1/live?via=1#launch" });
+    await pb.until(() => __e("#lane-launch #launch-collections [data-act=collectionMint]"), null, 15000);
+    await pb.press("#lane-launch #launch-collections [data-act=collectionMint]");
+    const mcd = await pb.slabCd();
+    t.ok(await pb.fn() === "mint(address,uint256)" && lower(addrWord(mcd, 0)) === lower(VBUYER) && word(mcd, 1) === P1 && await pb.ds("#cslab [data-value]", "wei") === String(PRICE) && await pb.text("#cslab [data-sentence]") === "You mint one Moonlit for exactly 0.01 ETH.",
+      "the link opens the Studio room for another wallet, and its mint names #1 as the referrer at exactly the price", `${await pb.fn()} via ${word(mcd, 1)}`);
+    await pb.sign(WB, 1);
+    const ml = (await vc.getLogs({ address: moon, topics: [kec(Buffer.from("Minted(uint256,address,uint256,uint256,uint256)", "utf8"))] })).pop();
+    t.ok(!!ml && BigInt(ml.topics[3]) === P1 && decUint(ml.data, 1) === PRICE * 500n / 10_000n && decUint(await vc.read(moon, "owed(uint256)", [P1])) === PRICE && pb.clean(),
+      "a mint through the shared link credits the referrer, in Chromium: the Minted log names #1 with its 5 % share", `via ${ml && ml.topics[3]}`);
+    await pb.close();
+    /* the creator's claim, and the bound refused in words before any slab */
+    await pg.evaluate(() => dispatchEvent(new CustomEvent("intact:lane", { detail: { name: "launch" } })));
+    await pg.until(() => __e("#lane-launch #launch-collections [data-act=collectionClaim]"), null, 15000);
+    const sink = decAddr(await vc.read(HUBA, "feeSink(uint256)", [1])), s0 = await vc.balanceOf(sink);
+    await pg.press("#lane-launch #launch-collections [data-act=collectionClaim]");
+    t.ok(await pg.fn() === "claim(uint256)" && await pg.text("#cslab [data-sentence]") === "You claim the 0.01 ETH Moonlit owes #1; it is paid to #1's fee sink and nobody else.", "the claim says it pays #1's fee sink and nobody else", await pg.text("#cslab [data-sentence]"));
+    await pg.sign(W, 2);
+    t.ok((await vc.balanceOf(sink)) - s0 === PRICE && decUint(await vc.read(moon, "owed(uint256)", [P1])) === 0n, "the creator's claim pays #1's fee sink exactly what was owed", `delta ${(await vc.balanceOf(sink)) - s0}`);
+    await pg.until(() => __e("#lane-launch #launch-collection-form input[name=name]"), null, 10000);
+    await pg.click("#lane-launch #launch-collection-form details:last-of-type summary");
+    await pg.fill("#lane-launch #launch-collection-form input[name=name]", "Overflow"); await pg.fill("#lane-launch #launch-collection-form input[name=symbol]", "OVER");
+    await pg.fill("#lane-launch #launch-collection-form textarea[name=page]", "<p>" + "x".repeat(25_000 - 7) + "</p>");
+    const sent0 = W.sent(), est0 = W.count("eth_estimateGas");
+    await pg.click("#lane-launch [data-act=collectionLaunch]");
+    await pg.until(() => /the page is 25000 bytes/.test(__t("#tick")), null, 5000);
+    t.ok(await pg.tick() === "the page is 25000 bytes with 0 holes; the Studio takes at most 24000 and 256" && !(await pg.slabOpen()) && W.sent() === sent0 && W.count("eth_estimateGas") === est0 && pg.clean(),
+      "a 25,000-byte page pasted into the site is refused in words before any slab, in Chromium", `${await pg.tick()} ${pg.problems()}`);
+    await pg.close();
+    /* W14 (INTEGRATION W12-6): the coin journey's own step, which journey() and the drive over a wire take, on this band
+       whose Studio reports: the room opens on A collection, and the step reaches the coin form */
+    const pc = await V.open({ wallet: V.wallet(V.actors.me) });
+    await pc.lane("launch");
+    const opened = await pc.evaluate(() => (document.querySelector("#lane-launch #launch-mode .on") || { textContent: "" }).textContent);
+    const pressedCoin = await toCoin(pc);
+    /* soft: the sentence below reads the form itself, and fails by name when the step did not reach it */
+    await pc.until(() => __e("#lane-launch #launch-coin-form input[name=n]"), null, 15000, { soft: true });
+    t.ok(opened === "A collection" && pressedCoin && await pc.visible("#lane-launch #launch-coin-form input[name=n]") && await pc.text("#lane-launch #launch-mode .on") === "A coin" &&
+      !(await pc.exists("#lane-launch #launch-collection-form")) && pc.clean(),
+      "where the Studio reports, the room opens on A collection and the coin journey's step presses A coin: the coin form is in view, as journey() and the drive over a wire take it",
+      `opened "${opened}" pressed ${pressedCoin} now "${await pc.text("#lane-launch #launch-mode .on")}" ${pc.problems()}`);
+    await pc.close();
+  } finally { await V.close(); }
+}
+
+/*  The Studio room opens on "A collection" where the band's Studio reports, and on "A coin" elsewhere (W12). The coin
+    journey's step presses "A coin" first wherever the Studio reports, as a person would, and does nothing on a band
+    without one, whose room already opens on the coin. journey() takes it, and so does tools/testnet-drive.mjs through
+    journey() (INTEGRATION W12-6). Answers whether it pressed. */
+export async function toCoin(pg) {
+  if (!(await pg.evaluate(() => !!(window.INTACT.reported & (window.INTACT.bits || {}).studio)))) return false;
+  await pg.until(() => __n("#lane-launch #launch-mode button") === 2, null, 15000);
+  await pg.frame.locator("#lane-launch #launch-mode button", { hasText: "A coin" }).click({ timeout: 8000 });
+  await pg.until(() => __e("#lane-launch #launch-coin-form"), null, 15000);
+  return true;
 }
 
 /*──────────────── the journey ────────────────*/
@@ -1700,9 +2249,13 @@ export async function journey(t, J) {
   await pg.press("#lane-social #social-composer [data-act=speak]");
   await pg.sign(W, 6);
   await pg.until(() => [...document.querySelectorAll("#lane-social #social-commons .row .body")].some((b) => b.textContent === "the journey speaks"), null, 15000);
-  j(landed(6) && decUint(await c.read(parley, "stateOf(uint256)", [0]), 1) >= 1n, "speak lands and the walk shows the word", "");
-  /* launch a coin and open its raise */
+  /* W14 (INTEGRATION L15): the claim only the wait above had checked is now the sentence's too */
+  const shown = await pg.evaluate(() => [...document.querySelectorAll("#lane-social #social-commons .row .body")].map((b) => b.textContent));
+  j(landed(6) && decUint(await c.read(parley, "stateOf(uint256)", [0]), 1) >= 1n && shown.includes("the journey speaks"), "speak lands and the walk shows the word", JSON.stringify(shown).slice(0, 200));
+  /* launch a coin and open its raise: where the band's Studio reports the room opens on A collection, and the coin is
+     one press away (toCoin, W12-6); elsewhere it opens on the coin */
   await pg.lane("launch");
+  await toCoin(pg);
   await pg.until(() => __e("#lane-launch #launch-coin-form input[name=n]"), null, 15000);
   for (const [kk, v] of [["n", "Journey Coin"], ["y", "JRNY"], ["d", "18"], ["v", "1000000"], ["r", "900000"], ["s", "0x4"]]) await pg.fill(`#lane-launch #launch-coin-form input[name=${kk}]`, v);
   await pg.click("#lane-launch [data-act=coinAt]");
@@ -1717,7 +2270,7 @@ export async function journey(t, J) {
   await pg.until(() => __e("#lane-launch #launch-create input[name=curve]"), null, 15000);
   for (const [kk, v] of [["curve", "700000"], ["vq", "1"], ["tgt", "3"], ["win", "1000"], ["cap", ""], ["tax", "9900"], ["fee", "100"], ["cr", "0"], ["vest", "0"], ["days", "7"]]) await pg.fill(`#lane-launch #launch-create input[name=${kk}]`, v);
   await pg.press("#lane-launch [data-act=create]");
-  j(await pg.fn() === `createChecked(${PARAMS},bytes32)` && await pg.count("#cslab [data-arg]") === 0 && !!(await pg.line("Terms hash")), "the raise is createChecked with the terms hash read in the same press", await pg.fn());
+  j(await pg.fn() === `createChecked(${PARAMS},bytes32)` && await pg.argsAgree(`createChecked(${PARAMS},bytes32)`) && !!(await pg.line("Terms hash")), "the raise is createChecked with the terms hash read in the same press", await pg.fn());
   await pg.sign(W, 8);
   await pg.until(() => /JRNY · live/.test(__t("#lane-launch #launch-raises")), null, 15000);
   j(landed(8) && /JRNY · live · raised 0 of 3 ETH/.test(await pg.text("#lane-launch #launch-raises")), "the raise opened and the lane lists it live", await pg.text("#lane-launch #launch-raises"));
@@ -1750,7 +2303,8 @@ export async function journey(t, J) {
   j(W.prompts().length === p0 && !(await pg.slabOpen()) && /sessions: 1/.test(rv) && /custody epoch 1 → 2/.test(rv), "the sell-time checklist renders first — the session among what the sale revokes — and no prompt moves", rv.slice(0, 200));
   await pg.press("#lane-vault [data-act=transfer]");
   j(await pg.fn() === "transferFrom(address,address,uint256)" && await pg.text("#cslab [data-arg='1']") === checksum(BUYER) && await pg.text("#cslab [data-arg='2']") === idStr, "then the transfer slab: from, to, id", await pg.fn());
-  await pg.sign(W, 11);
+  /* the sale moves the epoch and the seller's rights: the landing is followed by review again (CONSOLE §4.7) */
+  await pg.sign(W, 11, { moved: true });
   await pg.until(() => document.body.dataset.rights === "0", null, 15000);
   j(landed(11) && (await pg.body()).rights === "0" && /ownership or epoch changed — review again/.test(await pg.tick()) && lower(decAddr(await c.read(hub, "ownerOf(uint256)", [ID]))) === lower(BUYER), "the sale lands: the seller's page reads 0 and says review again", `rights ${(await pg.body()).rights} tick "${await pg.tick()}"`);
   j(pg.clean(), "no script threw, no unhandled rejection, no CSP violation on the seller's page across the journey", pg.problems());
@@ -1786,7 +2340,464 @@ async function groupJourney(t, ctx) {
   await journey(t, { open: ctx.open, c, site, W, WB, ME: me.from.toString(), BUYER: buyer.from.toString(), AGENT: agentW.from.toString(), mockERC20: ctx.A("test/mocks/MockERC20.sol", "MockERC20").bytecode, now: async () => ctx.now(), chainId: 1 });
 }
 
-const RUNNERS = { boot: groupBoot, viewer: groupViewer, session: groupSession, agent: groupAgent, swap: groupSwap, social: groupSocial, identity: groupIdentity, vault: groupVault, launch: groupLaunch, journey: groupJourney };
+/*──────────────── gallery (V2, W8) ────────────────*/
+/*  The Gallery lane in Chromium, on a chain of the group's own with every V2 contract and Seaport 1.6's
+    probed runtime at its canonical address: the holder lists #1 by a person's path (review, seal the
+    Reach, let Seaport move it, validate, publish — five clicks, four signatures, none of them typed
+    data), a second account finds it and buys it at exactly the price; a listing whose token moved since
+    it was listed is refused in words with no buy; and a Studio token's own page runs in the frame the
+    lane gives it — sandbox "allow-scripts" alone, an opaque origin, its script running, its parent out
+    of reach, its own CSP refusing the network. */
+async function groupGallery(t, ctx0) {
+  const F = await ctx0.fresh({ v2: true });
+  try {
+    const { c, site, actors } = F;
+    const me = actors.me, buyer = actors.buyer, ME = me.from.toString(), BUYER = buyer.from.toString(), hub = site.hub;
+    const SEAPORT = site.seaport, bazaar = site.bazaar, DAY = 86_400n, PRICE = WAD / 10n;
+    const w32 = (n) => "0x" + BigInt(n).toString(16).padStart(64, "0");
+    for (let i = 0; i < 2; i++) await mint(c, site, ME);
+    const G = (s) => "#lane-gallery " + s;
+    /* the form waits closed above the art: a person opens it first */
+    const openNft = async (pg, coll, id) => {
+      await pg.click(G("#gallery-form summary"));
+      await pg.fill(G("#gallery-form input[name=collection]"), coll);
+      await pg.fill(G("#gallery-form input[name=id]"), id == null ? "" : String(id));
+      await pg.evaluate(() => { window.INTACT.loaded.gallery = false; });
+      await pg.click(G("#gallery-open"));
+      await pg.until(() => window.INTACT.loaded.gallery === true, null, 20000);
+      await pg.settle(150);
+    };
+
+    t.head("A · the holder lists #1 by a person's path, with no signature");
+    let listed = false;
+    {
+      const W = F.wallet(me);
+      const pg = await F.open({ wallet: W });
+      await pg.lane("gallery");
+      await pg.until(() => __e("#lane-gallery #gallery-art img") && __e("#lane-gallery #gallery-review"), null, 20000);
+      const art = await pg.evaluate(() => { const i = document.querySelector("#lane-gallery #gallery-art img"); return i && i.complete && i.naturalWidth > 0 && i.getAttribute("src").startsWith("data:image/svg+xml;base64,"); });
+      await pg.fill(G("#gallery-sell input[name=price]"), "0.1");
+      await pg.click(G("#gallery-review"));
+      const order = [["sealReach", "seal(uint64)"], ["approve", "approve(address,uint256)"], ["validate", "validate("], ["publish", "publish("]];
+      let n = 0, fns = [];
+      for (const [act, fn] of order) {
+        /* soft: a step that never came throws below, by its own name and with the section's words */
+        const ok = await pg.until((a) => __e("#lane-gallery #gallery-steps [data-act=" + a + "]"), act, 20000, { soft: true });
+        if (!ok) throw new Error("no " + act + " step: " + await pg.text(G("#gallery-sell")));
+        await pg.press(G("#gallery-steps [data-act=" + act + "]"));
+        fns.push((await pg.fn()).startsWith(fn));
+        await pg.sign(W, ++n);
+      }
+      await pg.until(() => /listed: it shows above/.test(__t("#lane-gallery #gallery-steps")) && __e("#lane-gallery #gallery-listings [data-act=cancel]"), null, 20000);
+      const pub = c.getLogs({ address: bazaar, topics: [kec("Published(address,uint256,bytes32,address,uint8,uint8,address,uint256,uint256)"), w32(hub), w32(1)] });
+      listed = pub.length === 1 && fns.every(Boolean) && W.prompts().every((p) => p.method === "eth_sendTransaction");
+      /* W14 (INTEGRATION L15): the claim only the wait above had checked is now the sentence's too */
+      t.ok(art && listed && /listed: it shows above/.test(await pg.text(G("#gallery-steps"))) && await pg.exists(G("#gallery-listings [data-act=cancel]")) && W.sent() === 4 && pg.clean(),
+        "in Chromium the holder lists #1 from the Gallery by a person's path — review, seal the Reach, let Seaport move it, validate, publish — four transactions and no typed-data signature, and the Bazaar indexes it",
+        `art ${art} fns ${fns} published ${pub.length} prompts ${W.prompts().map((p) => p.method)} ${pg.problems()}`);
+      await pg.close();
+    }
+
+    t.head("B · a second account finds the listing and buys it at exactly the price");
+    {
+      const WB = F.wallet(buyer);
+      const pg = await F.open({ wallet: WB });
+      await pg.lane("gallery");
+      await pg.until(() => __e("#lane-gallery #gallery-listings [data-act=buy]"), null, 20000);
+      const state = await pg.text(G("#gallery-listings .listing .state")), price = await pg.visible(G("#gallery-price")) ? await pg.text(G("#gallery-price")) : "hidden";
+      await pg.press(G("#gallery-listings [data-act=buy]"));
+      const wei = await pg.ds("#cslab [data-value]", "wei"), fn = await pg.fn();
+      /* the buy moves #1's epoch and the buyer's rights on #1's own page: the landing is followed by review again */
+      await pg.sign(WB, 1, { moved: true });
+      const owner = lower(decAddr(await c.read(hub, "ownerOf(uint256)", [1])));
+      t.ok(listed && state === "live" && /^0\.1 ETH · on Seaport, until /.test(price) && fn.startsWith("fulfillOrder(") && wei === String(PRICE) && owner === lower(BUYER) && pg.clean(),
+        "in Chromium a second account finds the Gallery listing from the chain's logs, its price under the art, and buys it with one click and one signature at exactly the price: the INTACT token is the buyer's",
+        `state ${state} price "${price}" fn ${fn.slice(0, 14)} value ${wei} owner ${owner} ${pg.problems()}`);
+      await pg.close();
+    }
+
+    t.head("C · a listing whose token moved since it was listed is refused in words");
+    {
+      const id = 2n, end = F.now() + 30n * DAY;
+      const reach = decAddr(await c.read(hub, "account(uint256)", [id]));
+      await c.exec(reach, "seal(uint64)", [end]);
+      await c.exec(hub, "approve(address,uint256)", [SEAPORT, id]);
+      const fp = "0x" + (await c.read(hub, "getStateFingerprint(uint256)", [id])).slice(2, 66);
+      const zh = "0x" + (await c.read(bazaar, "pinHash(uint256,bytes32,(address,uint256)[])", [id, fp, []])).slice(2, 66);
+      const OF = "(uint8,address,uint256,uint256,uint256)", CO = "(uint8,address,uint256,uint256,uint256,address)";
+      const PAR = `(address,address,${OF}[],${CO}[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256)`;
+      const params = [ME, bazaar, [[2, hub, id, 1, 1]], [[0, ZERO, 0, PRICE, PRICE, ME]], 2, F.now(), end, zh, 77, w32(0), 1];
+      await c.exec(SEAPORT, `validate((${PAR},bytes)[])`, [[[params, "0x"]]]);
+      await c.exec(bazaar, `publish((${PAR},bytes),(address,uint256)[])`, [[params, "0x"], []]);
+      await c.exec(hub, "setTrait(uint256,bytes32,bytes32)", [id, kec("name"), "0x" + Buffer.from("moved").toString("hex").padEnd(64, "0")]);
+      const WB = F.wallet(buyer);
+      const pg = await F.open({ wallet: WB });
+      await pg.lane("gallery");
+      await openNft(pg, hub, id);
+      await pg.until(() => /refused/.test(__t("#lane-gallery #gallery-listings")), null, 20000);
+      const words = await pg.text(G("#gallery-listings"));
+      const visible = await pg.visible(G("#gallery-listings .listing .blurb"));
+      t.ok(/refused by the zone: FingerprintMoved — the token changed since it was listed/.test(words) && visible && !(await pg.exists(G("#gallery-listings [data-act=buy]"))) && WB.count("eth_estimateGas") === 0 && pg.clean(),
+        "in Chromium a listing whose token moved since it was listed reads refused by the zone, in words a person can see, and offers no buy", words.slice(0, 200));
+      await pg.close();
+    }
+
+    t.head("D · a Studio token's own page, in the frame the lane gives it");
+    {
+      const SPEC_T = "(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes)";
+      const page = '<!doctype html><html><head><meta charset="utf-8"><title>Lantern #{{id}}</title></head><body><h1>Lantern #{{id}}</h1>' +
+        "<script>document.body.dataset.seed='{{seed}}';try{document.body.dataset.parent=String(parent.document.title)}catch(e){document.body.dataset.parent='out of reach'}" +
+        "fetch('/services.json').then(function(){document.body.dataset.net='reached'},function(){document.body.dataset.net='refused'})</script></body></html>";
+      const spec = ["Lantern", "LANT", "", 10, 0, 0, 0, 0, 0, 0, "0x" + Buffer.from(page, "utf8").toString("hex"), "0x"];
+      const r = await c.exec(site.studio, `launch(uint256,${SPEC_T},bytes32)`, [(BigInt(hub) << 96n) | 2n, spec, w32(9)]);
+      const lantern = decAddr(r.ret);
+      await c.exec(lantern, "mint(address,uint256)", [ME, 0]);
+      const W = F.wallet(me);
+      const pg = await F.open({ wallet: W });
+      await pg.lane("gallery");
+      await openNft(pg, lantern, 1);
+      await pg.until(() => __e("#lane-gallery #gallery-site"), null, 20000);
+      const sandbox = await pg.attr(G("#gallery-site"), "sandbox");
+      const h = await pg.frame.$(G("#gallery-site"));
+      const fr = await h.contentFrame();
+      await fr.waitForFunction(() => !!document.body && !!document.body.dataset.parent && !!document.body.dataset.net, null, { timeout: 10000 });
+      const inside = await fr.evaluate(() => ({ origin: self.origin, seed: document.body.dataset.seed, parent: document.body.dataset.parent, net: document.body.dataset.net, h1: document.querySelector("h1").textContent }));
+      const box = await h.boundingBox();
+      /*  Playwright runs a context's init scripts in every frame, the sandboxed one too, and its own
+          serviceWorkers: "block" probe reads navigator.serviceWorker there — which a sandbox without
+          allow-same-origin refuses with a SecurityError. That refusal is the harness's, not the page's;
+          every other problem still fails the sentence. */
+      const SW = /Failed to read the 'serviceWorker' property from 'Navigator': Service worker is disabled because the context is sandboxed/;
+      /* the page's own fetch is refused by the CSP the lane put in its srcdoc, and Chromium says so in the console: expected, and named */
+      const REFUSED = /services\.json.*(violates the following Content Security Policy directive: "default-src 'none'"|Refused to connect because it violates the document's Content Security Policy)/s;
+      const all = [...pg.log.errors, ...pg.log.consoleErrors, ...pg.log.csp], refusedNet = all.filter((p) => REFUSED.test(p)), problems = all.filter((p) => !SW.test(p) && !REFUSED.test(p));
+      const sent = pg.log.requests.filter((u) => /\/services\.json$/.test(u));
+      t.ok(sandbox === "allow-scripts" && inside.origin === "null" && /^0x[0-9a-f]{64}$/.test(inside.seed) && inside.parent === "out of reach" && inside.h1 === "Lantern #1" && box && box.width > 200 && box.height > 200 && problems.length === 0,
+        "in Chromium a token's own page runs in an iframe whose sandbox is allow-scripts and nothing else: its script runs, its origin is opaque, its parent is out of its reach",
+        `sandbox "${sandbox}" ${JSON.stringify(inside)} ${problems.join(" | ").slice(0, 300)}`);
+      t.ok(inside.net === "refused" && refusedNet.length >= 1 && sent.length === 0,
+        "and its own fetch is refused by the CSP the lane wrote into its srcdoc: no request leaves the frame", `net ${inside.net} refusals ${refusedNet.length} sent ${sent.join(",")}`);
+      await pg.close();
+    }
+  } finally { await F.close(); }
+}
+
+/*──────────────── light (V2, W16) ────────────────*/
+/*  The light's eyes, installed before any document on the light group's pages. document.open() erases a window's
+    listeners but never its properties or a prototype, so all of this outlives the loader's rewrite:
+      · every getContext, and whether INTACT.ui.ready had resolved when it was asked: the state object and its `ui`
+        are caught as the page assigns them, so `ready` is watched from the moment it exists, and what stood when
+        it resolved (a #soul, a WebGL context) is written down in the same microtask;
+      · how many times readPixels (the timed frame's two syncs), drawArrays (the sky's frames) and
+        requestAnimationFrame (anything that loops on frames) were called;
+      · with `gpu`, W7's probe (docs/v2/W7-shell.md decision 9): UNMASKED_RENDERER_WEBGL (0x9246) names that GPU
+        and readPixels does nothing, so the timed frame passes as it does on a fast GPU. */
+const lightInit = (o = {}) => `(() => {
+  const O = ${JSON.stringify(o)};
+  const L = window.__light = { gl: [], reads: 0, draws: 0, frames: 0, ready: null, atReady: null };
+  const G = WebGLRenderingContext.prototype, gc = HTMLCanvasElement.prototype.getContext, gp = G.getParameter, rp = G.readPixels, da = G.drawArrays, rf = window.requestAnimationFrame;
+  HTMLCanvasElement.prototype.getContext = function (type, a) { const c = gc.call(this, type, a); L.gl.push({ type: String(type), ok: !!c, ready: L.ready !== null }); return c; };
+  if (O.gpu) G.getParameter = function (p) { return p === 0x9246 ? O.gpu : gp.call(this, p); };
+  G.readPixels = function (...a) { L.reads++; if (!O.gpu) return rp.apply(this, a); };
+  G.drawArrays = function (...a) { L.draws++; return da.apply(this, a); };
+  window.requestAnimationFrame = function (cb) { L.frames++; return rf.call(window, cb); };
+  const seen = () => { L.ready = performance.now(); L.atReady = { soul: !!document.querySelector("#soul"), webgl: L.gl.filter((g) => /webgl/.test(g.type)).length }; };
+  const ui = (x) => { let u; Object.defineProperty(x, "ui", { configurable: true, enumerable: true, get: () => u, set: (y) => { u = y; if (y && y.ready) y.ready.then(seen); } }); };
+  let st; Object.defineProperty(window, "INTACT", { configurable: true, enumerable: true, get: () => st, set: (x) => { st = x; if (x && typeof x === "object") ui(x); } });
+})();`;
+
+/*  The living light's own promises (INVARIANTS F9–F13), held in Chromium where W7 measured them by hand (docs/v2/
+    W7-shell.md decisions 9, 11 and 14, §6): the soul starts only after ready, keeps one still on the battery's software
+    rasteriser and under reduced motion, and is absent without WebGL; nothing loops without html.alive, which a spoofed
+    GPU sets and a hidden tab drops; a landing celebrates and a revert does not; a Tab walk at 390×844 leaves no control
+    wholly hidden under the crest bar, the dock or the ticker; and #lanes a[data-lane] is the dock. On a chain of the
+    group's own with the AgentCard at its pin, so both sheets are in the dock; the cast is W7's (§7). Every sentence
+    reads state — classes, attributes, getAnimations(), the counters lightInit keeps — and never how long a frame took,
+    so the machine's load moves no answer. */
+async function groupLight(t, ctx0) {
+  const ctx = await ctx0.fresh({ deployAgentCard: true });
+  try { await lightGroup(t, ctx); } finally { await ctx.close(); }
+}
+async function lightGroup(t, ctx) {
+  const { c, site, actors, weth, EVM } = ctx;
+  const { me } = actors;
+  const ME = me.from.toString(), hub = site.hub, pool = site.pool, parley = site.parley;
+  const SPEAK = "speak(uint256,uint256,uint8,uint64,uint64,bytes)", hexOf = (s) => "0x" + Buffer.from(s, "utf8").toString("hex");
+  /* Parley's commons counts two blocks between two words of one token */
+  const roll2 = () => EVM.roll(EVM.BLOCK.header.number + 2n);
+  await mint(c, site, ME); await mint(c, site, ME);
+  const reach1 = decAddr(await c.read(hub, "account(uint256)", [1]));
+  await c.exec(weth, "mint(address,uint256)", [ME, 1000n * WAD]);
+  await c.exec(weth, "approve(address,uint256)", [pool, 200n * WAD]);
+  await c.exec(pool, "openMarket(uint256,address,address,uint16,uint24,uint16,uint32)", [1, weth, ZERO, 30, 0, 0, 0], { label: "openMarket" });
+  await c.exec(pool, "deposit(uint256,uint256,uint256)", [1, 100n * WAD, 10n * WAD], { value: 10n * WAD, label: "deposit" });
+  await c.send({ to: reach1, value: 2n * WAD });
+  await c.exec(parley, SPEAK, [0, 1, 0, 0, 0, hexOf("hello, commons")], { label: "speak" });
+  roll2();
+  await c.exec(parley, SPEAK, [0, 1, 0, 0, 0, hexOf("and again")], { label: "speak" });
+  const price = decUint(await c.read(hub, "price()"));
+  const PHONE = { width: 390, height: 844 }, GPU = "ANGLE (a GPU the battery names, Direct3D11)";
+  const ROOMS = ["home", "gallery", "swap", "vault", "social", "launch", "identity", "agent"], DOCK = ["gallery", "swap", "vault", "social", "launch", "identity", "agent"];
+  const SHOWN = (pg) => pg.evaluate(() => {
+    const L = window.__light, s = document.querySelector("#soul");
+    return { webgl: L.gl.filter((g) => /webgl/.test(g.type)), reads: L.reads, draws: L.draws, frames: L.frames, ready: L.ready !== null, atReady: L.atReady,
+      soul: !!s, on: !!s && s.classList.contains("on"), w: s ? s.width : 0, h: s ? s.height : 0, iw: innerWidth, ih: innerHeight, alive: document.documentElement.classList.contains("alive") };
+  });
+  /* the renderer as Chromium names it to a fresh context: the battery's SwiftShader, or the spoof */
+  const renderer = (pg) => pg.evaluate(() => { const g = document.createElement("canvas").getContext("webgl"), d = g && g.getExtension("WEBGL_debug_renderer_info"); return g ? String(d ? g.getParameter(d.UNMASKED_RENDERER_WEBGL) : g.getParameter(g.RENDERER)) : null; });
+  /* every animation the document runs, as Chromium reports it: CSS animations, transitions, scripted ones */
+  const anims = (pg) => pg.evaluate(() => document.getAnimations().map((a) => {
+    const e = a.effect, g = e && e.target, tm = e ? e.getComputedTiming() : {};
+    return { kind: a.constructor.name, name: a.animationName || a.transitionProperty || "", on: !g ? "" : (g.matches("#cslab [data-go]") ? "[data-go]" : g.id ? "#" + g.id : g.tagName.toLowerCase()) + (e.pseudoElement || ""), state: a.playState, endless: tm.iterations === Infinity };
+  }));
+  const spinOf = (A) => A.find((a) => a.on === "#frame" && a.name === "spin"), flowOf = (A) => A.find((a) => a.on === "[data-go]" && a.name === "flow");
+  const loops = (A) => A.filter((a) => a.endless && a.state === "running").map((a) => a.on + " " + a.name);
+  /* frames asked for while nobody touches the page: no pointer moves here, so the shell's lean asks for none */
+  const idleFrames = async (pg, ms = 1000) => { const f0 = (await SHOWN(pg)).frames; await pg.settle(ms); return (await SHOWN(pg)).frames - f0; };
+  /* a slab with Sign enabled, so the button's flow is in the document: the shell's own mint row, estimated */
+  const raise = async (pg) => { await pg.evaluate(([h, a, v]) => { window.INTACT.ui.propose({ to: h, key: "hub.mint", args: [a], value: v, lines: [], sentence: "mints one more, to hold the slab open with Sign enabled" }); }, [hub, ME, String(price)]); await pg.ready(); };
+  /*  This headless Chromium never hides a page: a minimised window and a background tab in the same window both stay
+      "visible" and fire nothing, with or without Playwright's anti-backgrounding switches (measured, docs/v2/W16-light.md
+      §1). So the page is told, as Chromium tells a background tab: document.hidden, visibilityState, one visibilitychange */
+  const setHidden = (pg, h) => pg.evaluate((x) => { for (const [k, v] of [["hidden", x], ["visibilityState", x ? "hidden" : "visible"]]) Object.defineProperty(document, k, { configurable: true, get: () => v }); document.dispatchEvent(new Event("visibilitychange")); }, h);
+  const watchClasses = (pg) => pg.evaluate(() => { window.__cls = []; new MutationObserver(() => window.__cls.push(document.documentElement.className)).observe(document.documentElement, { attributes: true, attributeFilter: ["class"] }); });
+  const room = async (pg, r) => { if (r === "home") { await pg.hash("home"); await pg.settle(150); } else await pg.lane(r); };
+
+  t.head("A · the soul: after ready, a still on software GL and under reduced motion, absent without WebGL (F9)");
+  /* p1: the holder at 1200 × 900 on the battery's own GL; p3: the holder on a phone, under reduced motion, with a GPU named */
+  /* the waits that a sentence below re-reads are soft (W14): a shell that never gets there fails that sentence by name */
+  const W1 = ctx.wallet(me);
+  const p1 = await ctx.open({ wallet: W1, init: lightInit() });
+  await p1.until(() => !!document.querySelector("#soul.on"), null, 10000, { soft: true });
+  const s1 = await SHOWN(p1);
+  t.ok(s1.webgl.length >= 1 && s1.webgl[0].ready === true && s1.ready && s1.atReady && s1.atReady.soul === false && s1.atReady.webgl === 0 && s1.on,
+    "the soul never starts before ready: the first WebGL context is asked for after INTACT.ui.ready resolved, when no #soul stood yet, and the canvas it makes is #soul",
+    JSON.stringify({ first: s1.webgl[0], atReady: s1.atReady, on: s1.on }));
+  const rn1 = await renderer(p1), idle1 = await idleFrames(p1), s1b = await SHOWN(p1);
+  t.ok(/SwiftShader/.test(rn1 || "") && s1b.w === Math.ceil(s1b.iw * .25) && s1b.h === Math.ceil(s1b.ih * .25) && s1b.draws === 1 && s1b.reads === 0 && !s1b.alive && idle1 === 0,
+    "on the battery's software rasteriser the soul is named, not timed: SwiftShader keeps one still at a quarter of the window, drawn once, with no readPixels, no html.alive and no frame asked for",
+    `renderer "${rn1}" canvas ${s1b.w}×${s1b.h} of ${s1b.iw}×${s1b.ih} draws ${s1b.draws} reads ${s1b.reads} alive ${s1b.alive} idle frames ${idle1}`);
+  const W3 = ctx.wallet(me);
+  const p3 = await ctx.open({ wallet: W3, viewport: PHONE, reducedMotion: "reduce", init: lightInit({ gpu: GPU }) });
+  await p3.until(() => !!document.querySelector("#soul.on"), null, 10000, { soft: true });
+  const rn3 = await renderer(p3), idle3 = await idleFrames(p3), s3 = await SHOWN(p3), rm3 = await p3.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches);
+  t.ok(rm3 && rn3 === GPU && s3.webgl[0].ready === true && s3.w === Math.ceil(s3.iw * .55) && s3.h === Math.ceil(s3.ih * .55) && s3.draws === 1 && s3.reads === 0 && !s3.alive && idle3 === 0,
+    "under reduced motion the soul keeps one still even where a GPU is named: drawn once at 0.55× and never timed, with no html.alive and no frame asked for",
+    `reduced ${rm3} renderer "${rn3}" canvas ${s3.w}×${s3.h} of ${s3.iw}×${s3.ih} draws ${s3.draws} reads ${s3.reads} alive ${s3.alive} idle frames ${idle3}`);
+  {
+    /* a Chromium whose WebGL is switched off: getContext("webgl") answers null there (measured, W16 §1) */
+    const nb = await openBrowser({ args: ["--disable-webgl"] });
+    try {
+      const p4 = await openPage(nb, { origin: ctx.web.origin, wallet: ctx.wallet(me), init: lightInit() });
+      await p4.until(() => window.__light.gl.some((g) => /webgl/.test(g.type)), null, 10000, { soft: true });
+      await p4.settle(300);
+      const s4 = await SHOWN(p4), sky = await p4.evaluate(() => getComputedStyle(document.body, "::before").backgroundImage), b4 = await p4.body();
+      t.ok(s4.webgl.length >= 1 && s4.webgl.every((g) => !g.ok) && s4.webgl[0].ready === true && !s4.soul && !(await p4.exists("canvas")) && /radial-gradient/.test(sky) && !s4.alive && b4.rights === "1" && p4.clean(),
+        "without WebGL the soul is absent: Chromium answers no context, no #soul is made, the CSS sky stands, and nothing threw",
+        `asked ${JSON.stringify(s4.webgl)} soul ${s4.soul} sky "${sky.slice(0, 60)}" alive ${s4.alive} rights ${b4.rights} ${p4.problems()}`);
+      await p4.close();
+    } finally { await nb.close(); }
+  }
+
+  t.head("B · nothing loops without html.alive (F10)");
+  {
+    const seen = [];
+    for (const r of ROOMS) { await room(p1, r); seen.push([r, loops(await anims(p1))]); }
+    await room(p1, "home");
+    await raise(p1);
+    const A = await anims(p1), alive = (await SHOWN(p1)).alive, idle = await idleFrames(p1);
+    t.ok(seen.every(([, l]) => l.length === 0) && spinOf(A) && spinOf(A).state === "paused" && flowOf(A) && flowOf(A).state === "paused" && loops(A).length === 0 && !alive && idle === 0,
+      "on software GL nothing loops: in every room and under an open slab no endless animation runs — the frame's spin and the Sign button's flow wait paused — no frame is asked for in an idle second, and html.alive is unset",
+      `rooms ${JSON.stringify(seen.filter(([, l]) => l.length))} spin ${JSON.stringify(spinOf(A))} flow ${JSON.stringify(flowOf(A))} running ${loops(A).join(",")} alive ${alive} idle frames ${idle}`);
+    await p1.dismiss();
+  }
+  {
+    /* p2: a phone with a GPU named, so the timed frame passes and the sky moves; kept short, since the battery's
+       SwiftShader then draws every frame of it */
+    const p2 = await ctx.open({ wallet: ctx.wallet(me), viewport: PHONE, init: lightInit({ gpu: GPU }) });
+    await p2.until(() => document.documentElement.classList.contains("alive"), null, 10000, { soft: true });
+    const f0 = (await SHOWN(p2)).frames;
+    await p2.until(([f]) => window.__light.frames >= f + 3, [f0], 10000, { soft: true });
+    await raise(p2);
+    const s2 = await SHOWN(p2), A2 = await anims(p2);
+    t.ok(s2.alive && s2.reads === 2 && s2.w === Math.ceil(s2.iw * .55) && s2.frames >= f0 + 3 && spinOf(A2) && spinOf(A2).state === "running" && flowOf(A2) && flowOf(A2).state === "running",
+      "under a spoofed GPU the timed frame passes and html.alive is set: the soul's loop asks for frames, and the frame's spin and the Sign button's flow run",
+      `alive ${s2.alive} reads ${s2.reads} canvas ${s2.w} of ${s2.iw} frames ${f0} → ${s2.frames} spin ${JSON.stringify(spinOf(A2))} flow ${JSON.stringify(flowOf(A2))}`);
+    await setHidden(p2, true);
+    const h2 = await SHOWN(p2), Ah = await anims(p2), idleH = await idleFrames(p2, 800);
+    await setHidden(p2, false);
+    const g0 = (await SHOWN(p2)).frames;
+    await p2.until(([f]) => window.__light.frames >= f + 3, [g0], 10000, { soft: true });
+    const v2 = await SHOWN(p2), Av = await anims(p2);
+    t.ok(!h2.alive && idleH === 0 && spinOf(Ah) && spinOf(Ah).state === "paused" && flowOf(Ah) && flowOf(Ah).state === "paused" &&
+      v2.alive && v2.frames >= g0 + 3 && spinOf(Av) && spinOf(Av).state === "running" && flowOf(Av) && flowOf(Av).state === "running",
+      "a hidden tab pauses both: told it is hidden, as Chromium tells a background tab, the soul stops asking for frames, html.alive drops and the spin and the flow pause; shown again, they resume",
+      `hidden: alive ${h2.alive} frames +${idleH} spin ${spinOf(Ah) && spinOf(Ah).state} flow ${flowOf(Ah) && flowOf(Ah).state}; shown: alive ${v2.alive} frames ${g0} → ${v2.frames} spin ${spinOf(Av) && spinOf(Av).state} flow ${flowOf(Av) && flowOf(Av).state}`);
+    await p2.dismiss();
+    await p2.close();
+  }
+  {
+    const seen = [];
+    for (const r of ROOMS) { await room(p3, r); seen.push([r, await anims(p3)]); }
+    await room(p3, "home");
+    await raise(p3);
+    seen.push(["slab", await anims(p3)]);
+    const s = await SHOWN(p3), idle = await idleFrames(p3);
+    const moving = seen.map(([r, A]) => [r, A.filter((a) => a.kind !== "CSSTransition" || a.name !== "opacity").map((a) => a.kind + " " + a.on + " " + a.name)]).filter(([, l]) => l.length);
+    t.ok(moving.length === 0 && !s.alive && idle === 0 && s.draws === 1,
+      "under reduced motion nothing animates, a spoofed GPU too: no CSS animation exists in any room or under an open slab, every transition is a fade, no frame is asked for, and html.alive is unset",
+      `moving ${JSON.stringify(moving).slice(0, 300)} alive ${s.alive} idle frames ${idle} draws ${s.draws}`);
+    await p3.dismiss();
+  }
+
+  t.head("C · a landing celebrates and a revert does not (F11)");
+  const speakIn = async (pg, words) => {
+    await room(pg, "social");
+    await pg.until(() => __e("#lane-social #social-composer textarea") && __e("#lane-social #social-composer [data-act=speak]"), null, 15000);
+    await pg.fill("#lane-social #social-composer textarea", words);
+    await pg.press("#lane-social #social-composer [data-act=speak]");
+    await pg.ready();
+    return pg.text("#cslab [data-sentence]");
+  };
+  /* what the page shows before a landing, so a sentence reads the landing's own celebration and not one before it:
+     the class log's length, whether a #spark already stands, and the frames asked for so far */
+  const before = (pg) => pg.evaluate(() => ({ cls: window.__cls.length, spark: !!document.querySelector("#spark"), frames: window.__light.frames }));
+  /* soft: the sentences read the class log themselves */
+  const landedOnce = (pg, from) => pg.until((k) => window.__cls.slice(k).some((x) => /\blanded\b/.test(x)) && !document.documentElement.classList.contains("landed"), from, 8000, { soft: true });
+  {
+    await watchClasses(p1);
+    /* the revert: the slab is estimated while the commons is open to #1; then #1 speaks from the chain in the same
+       block, so the page's word arrives inside the commons' two blocks and the chain refuses it (Cooldown) */
+    roll2();
+    await speakIn(p1, "a word the chain will refuse");
+    await c.exec(parley, SPEAK, [0, 1, 0, 0, 0, hexOf("a word from the chain, first")], { label: "speak" });
+    const m0 = (await p1.ticks()).length;
+    await p1.sign(W1, 1);
+    const r0 = [...W1.receipts.values()].pop(), said0 = await p1.ticks(m0), cls0 = await p1.evaluate(() => window.__cls.slice()), spark0 = await p1.exists("#spark");
+    t.ok(r0.status === "0x0" && said0.includes(`reverted in block ${BigInt(r0.blockNumber)}; nothing changed`) && !said0.some((s) => /^landed in block/.test(s)) && !cls0.some((x) => /\blanded\b/.test(x)) && !spark0,
+      "a revert does none of it: the ticker says reverted in block <n>; nothing changed, html.landed is never set, and no #spark is made",
+      `status ${r0.status} said ${JSON.stringify(said0)} classes ${JSON.stringify(cls0)} spark ${spark0}`);
+    /* the landing: two blocks on, a word the commons takes. Its celebration is read from the mark before its press: the
+       class it set, and the frames asked for since. Before the mark the page goes half a second asking for no frame —
+       waited for, since a celebration before this one may still be flying, and then read — so every frame counted from
+       the mark is this landing's: the press's pointer asks for one or two, and the sparks' own loop one on every frame
+       until the last spark dies, 84 in all however slow the machine (a spark's life falls by .012 a frame). The sentence
+       asks for 20 */
+    roll2();
+    const sentence = await speakIn(p1, "a word that lands");
+    let q1 = await idleFrames(p1, 500);
+    for (let i = 0; i < 20 && q1 > 0; i++) q1 = await idleFrames(p1, 500);
+    const m1 = (await p1.ticks()).length, b1 = await before(p1);
+    await p1.sign(W1, 2);
+    await landedOnce(p1, b1.cls);
+    /* soft: the sentence reads the frames itself */
+    await p1.until((f) => window.__light.frames >= f + 20, b1.frames, 10000, { soft: true });
+    const r1 = [...W1.receipts.values()].pop(), said1 = await p1.ticks(m1), cls1 = await p1.evaluate((k) => window.__cls.slice(k), b1.cls), burst = (await SHOWN(p1)).frames - b1.frames;
+    const sp = await p1.evaluate(() => { const s = document.querySelector("#spark"); return s ? { w: s.width, h: s.height, want: [Math.round(innerWidth * devicePixelRatio), Math.round(innerHeight * devicePixelRatio)], aria: s.getAttribute("aria-hidden"), z: getComputedStyle(s).zIndex } : null; });
+    t.ok(r1.status === "0x1" && said1.includes(`landed in block ${BigInt(r1.blockNumber)} — ${sentence}`) && /^says, as #1, in the commons, forever: a word that lands$/.test(sentence) && cls1.filter((x) => /\blanded\b/.test(x)).length >= 1 && !/\blanded\b/.test(cls1[cls1.length - 1]) &&
+      !!sp && sp.w === sp.want[0] && sp.h === sp.want[1] && sp.aria === "true" && q1 === 0 && burst >= 20 && p1.clean(),
+      "a landing celebrates: the ticker says landed in block <n> — <the slab's sentence>, html.landed is set and taken away again, and #spark bursts over the window",
+      `status ${r1.status} sentence "${sentence}" said ${JSON.stringify(said1)} classes since the press ${JSON.stringify(cls1)} spark ${JSON.stringify(sp)} frames in the half second before the mark ${q1}, since the press ${burst} ${p1.problems()}`);
+  }
+  await p1.close();
+  {
+    await watchClasses(p3);
+    roll2();
+    await speakIn(p3, "a word under reduced motion");
+    const f0 = (await SHOWN(p3)).frames, m = (await p3.ticks()).length, b3 = await before(p3);
+    await p3.sign(W3, 1);
+    await landedOnce(p3, b3.cls);
+    const said = await p3.ticks(m), f1 = (await SHOWN(p3)).frames, spark = await p3.exists("#spark"), cls = await p3.evaluate((k) => window.__cls.slice(k), b3.cls);
+    t.ok(said.some((s) => /^landed in block \d+ — says, as #1, in the commons, forever: a word under reduced motion$/.test(s)) && cls.some((x) => /\blanded\b/.test(x)) && !/\blanded\b/.test(cls[cls.length - 1]) && !b3.spark && !spark && f1 === f0 && p3.clean(),
+      "under reduced motion a landing is the glow alone: html.landed is set and taken away again, no #spark is made, and no frame is asked for",
+      `said ${JSON.stringify(said)} classes since the press ${JSON.stringify(cls)} spark before ${b3.spark}, after ${spark} frames ${f0} → ${f1} ${p3.problems()}`);
+  }
+  await p3.close();
+
+  t.head("D · at 390×844 focus never lands under the bars (F12) · E · #lanes a[data-lane] is the dock (F13)");
+  {
+    const p5 = await ctx.open({ wallet: ctx.wallet(me), viewport: PHONE });
+    /* the ticker speaks through the whole walk, so it is in the way wherever it can be */
+    await p5.evaluate(() => window.INTACT.ui.say("the ticker speaks while the keyboard walks"));
+    /*  One focus, sampled as W7's probe sampled it (decision 14): a 5 × 5 grid over the focused box, every point asked of
+        elementFromPoint. The ticker lets the pointer through (pointer-events: none), so a point under it is found by its
+        box while it speaks. `again` marks the first element seen twice: the walk has gone round once. */
+    const SAMPLE = () => {
+      const e = document.activeElement;
+      if (!e || e === document.body || e === document.documentElement) return null;
+      const K = window.__walk || (window.__walk = { ids: new WeakMap(), n: 0 });
+      const again = K.ids.has(e); if (!again) K.ids.set(e, ++K.n);
+      const r = e.getBoundingClientRect(), tk = document.querySelector("#tick"), tr = tk && tk.textContent && getComputedStyle(tk).display !== "none" ? tk.getBoundingClientRect() : null;
+      const bars = [document.querySelector("#crest"), document.querySelector("#dock")], inBar = (n) => bars.some((b) => b && b.contains(n));
+      let seen = 0, bar = 0, tick = 0, off = 0, other = 0, under = "";
+      for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) {
+        const x = r.left + (i + .5) * r.width / 5, y = r.top + (j + .5) * r.height / 5;
+        if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) { off++; continue; }
+        if (tr && x >= tr.left && x < tr.right && y >= tr.top && y < tr.bottom) { tick++; continue; }
+        const h = document.elementFromPoint(x, y);
+        if (h && (h === e || e.contains(h))) seen++;
+        else if (h && inBar(h) && !inBar(e)) bar++;
+        else { other++; if (h && !under) under = h.id ? "#" + h.id : h.tagName.toLowerCase(); }
+      }
+      const at = e.closest("[id]"), what = e.id ? "#" + e.id : (at ? "#" + at.id + " " : "") + e.tagName.toLowerCase() + (e.dataset.act ? "[" + e.dataset.act + "]" : e.name ? "[" + e.name + "]" : e.dataset.lane ? "[" + e.dataset.lane + "]" : "");
+      return { again, what, seen, bar, tick, off, other, under, top: Math.round(r.top), bottom: Math.round(r.bottom), size: Math.round(r.width) + "×" + Math.round(r.height) };
+    };
+    const order = await p5.evaluate(() => ({ lanes: [...document.querySelectorAll("#lanes a[data-lane]")].map((a) => a.dataset.lane), panels: Object.keys(window.INTACT.panels),
+      inDock: !!document.querySelector("#dock > #lanes"), home: !!document.querySelector("#dock > #home") && !document.querySelector("#lanes #home"),
+      off: [...document.querySelectorAll("#lanes a")].filter((a) => a.getAttribute("aria-disabled") === "true" || a.tabIndex < 0).length }));
+    /*  Every room and both sheets, each walked round once from the crest's wallet cell, forward and then back: the key until
+        a control comes round again, that last focus sampled too and counted once. Both directions, because Chromium centres
+        a focused control in what html's scroll-padding leaves of the window when any of it lies outside, and leaves it be
+        when it lies wholly inside (measured, docs/v2/W16-light.md item 4): walking forward, the next control rises from the
+        bottom edge and meets the clearance below; only walking back does one come down from the top and meet the clearance
+        above (measured: with html's 84 px cut to 4 px, a forward walk saw nothing) */
+    const walked = [], wraps = [], current = [], cycled = {};
+    const round = async (r, key) => {
+      await p5.evaluate(() => { window.__walk = null; const w = document.querySelector("#c-wallet-v"); if (w) w.focus(); });
+      for (let i = 0; i < 240; i++) {
+        await p5.page.keyboard.press(key);
+        const f = await p5.evaluate(SAMPLE);
+        if (!f) continue;
+        if (f.again) { wraps.push({ room: r, key, ...f }); return true; }
+        walked.push({ room: r, key, ...f });
+      }
+      return false;
+    };
+    for (const r of ROOMS) {
+      /* the lane's reads land, and a sheet's rise (.55 s) is over before a box is sampled */
+      await room(p5, r);
+      await p5.settle(700);
+      current.push([r, await p5.evaluate(() => [...document.querySelectorAll("#home, #lanes a")].filter((a) => a.getAttribute("aria-current") === "true").map((a) => a.dataset.lane || "home").join() +
+        " / " + [...document.querySelectorAll("#home, #lanes a")].filter((a) => a.getAttribute("aria-current") !== "false" && a.getAttribute("aria-current") !== "true").length)]);
+      cycled[r] = await round(r, "Tab") && await round(r, "Shift+Tab");
+    }
+    const SHEETS = ["identity", "agent"], out = (f) => f.bar + f.tick + f.off;
+    const all = [...walked, ...wraps], hidden = all.filter((f) => f.seen === 0), barred = hidden.filter((f) => out(f) > 0), partly = all.filter((f) => f.seen > 0 && out(f) > 0), inRooms = partly.filter((f) => !SHEETS.includes(f.room));
+    const per = Object.fromEntries(ROOMS.map((r) => [r, ["Tab", "Shift+Tab"].map((k) => walked.filter((f) => f.room === r && f.key === k).length)]));
+    t.ok(ROOMS.every((r) => cycled[r] && per[r].every((n) => n >= 10)) && barred.length === 0 && inRooms.length === 0,
+      `at 390×844 a Tab walk through every room and both sheets, forward and back, never leaves a focused control wholly hidden under the crest bar, the dock or the ticker, nor out of view, and outside the sheets none is even partly covered (${walked.length} focuses, a 5×5 grid each)`,
+      `per room, forward and back ${JSON.stringify(per)} round once ${JSON.stringify(cycled)} hidden ${JSON.stringify(barred.slice(0, 6))} partly, outside the sheets ${JSON.stringify(inRooms.slice(0, 6))}`);
+    /* two things the walk sees that are not this row's claim, printed until the shell answers them (docs/v2/W16-light.md,
+       requests 1 and 2): inside a sheet, Tab reaches the dock's links lying under the sheet itself; and the sheet, its own
+       scroll container, which html's scroll-padding does not reach, lets a control near its foot take focus under the ticker */
+    const underSheet = hidden.filter((f) => SHEETS.includes(f.room) && out(f) === 0), sheetTicker = partly.filter((f) => SHEETS.includes(f.room));
+    if (underSheet.length) t.note(`inside a sheet, ${underSheet.length} focuses, forward and back, land on the dock's links under the sheet itself: ${[...new Set(underSheet.map((f) => f.what))].join(", ")}`);
+    if (sheetTicker.length) t.note(`inside a sheet, ${sheetTicker.length} focuses take a control partly under the ticker: ${sheetTicker.map((f) => f.what + " " + f.seen + "/25 in view").join(", ")}`);
+    t.ok(order.lanes.join() === DOCK.join() && order.panels.slice().sort().join() === DOCK.slice().sort().join() && order.inDock && order.home && order.off === 0,
+      "#lanes a[data-lane] is the dock: one link per lane, in the order gallery, swap, vault, social, launch, then identity and agent, and Home's anchor sits outside #lanes",
+      JSON.stringify(order));
+    t.ok(current.length === ROOMS.length && current.every(([r, x]) => x === r + " / 0"),
+      "the room in use carries aria-current=true and no other link does, in every room and both sheets", JSON.stringify(current));
+    await p5.close();
+    const p6 = await ctx.openData("/token/1/live", {});
+    const v = await p6.evaluate(() => [...document.querySelectorAll("#lanes a[data-lane]")].map((a) => [a.dataset.lane, a.getAttribute("aria-disabled"), a.getAttribute("tabindex"), a.tabIndex]));
+    t.ok(v.length === DOCK.length && v.map((x) => x[0]).join() === DOCK.join() && v.every((x) => x[1] === "true" && x[2] === "-1" && x[3] === -1) && (await p6.body()).mode === "viewer",
+      "in the viewer every lane link is aria-disabled and out of the tab order: each carries tabindex=-1", JSON.stringify(v));
+    await p6.close();
+  }
+}
+
+const RUNNERS = { boot: groupBoot, viewer: groupViewer, session: groupSession, agent: groupAgent, swap: groupSwap, social: groupSocial, identity: groupIdentity, vault: groupVault, launch: groupLaunch, journey: groupJourney, gallery: groupGallery, light: groupLight };
 
 /*═══════════════════ the runner ═══════════════════*/
 
@@ -1810,9 +2821,12 @@ async function main() {
     t.head(`group ${g}`);
     const before = t.pass + t.fail, t0 = Date.now();
     let ctx = null;
+    /* a wait that times out throws and names this group: the group stops there, and its one failed line is the
+       wait's own message, with the lines of this file that waited */
+    setGroup(g);
     try { ctx = await fresh(); await RUNNERS[g](t, ctx); }
     catch (e) { t.ok(false, `group ${g} threw: ${e && e.stack || e}`); }
-    finally { if (ctx) await ctx.close(); }
+    finally { if (ctx) await ctx.close(); setGroup(null); }
     console.log(`      ${t.pass + t.fail - before} assertions in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   }
   await BROWSER.close();

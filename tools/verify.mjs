@@ -9,7 +9,7 @@
   Compiles the contracts, deploys the whole MVB into an in-process EVM at
   Cancun (tools/site.mjs — the diamond that ships, the real ERC-6551
   registry, every satellite at its predicted address), loads the shell
-  and the six panels shard by shard, freezes the engine, mints, and then
+  and the seven panels shard by shard, freezes the engine, mints, and then
   pulls tokenURI() back out and takes it apart: base64 → JSON → base64 →
   the document → the state block and the gzip shell. The document that
   comes back has to be the same bytes `/token/<id>/live` serves, the
@@ -217,6 +217,19 @@ ok("absent: the Router, the Market, the Roles and the AgentCard have no code on 
 ok("the Nameplate did NOT report (bit 2048) and is absent — band 0's resolver; this band's pin is codeless, so the identity lane draws no ENS row",
    bits.nameplate === 2048 && !rep("nameplate") && abs("nameplate") && /^0x[0-9a-f]{40}$/.test(S.nameplate));
 ok("absent: nothing that reported is marked absent", (S.absent & S.reported) === 0);
+/*  V2 (wave 2, W6): the six V2 satellites continue the bits, and on a band
+    that has not deployed them each is a codeless placeholder the world
+    names — "not deployed", never "0". Seaport is a venue: an address, no bit. */
+const V2BITS = { keepsake: 8192, journal: 16384, bazaar: 32768, studio: 65536, agora: 131072, bridges: 262144 };
+ok("the V2 satellites take bits 8192 to 262144 after the agent card's 4096: keepsake, journal, bazaar, studio, agora, bridges",
+   Object.entries(V2BITS).every(([k, v]) => bits[k] === v), JSON.stringify(bits));
+ok("none of the six reported and each is absent — codeless placeholders on a band that has not deployed V2",
+   Object.keys(V2BITS).every((k) => !rep(k) && abs(k)), `reported ${S.reported} absent ${S.absent}`);
+ok("the world names every V2 contract by address, and Seaport, which has no bit, as zero on a band with no Bazaar",
+   ["keepsake", "journal", "bazaar", "bridges", "studio", "agora"].every((k) => /^0x[0-9a-f]{40}$/.test(S[k]) && S[k] !== ZERO) &&
+   S.seaport === ZERO && bits.seaport === undefined, ["keepsake", "journal", "bazaar", "bridges", "studio", "agora", "seaport"].map((k) => `${k} ${S[k]}`).join(", "));
+eq("the world's keepsake is the hub's KEEPSAKE()", S.keepsake.toLowerCase(), decAddr(await c.read(site.hub, "KEEPSAKE()")).toLowerCase());
+eq("and its journal the hub's JOURNAL()", S.journal.toLowerCase(), decAddr(await c.read(site.hub, "JOURNAL()")).toLowerCase());
 ok("the state block carries both words", typeof S.reported === "number" && typeof S.absent === "number");
 
 /* every selector in the block is the keccak of the signature, computed on chain */
@@ -244,6 +257,34 @@ eq("sel['launchpad.firstLaunchApproved']", S.sel["launchpad.firstLaunchApproved"
 eq("sel['postage.stampOf']", S.sel["postage.stampOf"], selOf("stampOf(uint256)"));
 eq("sel['reach.pieces']", S.sel["reach.pieces"], selOf("pieces()"));
 eq("sel['steward.heirHashOfToken']", S.sel["steward.heirHashOfToken"], selOf("heirHashOfToken(uint256,bytes32)"));
+/* the V2 rows, served by the third table under their own letters */
+eq("sel['keepsake.wrap'] — V, the third table's first letter", S.sel["keepsake.wrap"],
+   selOf("wrap(((address,uint256)[],(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))"));
+eq("sel['journal.inscribe'] — J", S.sel["journal.inscribe"], selOf("inscribe(address,uint256,uint8,bytes,bytes32)"));
+eq("sel['bazaar.check'] — B", S.sel["bazaar.check"], selOf("check(bytes32,uint256)"));
+eq("sel['bridges.endpointOf'] — b", S.sel["bridges.endpointOf"], selOf("endpointOf(bytes32)"));
+eq("sel['studio.launch'] — Z", S.sel["studio.launch"], selOf("launch(uint256,(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes),bytes32)"));
+eq("sel['collection.mint'] — c", S.sel["collection.mint"], selOf("mint(address,uint256)"));
+eq("sel['agora.speak'] — F", S.sel["agora.speak"], selOf("speak(uint256,uint256,uint8,uint64,uint64,bytes)"));
+/* the integration's rows (W15, INTEGRATION L5): what the lanes asked for, each a function its contract serves */
+{
+  const PAR = "(address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256)";
+  const L5 = {
+    "keepsake.ownerOf": "ownerOf(uint256)", "keepsake.tokenURI": "tokenURI(uint256)",
+    "agora.followerCount": "followerCount(uint256)", "agora.followingCount": "followingCount(uint256)", "agora.follows": "follows(uint256,uint256)",
+    "agora.isRegistered": "isRegistered(address)", "agora.collectionKey": "collectionKey(address)", "agora.homeKey": "homeKey(uint256)",
+    "agora.persona": "persona(address,uint256)", "collection.totalSupply": "totalSupply()", "collection.room": "room()",
+    "seaport.getCounter": "getCounter(address)", "seaport.getOrderHash": `getOrderHash(${PAR})`, "seaport.getOrderStatus": "getOrderStatus(bytes32)",
+    "seaport.validate": `validate((${PAR},bytes)[])`, "seaport.fulfillOrder": `fulfillOrder((${PAR},bytes),bytes32)`, "seaport.cancel": `cancel(${PAR}[])`,
+    "erc721.ownerOf": "ownerOf(uint256)", "erc721.tokenURI": "tokenURI(uint256)", "erc721.getApproved": "getApproved(uint256)",
+    "erc721.isApprovedForAll": "isApprovedForAll(address,address)", "erc721.setApprovalForAll": "setApprovalForAll(address,bool)", "erc721.approve": "approve(address,uint256)"
+  };
+  const off = Object.entries(L5).filter(([k, sig]) => S.sel[k] !== selOf(sig));
+  ok(`the ${Object.keys(L5).length} rows the lanes asked for are served under their words: the Keepsake's ownerOf and tokenURI, Agora's seven reads, a collection's totalSupply and room, the six Seaport calls the Gallery makes and any ERC-721's six`,
+     off.length === 0, off.map(([k]) => `${k} ${S.sel[k]}`).join(", "));
+  eq("sel['seaport.fulfillOrder'] — s, the venue's own letter", S.sel["seaport.fulfillOrder"], selOf(`fulfillOrder((${PAR},bytes),bytes32)`));
+  eq("sel['erc721.setApprovalForAll'] — e, beside E's any ERC-20", S.sel["erc721.setApprovalForAll"], selOf("setApprovalForAll(address,bool)"));
+}
 ok("no row for what the MVB struck: Parley steward tools, revokeEncryptionKey, guardNFT/unguardNFT",
    !("parley.evict" in S.sel) && !("parley.setCooldown" in S.sel) && !("parley.hide" in S.sel) &&
    !("keys.revokeEncryptionKey" in S.sel) && !("reach.guardNFT" in S.sel) && !("reach.unguardNFT" in S.sel));
@@ -270,6 +311,7 @@ eq("topics.said is keccak of the Said signature", S.topics.said, SAID);
 }
 eq("topics.transfer", S.topics.transfer, kec(Buffer.from("Transfer(address,address,uint256)")));
 for (const name of PANELS) eq(`panels.${name} is the pinned hash`, S.panels[name], manifest.panelHashes[name]);
+eq("the state's panel map names exactly the lanes the Engine holds, in slot order (the Gallery seventh)", Object.keys(S.panels).join(","), PANELS.join(","));
 eq("catalogHash in the gap is the Catalog's immutable", S.catalogHash, await c.read(site.catalog, "catalogHash()"));
 eq("and it is the keccak of /services.json's bytes", S.catalogHash, kec(svc.bodyBytes));
 ok("services.json names no price and no count, so its hash is a property of the deployment",
@@ -283,6 +325,17 @@ ok("a tuple argument is one argument, as the ABI sees it",
 ok("the hub rows carry the hub's address, the coin rows carry none",
    SV.services.find((r) => r.on === "hub").contract.toLowerCase() === site.hub.toLowerCase() &&
    SV.services.find((r) => r.on === "coin").contract === ZERO);
+ok("the V2 rows carry their contracts' addresses by letter, and a collection's carry none, as a coin's",
+   ["keepsake", "journal", "bazaar", "bridges", "studio", "agora"].every((k) => SV.services.find((r) => r.on === k).contract.toLowerCase() === S[k].toLowerCase()) &&
+   SV.services.find((r) => r.on === "collection").contract === ZERO);
+ok("the seaport rows carry the venue's address, the world's seaport, which is zero on a band with no Bazaar, and an erc721's carry none, as an erc20's",
+   SV.services.filter((r) => r.on === "seaport").length === 6 && SV.services.filter((r) => r.on === "seaport").every((r) => r.contract.toLowerCase() === S.seaport.toLowerCase()) &&
+   S.seaport === ZERO && SV.services.filter((r) => r.on === "erc721").length === 6 && SV.services.filter((r) => r.on === "erc721").every((r) => r.contract === ZERO),
+   SV.services.filter((r) => r.on === "seaport" || r.on === "erc721").map((r) => `${r.on}.${r.name} ${r.contract}`).join(", "));
+ok("a Seaport row's order is one argument, as the ABI sees it, and fulfillOrder is payable",
+   SV.services.find((r) => r.on === "seaport" && r.name === "validate").args.length === 1 &&
+   SV.services.find((r) => r.on === "seaport" && r.name === "fulfillOrder").args.length === 2 &&
+   SV.services.find((r) => r.on === "seaport" && r.name === "fulfillOrder").kind === "payable");
 
 /*  The tables are hand-written text in Catalog.sol and the ABIs are what
     the compiler produced: this is where they are held equal. A row whose
@@ -299,7 +352,13 @@ head("the catalog cannot drift from the ABIs");
   const ON = { hub: "IIntact", pool: "Pool", reach: "Reach", parley: "Parley", roster: "Roster", postage: "Postage", keys: "KeyRegistry",
                kiln: "Kiln", launchpad: "Launchpad", coin: "Coin", locks: "Locks", steward: "Steward", router: "Router",
                erc20: "MockERC20", engine: "Engine", catalog: "Catalog",
-               market: "IMarket", roles: "IRoles", agentCard: "IAgentCard", nameplate: "Nameplate", custodian: "LPCustodian" };
+               market: "IMarket", roles: "IRoles", agentCard: "IAgentCard", nameplate: "Nameplate", custodian: "LPCustodian",
+               /* V2 (wave 2, W6): held to the contracts, which carry the frozen interfaces and the units' recorded additions */
+               keepsake: "Keepsake", journal: "Journal", bazaar: "Bazaar", bridges: "Bridges", studio: "Studio",
+               collection: "Collection", agora: "Agora",
+               /* the integration (W15): Seaport is a venue held to the interface it is called through (src/interfaces/ISeaport.sol,
+                  Seaport 1.6's own shapes), and any ERC-721 to the standard's metadata interface, as E is held to a mock ERC-20 */
+               seaport: "ISeaport", erc721: "IERC721Metadata" };
   const fns = {};
   for (const [on, name] of Object.entries(ON)) fns[on] = new Set(find(name).abi.filter((f) => f.type === "function").map(sigOf));
   const unserved = SV.services.filter((r) => !fns[r.on] || !fns[r.on].has(r.sig));
@@ -310,7 +369,8 @@ head("the catalog cannot drift from the ABIs");
   // every error a panel-facing contract can revert with, by selector; two
   // are construction-time and never reach a panel
   const PANEL_FACING = ["CoreFacet", "RightsFacet", "MintFacet", "SiteFacet", "Pool", "Reach", "Grip", "Parley", "Roster", "Postage",
-                        "KeyRegistry", "Kiln", "Coin", "Launchpad", "Locks", "Steward", "Router", "IMarket", "IRoles", "LPCustodian", "LaunchHook"];
+                        "KeyRegistry", "Kiln", "Coin", "Launchpad", "Locks", "Steward", "Router", "IMarket", "IRoles", "LPCustodian", "LaunchHook",
+                        "Keepsake", "Journal", "Bazaar", "Bridges", "Studio", "Collection", "Agora"];
   const CONSTRUCTION_ONLY = new Set(["BadBand()", "WrongRegistry()"]);
   const lacking = new Set();
   for (const name of PANEL_FACING) for (const f of find(name).abi) {
@@ -366,7 +426,7 @@ eq("catalogHash", M.catalogHash, S.catalogHash);
 eq("crestCodehash is the Crest's extcodehash", M.crestCodehash, kec(await c.vm.stateManager.getCode((await import("@ethereumjs/util")).createAddressFromString(site.crest))));
 ok("routes are templates, and there are sixteen of them, not 4,096", M.routes.length === 16 && M.routes.every((r) => !/\/token\/\d/.test(r.template)));
 ok("the templated token routes hash the engine", M.routes.find((r) => r.template === "/token/<id>/live").keccak === plan.engineHash);
-ok("the panel route hashes the six panel hashes together",
+ok(`the panel route hashes the ${PANELS.length} lanes' pins together, in slot order`,
    M.routes.find((r) => r.template === "/panel/<name>.js").keccak === kec(Buffer.concat(PANELS.map((n) => Buffer.from(manifest.panelHashes[n].slice(2), "hex")))));
 ok(`/manifest reads for under ${gas(CAPS.manifest)} gas`, man.gas <= CAPS.manifest, gas(man.gas));
 
@@ -521,7 +581,11 @@ console.log("      dist/token-1.html   the document exactly as /token/1/live ser
 console.log("      dist/token-1.json   the metadata; dist/crest-1.svg the still; dist/services.json; dist/state-1.json");
 
 head("gas, measured");
-for (const [k, v] of Object.entries(c.gas)) if (["Engine", "Catalog", "CatalogRows", "CatalogRowsPost", "CatalogText", "CatalogState", "Renderer", "Premises", "IntactDiamond", "mint", "loadHead", "loadBody", "loadPanel"].includes(k)) console.log(`      ${k.padEnd(20)} ${gas(v).padStart(8)}`);
+for (const [k, v] of Object.entries(c.gas)) if (["Engine", "Catalog", "CatalogRows", "CatalogRowsPost", "CatalogRowsV2", "CatalogText", "CatalogState", "Renderer", "Premises", "IntactDiamond", "mint", "loadHead", "loadBody", "loadPanel"].includes(k)) console.log(`      ${k.padEnd(20)} ${gas(v).padStart(8)}`);
+/*  The three row tables, each its own transaction under EIP-7825's cap (V2, W6):
+    the third renders the V2 rows so that neither of the other two grows.   */
+ok(`the three row tables each deploy under the 2^24 transaction cap: ${["CatalogRows", "CatalogRowsPost", "CatalogRowsV2"].map((k) => `${k} ${c.gas[k]}`).join(", ")}`,
+   ["CatalogRows", "CatalogRowsPost", "CatalogRowsV2"].every((k) => c.gas[k] > 0n && c.gas[k] < 16_777_216n));
 console.log(`      ${"tokenURI".padEnd(20)} ${gas(uriGas).padStart(8)}   (cap ${gas(CAPS.tokenURI)})`);
 console.log(`      ${"/token/1/live".padEnd(20)} ${gas(live.gas).padStart(8)}   (cap ${gas(CAPS.live)})`);
 console.log(`      ${"/manifest".padEnd(20)} ${gas(man.gas).padStart(8)}   (cap ${gas(CAPS.manifest)})`);
