@@ -84,6 +84,8 @@
       #identity-curve, #identity-name   the two traits as read
       #identity-user, #identity-guardian, #identity-agent, #identity-proposed, #identity-income, #identity-face, #identity-seal
       #identity-key                no key bound / bound at epoch e · P-256 · key 0x…; #identity-registry  this wallet's registry key
+      #identity-agora-key          on a band where Agora reports (W14): the same words for agora.keyOf(persona), and
+                                   [data-act=agoraBindKey] binds the registry key there with agora.bindKey(persona)
       input[name=curve|name|guardian|user|userDays|wallet|face|sealDays|operator|opDays|approvee]   the holder's fields
       #identity-manifest           engine, catalog and the six panel hashes
       #identity-roles              the chip, or #identity-role-count (liveRoleCount) and #identity-role-user: <addr> until <date> · granted
@@ -123,6 +125,10 @@
       "roleExpirationDate(address,uint256,bytes32)", "roleEpoch(uint256,bytes32)"]].forEach(function (r) { r.slice(1).forEach(function (s) { M[r[0] + "." + s.split("(")[0]] = s; }); });
     /* the Nameplate's two rows are named by the catalogue, not by the function (nameFor is tokenForName) */
     M["nameplate.nameFor"] = "tokenForName(bytes)"; M["nameplate.nameExpiry"] = "expiry(bytes32)";
+    /* on a band where Agora reports, the token's key is also read and bound there, under its persona hub << 96 | id
+       (W14, INTEGRATION L6); a band without it declares nothing of Agora's and draws exactly V1's rows */
+    var AG = !!(S.reported & S.bits.agora), PER = BigInt(HUB) << 96n | ID;
+    if (AG) { M["agora.bindKey"] = "bindKey(uint256)"; M["agora.keyOf"] = "keyOf(uint256)"; }
     ui.rows(M);
 
     /*── words ──*/
@@ -457,11 +463,14 @@
     function key(p, g, cr) {
       p.append(el("h3", "", "sealing key"));
       note(p, "one P-256 key per wallet, derived from one signature; sign this sentence nowhere but here: whoever holds that signature can read your sealed messages; there is no forward secrecy.");
-      var ks = slot(p, "bound key", "identity-key"), b = el("div"); p.append(b);
+      var ks = slot(p, "bound key", "identity-key"), ak = AG && slot(p, "bound key · Agora", "identity-agora-key"), b = el("div"); p.append(b);
+      /* keyOf answers (type, keyId, the key) only under the holder and epoch that bound it: Parley's for the id, Agora's for the persona */
+      var said = function (r, e) { var t = r.w(0); return r.bytes(2) === "0x" ? "no key bound" : "bound at epoch " + e + " · " + (t === 3n ? "P-256" : "type " + t) + " · key " + ("0x" + r.words[1]).slice(0, 10) + "…"; };
+      if (ak) Promise.all([read(S.agora, "agora.keyOf", [PER]), cr]).then(function (v) { if (g === gen) ak.textContent = said(v[0], v[1].w(3)); }, bad(g, ak));
       Promise.all([read(S.parley, "parley.keyOf", [ID]), acct && read(S.keys, "keys.keyIdOf", [acct]), cr]).then(function (v) {
         if (g !== gen) return;
-        var t = v[0].w(0), id = "0x" + v[0].words[1], pk = v[0].bytes(2), rid = v[1] && "0x" + v[1].words[0], pub = !!(rid && BigInt(rid));
-        ks.textContent = pk === "0x" ? "no key bound" : "bound at epoch " + v[2].w(3) + " · " + (t === 3n ? "P-256" : "type " + t) + " · key " + id.slice(0, 10) + "…";
+        var rid = v[1] && "0x" + v[1].words[0], pub = !!(rid && BigInt(rid));
+        ks.textContent = said(v[0], v[2].w(3));
         if (!hold) return;
         kv(b, "this wallet's registry key", pub ? "published · id " + rid.slice(0, 10) + "…" + (MYPK && same(ui.kbytes(MYPK), rid) ? " · the one derived here" : "") : "none published").lastChild.id = "identity-registry";
         act(b, "setEncryptionKey", (MYPK ? "publish" : "derive and publish") + " the sealing key", R.HOLD, guard(function () {
@@ -473,6 +482,10 @@
         if (pub) act(b, "bindKey", "bind the registry key to " + tok, R.HOLD, function () {
           return send(S.parley, "parley.bindKey", [ID], [["Token", tok], ["Key", "this wallet's registry key, id " + rid.slice(0, 10) + "…"], ["Dies", "with a sale or a panic: the binding carries the custody epoch"]],
             "binds this wallet's registry key to " + tok + " at custody epoch " + v[2].w(3) + "; a sale or a panic unbinds it");
+        });
+        if (pub && ak) act(b, "agoraBindKey", "bind the registry key to " + tok + " in Agora", R.HOLD, function () {
+          return send(S.agora, "agora.bindKey", [PER], [["Token", tok + " · Agora persona " + PER], ["Key", "this wallet's registry key, id " + rid.slice(0, 10) + "…"], ["Dies", "with a sale or a panic: the binding carries the custody epoch"]],
+            "binds this wallet's registry key to " + tok + " in Agora at custody epoch " + v[2].w(3) + "; a sale or a panic unbinds it");
         });
       }, bad(g, ks));
     }

@@ -278,7 +278,7 @@ function parseInvariants(text) {
   const rows = new Map();          // id → { id, cell, status }
   // the lettered rows
   for (const line of text.split("\n")) {
-    const m = line.match(/^\|\s*([A-H]\d+)\s*\|/);
+    const m = line.match(/^\|\s*([A-Z]\d+)\s*\|/);
     if (!m) continue;
     const c = cells(line);
     if (c.length < 4) { rows.set(m[1], { id: m[1], cell: "", status: "", malformed: true }); continue; }
@@ -304,7 +304,7 @@ function parseDesign14(text) {
   const section = end < 0 ? rest : rest.slice(0, end);
   const rows = new Map();
   for (const line of section.split("\n")) {
-    const m = line.match(/^\|\s*([A-H]\d+)\s*\|/);
+    const m = line.match(/^\|\s*([A-Z]\d+)\s*\|/);
     if (!m) continue;
     const c = cells(line);
     rows.set(m[1], { id: m[1], cell: c[2] || "" });
@@ -328,7 +328,7 @@ for (const p of inv.paras) {
   else ok(p.id, `${r.files} file${r.files === 1 ? "" : "s"} · ${r.assertions} assertion${r.assertions === 1 ? "" : "s"}`);
 }
 
-say("\n  \x1b[1mthe rows (A–H)\x1b[0m");
+say("\n  \x1b[1mthe rows (A–Z)\x1b[0m");
 const pendingUnits = new Map();
 for (const row of inv.rows.values()) {
   const label = row.id.padEnd(4);

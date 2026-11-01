@@ -235,6 +235,15 @@ interface IIntact is IIntactEvents {
     function getTraitMetadataURI() external view returns (string memory);
     function setTrait(uint256 id, bytes32 traitKey, bytes32 newValue) external;
     function getStateFingerprint(uint256 id) external view returns (bytes32);
+    /// @notice keccak256 of every fingerprint term a sale does not move: Core's
+    ///         lockCount, transferSealUntil, createdAt, launchCount, curve and
+    ///         nameHash; the Reach's state, sealedUntil and openApprovalsRoot; the
+    ///         owned market's hash; the Locks and Keepsake commitments of the Reach;
+    ///         the launch root; the Journal's root. A zone reads it after a sale's
+    ///         transfers: the sale moves none of it, a seller acting inside the
+    ///         fill moves some of it. Reverts NoSuchToken for an unminted id.
+    ///         V2 wave 2 (W6), additive: docs/INTERFACE-CHANGES.md.
+    function residueOf(uint256 id) external view returns (bytes32);
     function coreOf(uint256 id) external view returns (Core memory);
 
     /*═══════════════════ the pinned world (§4.1 immutables) ═══════════════════*/
@@ -257,6 +266,10 @@ interface IIntact is IIntactEvents {
     function CATALOG() external view returns (address);
     function PREMISES() external view returns (address);
     function TIMELOCK() external view returns (address);
+    /// @notice The Keepsake and the Journal whose terms the fingerprint reads
+    ///         (V2 wave 2, W6, additive); predictions, codeless until they land.
+    function KEEPSAKE() external view returns (address);
+    function JOURNAL() external view returns (address);
     /// @notice keccak256 of every immutable above; every facet must agree.
     function intactConfigHash() external view returns (bytes32);
 }

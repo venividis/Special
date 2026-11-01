@@ -89,7 +89,8 @@ contract MarketTest is BundleFixture {
             band: BAND, bandLo: LO, bandHi: HI,
             steward: address(0), market: marketP, roles: address(0), pool: address(thePool),
             parley: address(0), launchpad: address(0), locks: address(0),
-            renderer: address(renderer), catalog: address(0), premises: address(0), timelock: timelock
+            renderer: address(renderer), catalog: address(0), premises: address(0), timelock: timelock,
+            keepsake: address(0), journal: address(0)
         });
     }
 

@@ -57,7 +57,42 @@
     Sentences the group proves (tools/verify-site/swap.mjs): "an absent
     Router hides the tab and sets the chip to not reported", "every approval
     the slab builds is exact", "a non-holder sees the custom error before
-    the wallet opens", "the swap slab states the floor in words".            */
+    the wallet opens", "the swap slab states the floor in words".
+
+    V2, the Trade lane (W9; docs/V2.md §0 rows 2–3, §2, §3.1, §3.2). The
+    owner asked to lock what a swap brings, to sell it slowly once it frees,
+    and to write a memory of the trade, like a journal. So under the card:
+      · "Lock what I receive" (a switch). On, the swap is the Keepsake's
+        swapAndWrap: locked for N days, then freed slowly over M days (two
+        day counts; the dates are the chain's clock, ui.clock()), optionally
+        sold slowly as it frees, never below a price the person names (the
+        drip: the human price P, in what was paid per one of what arrives,
+        becomes the raw floor P × 10^decPaid × 1e18 / 10^decReceived, rounded
+        up; at most a tenth of the amount per sale unless typed), kept or
+        given as a gift with a message of at most 280 bytes. A drip is only
+        for a keepsake you keep. Native input rides as value = amountIn; an
+        ERC-20 input is an exact approval to the Keepsake first, as the
+        button's current step. The keepsake's id is read from the receipt's
+        Wrapped log, never from a read after the write (CLAUDE.md).
+      · "Write a memory of this trade" (the holder's only: only the holder
+        writes a token's journal). After the swap's receipt lands, a second
+        slab offers Journal.inscribe(hub, id, TRADE, body, ref = the swap's
+        transaction hash); "Not now" leaves it as a button, never forced.
+      · Each part appears only where its contract reports (CONSOLE §6.3,
+        S.bits.keepsake / S.bits.journal); elsewhere its chip stands in its
+        place, and nothing is read from a codeless address.
+      · The card says in one breath (#swap-say) what the slab will say; the
+        rate both ways, the fee in percent and bps, the sniper countdown in
+        minutes and seconds.
+    V2 elements (scoped to #lane-swap; the integration step copies them):
+      #swap-say           the card's one breath: the sentence the slab opens with, the floor in it
+      #swap-lock          the lock part, or the keepsake chip; #swap-lock-on (button[role=switch], aria-checked),
+                          inputs name=lockDays|freeDays, #swap-lock-dates, #swap-drip-on (switch) with inputs
+                          name=floor|most and #swap-drip-now (what one of it fetches now), #swap-gift-on (switch)
+                          with input name=giftTo and textarea name=giftNote, #swap-lock-why (the refusal, in words)
+      #swap-memory        the holder's memory part, or the journal chip; textarea name=memory, #swap-memory-count
+      #swap-kept          after a landed swap: .keepsake[data-id] (from the Wrapped log), the memory's state
+      [data-act=inscribe] the memory, offered again after "Not now" (need HOLD)                          */
 (function () {
   var S = window.INTACT, ui = S && S.ui;
   if (!ui) return;
@@ -82,6 +117,13 @@
       "reach.executeTyped": TYPED, "reach.manifest": "manifest()", "reach.sealedUntil": "sealedUntil()",
       "hub.getTraitValue": "getTraitValue(uint256,bytes32)"
     });
+    /*  V2: the Keepsake's swapAndWrap and the Journal's inscribe, held to the chain's selectors like
+        every row. A Catalog that does not serve them silences the two parts, never the lane. */
+    var v2 = "";
+    try {
+      ui.rows({ "keepsake.swapAndWrap": "swapAndWrap((uint256,bool,uint256,uint256,uint64,(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256)))",
+                "journal.inscribe": "inscribe(address,uint256,uint8,bytes,bytes32)" });
+    } catch (e) { v2 = e.message; }
 
     /*── the market, as the chain last said it: the baked block for the first paint,
          pool.marketOf after that; every amount a BigInt, never a Number ──*/
@@ -115,6 +157,50 @@
     var sym = function (a) { return isEth(a) ? Promise.resolve(["ETH", 18]) : Promise.all([
       ui.read(a, "erc20.symbol", []).then(function (x) { return x.s(0).slice(0, 32); }, function () { return ui.short(a); }),
       ui.read(a, "erc20.decimals", []).then(function (x) { return Number(x.w(0)); }, function () { return null; })]); };
+
+    /*── V2 helpers: bytes as a chain counts them, days, plain time, a rate that is only ever "≈" ──*/
+    var u8 = function (s) { return new TextEncoder().encode(s); };
+    var hexOf = function (s) { return "0x" + Array.from(u8(s), function (b) { return (b < 16 ? "0" : "") + b.toString(16); }).join(""); };
+    var whole = function (s) { s = String(s).trim(); return /^\d{1,6}$/.test(s) ? BigInt(s) : null; };
+    var dayz = function (n) { return n + (n === 1n ? " day" : " days"); };
+    var plain = function (s) { return (s >= 60 ? Math.floor(s / 60) + " min " : "") + s % 60 + " s"; };
+    var pct = function (b) { return b / 100 + " % (" + b + " bps)"; };
+    /* about six significant figures, never a flat zero and never eighteen places: for a rate, not a floor */
+    var approx = function (v, d) { var s = amt(v, d), j = s.indexOf("."); return j < 0 ? s : s.slice(0, Math.max(j + 7, s.search(/[1-9]/) + 6)).replace(/\.?0+$/, ""); };
+    /* the first log a receipt carries from `a` under topic `t`: its topic word `i`, or null */
+    var logged = function (r, a, t, i) { var l = (r.logs || []).filter(function (x) { return same(x.address, a) && same(x.topics && x.topics[0], t); })[0]; return l ? BigInt(l.topics[i]) : null; };
+    /*  a V2 part shows only where its contract reports (CONSOLE §6.3); elsewhere its chip stands in its
+        place, and nothing is read from it — a codeless address answers no question */
+    var part = function (p, k) {
+      var bit = S.bits[k];
+      if (v2) return ui.note(p, v2, "warn"), false;
+      if (S.reported & bit) return true;
+      ui.chip(p, k + ": " + (S.absent & bit ? "not deployed on this chain" : "could not be read at block " + S.block), S.absent & bit ? "absent" : "unread");
+      return false;
+    };
+    /* what is typed under the card lives here, so a repaint keeps it; a landed trade starts afresh */
+    var lk0 = function () { return { on: false, days: "30", free: "30", drip: false, floor: "", most: "", gift: false, to: "", note: "", mem: "" }; };
+    var LK = lk0(), last = null, memLive = false, sayEl = null, whyEl = null, datesEl = null, nowEl = null, drawLock = null;
+    /*  the lane's own light — a switch is a row with a knob in the token's two hues, the one breath is set
+        large, and a keepsake wears an orb of the same light — is the shell's stylesheet since W14 (engine/app.css,
+        INTEGRATION L4): this panel writes no <style>. No animation, so nothing loops. */
+    /* a switch: a button with role=switch, its state in aria-checked (the knob reads it), its label its own text */
+    var sw = function (p, id, label, k, fn) {
+      var b = ui.el("button", "chip", label), set = function () { b.setAttribute("aria-checked", String(LK[k])); };
+      b.type = "button"; b.id = id; b.setAttribute("role", "switch"); set();
+      b.addEventListener("click", function () { LK[k] = !LK[k]; set(); fn(); });
+      p.append(b); return b;
+    };
+    /* every field is labelled for assistive technology as well as on screen: ui.field draws the words, this names the input */
+    var fld = function (p, l, ph) { var i = ui.field(p, l, ph); i.setAttribute("aria-label", l); return i; };
+    /* a field bound to LK[k], labelled for assistive technology as well as on screen */
+    var bound = function (p, label, k, name, ph, area) {
+      p.append(ui.el("div", "k", label));
+      var i = ui.el(area ? "textarea" : "input"); if (!area) { i.type = "text"; i.autocomplete = "off"; }
+      i.name = name; i.placeholder = ph; i.value = LK[k]; i.setAttribute("aria-label", label); p.append(i);
+      i.addEventListener("input", function () { LK[k] = i.value; summary(); });
+      return i;
+    };
 
     /*── one SwapRequest, laid by hand: data() builds no tuples (CONSOLE §5) ──*/
     var swapReq = function (venue, tin, tout, a, minOut, dl) {
@@ -152,6 +238,93 @@
     /* after a receipt that changed the market: the clock re-anchored, the market re-read, the lane repainted */
     var after = function () { return syncClock().then(syncMarket).then(function () { paint(); }); };
 
+    /*═══════════ V2: the lock's terms, the one breath, the receipt's facts, the memory ═══════════*/
+    /*  the lock's terms from what is typed: an object, or the sentence that refuses them. The drip
+        sells what arrives (OUT) for what was paid (IN), so its price is IN per one OUT and the floor
+        the Keepsake reads is IN units per 1e18 OUT units, rounded up: never below what was typed */
+    function terms(q) {
+      var IN = coin(baseIn), OUT = coin(!baseIn), L = whole(LK.days), F = whole(LK.free), t = { L: L, F: F, note: "" }, x, b;
+      if (exactOut) return "a lock names what you pay: switch to exact in";
+      if (IN.dec == null || OUT.dec == null) return "a coin's decimals did not answer; nothing is guessed";
+      if (L == null || F == null) return "the days are whole numbers";
+      if (!(L + F)) return "a lock of no days is no lock: name at least one day";
+      if (L + F > 3650n) return "a keepsake frees within ten years: 3,650 days at most";
+      if (LK.gift) {
+        if (LK.drip) return "a drip is only for a keepsake you keep: a giver never sells a recipient's gift";
+        x = LK.to.trim();
+        if (!ui.isAddr(x) || isEth(x)) return "a gift needs the address it goes to";
+        /* a mixed-case address carries its own checksum (EIP-55): one that does not match is a typo, and a gift is not taken back */
+        if (/[a-f]/.test(x) && /[A-F]/.test(x) && ui.checksum(x) !== x) return "that address's mixed case is not its checksum: check every character";
+        if (same(x, ui.account())) return "that is your own address: a keepsake you keep is no gift";
+        t.to = ui.checksum(x); t.note = LK.note.trim(); x = u8(t.note).length;
+        if (x > 280) return "the message is " + x + " bytes; a gift's card holds 280";
+      }
+      if (LK.drip) {
+        try { x = ui.parse(LK.floor, IN.dec); } catch (e) { x = 0n; }
+        if (!x) return "name the lowest price it may sell at, in " + IN.sym + " per " + OUT.sym;
+        b = 10n ** BigInt(OUT.dec); t.P = x; t.floor = (x * 10n ** 18n + b - 1n) / b;
+        try { x = LK.most.trim() ? ui.parse(LK.most, OUT.dec) : (q || 0n) / 10n || 1n; } catch (e) { x = 0n; }
+        if (!x) return "the most it sells at a time is an amount of " + OUT.sym;
+        t.most = x;
+      }
+      return t;
+    }
+    /* the one breath a slab opens with, and the card shows before the press (V2 §2) */
+    function words(P, t) {
+      var IN = coin(baseIn), OUT = coin(!baseIn), lo = amt(P.lim, (exactOut ? IN : OUT).dec);
+      if (exactOut) return "You receive exactly " + amt(P.a, OUT.dec) + " " + OUT.sym + " and pay at most " + lo + " " + IN.sym + ", or nothing moves";
+      var s = "You pay " + amt(P.a, IN.dec) + " " + IN.sym + " and ";
+      if (!t || typeof t === "string") return s + "receive at least " + lo + " " + OUT.sym + ", or nothing moves";
+      return s + (t.to ? "give at least " + lo + " " + OUT.sym + " to " + t.to : "receive at least " + lo + " " + OUT.sym) + ", " +
+        (t.L ? "locked for " + dayz(t.L) + ", then " + (t.F ? "freed slowly over " + dayz(t.F) : "freed all at once") : "freed slowly over " + dayz(t.F) + " from now") +
+        (t.P ? "; it sells itself slowly, never below " + amt(t.P, IN.dec) + " " + IN.sym + " per " + OUT.sym : "");
+    }
+    /* the card's one breath, the lock's dates on the chain's clock and its refusal, as things are typed */
+    function summary() {
+      var P = pending, t = LK.on && terms(P && P.q), IN = coin(baseIn), OUT = coin(!baseIn), n = BigInt(chainNow()), L = whole(LK.days), F = whole(LK.free);
+      if (whyEl) { whyEl.textContent = typeof t === "string" ? t : ""; whyEl.hidden = typeof t !== "string"; }
+      if (datesEl) datesEl.textContent = L != null && F != null && L + F ? (L ? "locked until " + date(n + L * 86400n) + ", " : "frees from now, ") + "all free by " + date(n + (L + F) * 86400n) : "";
+      if (nowEl) nowEl.textContent = P && P.q && !exactOut ? "now 1 " + OUT.sym + " fetches ≈ " + approx(P.a * 10n ** BigInt(OUT.dec) / P.q, IN.dec) + " " + IN.sym : "";
+      if (sayEl) sayEl.textContent = P ? words(P, t) + "." : "";
+    }
+    /* the holder's memory as typed, when its part is showing: false (said in words) when too long */
+    function memText() {
+      var s = memLive ? LK.mem.trim() : "", n = u8(s).length;
+      return n > 1024 ? (ui.say("the memory is " + n + " bytes; a journal entry holds 1,024", "err"), false) : s;
+    }
+    /*  after a swap that landed: the keepsake's id from its Wrapped log — never a read after the write
+        (CLAUDE.md) — and the memory, kept for the card; what follows is typed afresh */
+    function kept(r, info, body) {
+      if (!r || BigInt(r.status || 0) !== 1n) return false;
+      var had = !!last;
+      last = info || body ? { acct: ui.account(), hash: r.transactionHash, body: body, info: info, n: null, id: info && logged(r, S.keepsake, S.topics.wrapped, 1) } : null;
+      if (last) LK = lk0();
+      return had || !!last;
+    }
+    /* the memory slab follows the swap it is about, offered and never forced */
+    var offer = function (h) { return function () { var m = last; return m && m.hash === h && m.body && !m.n ? inscribe() : null; }; };
+    function inscribe() {
+      var m = last; if (!m || !m.body || m.n) return;
+      return ui.propose({
+        to: S.journal, key: "journal.inscribe", args: [S.hub, BigInt(ID), 1n, hexOf(m.body), m.hash], need: R.HOLD,
+        lines: [["Token", "#" + ID], ["Memory", m.body], ["Kind", "a trade"], ["About", "the swap in transaction " + m.hash],
+                ["Read by", "anyone, for ever; never edited or deleted"], ["Fingerprint", "it moves: a listing signed before this memory no longer fills"]],
+        sentence: "Writes your memory of this trade into #" + ID + "'s journal. It is public, and it enters the token's fingerprint.",
+        then: function (r) { var n = logged(r, S.journal, S.topics.inscribed, 3); if (n != null && m === last) { m.n = n; paintKept(); } }
+      });
+    }
+    function paintKept() {
+      var k = host.querySelector("#swap-kept"), m = last, e;
+      if (!k) return; k.replaceChildren();
+      if (!m || !same(m.acct, ui.account())) return;
+      if (m.info) {
+        e = ui.note(k, (m.id == null ? "a keepsake" : "keepsake #" + m.id) + " holds what arrived" + (m.info.gift ? " and is now " + m.info.gift + "'s" : "; it is yours") +
+          ": it frees from " + date(m.info.start) + ", all free by " + date(m.info.end), "ok");
+        e.classList.add("keepsake", "card"); if (m.id != null) e.dataset.id = String(m.id);
+      }
+      if (m.body) m.n ? ui.note(k, "memory #" + m.n + " is in #" + ID + "'s journal, for anyone to read", "ok") : ui.act(k, "inscribe", "write the memory of this trade", R.HOLD, inscribe);
+    }
+
     /*═══════════ the swap card: anyone with a wallet; quoted at review time, every time ═══════════*/
     function swapCard(p) {
       var c = ui.el("div"); c.id = "swap-card"; card = c;
@@ -163,27 +336,76 @@
       var sOut = ui.el("span", "k"); sOut.id = "swap-sym-out";
       row.append(sIn, flip, sOut); c.append(row);
       var mode = ui.el("button", "chip", ""); mode.type = "button"; mode.id = "swap-exact"; c.append(mode);
-      var inp = ui.field(c, "amount", "0.0"); inp.id = "swap-in";
+      var inp = fld(c, "amount", "0.0"); inp.id = "swap-in"; inp.inputMode = "decimal";
       var out = ui.el("p", "v"); out.id = "swap-out"; c.append(out);
       var det = ui.el("div"); det.id = "swap-details"; c.append(det);
+      /* V2: the lock and the memory sit between what is quoted and the button that signs it */
+      var opt = ui.el("div"); c.append(opt);
       var go = ui.act(c, "swap", "Swap", 0, press, { spend: true });
-      if (go) { go.id = "swap-go"; go.disabled = true; }
+      var kb = ui.el("div"); kb.id = "swap-kept"; c.append(kb);
+      if (go) { go.id = "swap-go"; go.disabled = true; lockPart(opt); memPart(opt); }
       var paintDir = function () {
         var IN = coin(baseIn), OUT = coin(!baseIn);
         sIn.textContent = IN.sym; sOut.textContent = OUT.sym;
         mode.textContent = exactOut ? "exact out: you name what arrives" : "exact in: you name what you pay";
         mode.classList.toggle("on", exactOut);
       };
-      flip.addEventListener("click", function () { baseIn = !baseIn; paintDir(); quoteNow(); paintElsewhereAct(); });
+      /* a floor and a per-sale amount are in the pair's units: a flip clears them, never reads them the other way round */
+      flip.addEventListener("click", function () { baseIn = !baseIn; LK.floor = LK.most = ""; if (drawLock) drawLock(); paintDir(); quoteNow(); paintElsewhereAct(); });
       mode.addEventListener("click", function () { exactOut = !exactOut; paintDir(); quoteNow(); });
       inp.addEventListener("input", quoteNow);
-      paintDir(); requote = quoteNow;
+      paintDir(); requote = quoteNow; paintKept();
+
+      /*  "Lock what I receive": the days, the slow sale, the gift — each a switch that opens its own
+          fields, every field bound to LK, the dates on the chain's clock, the refusal in words */
+      function lockPart(o) {
+        var b = ui.el("div"); b.id = "swap-lock"; o.append(b);
+        if (!part(b, "keepsake")) return;
+        var body = ui.el("div"), draw = function () {
+          body.replaceChildren(); body.className = LK.on ? "card" : ""; datesEl = nowEl = null;
+          if (!LK.on) return;
+          bound(body, "locked for how many days", "days", "lockDays", "30").inputMode = "numeric";
+          bound(body, "then freed slowly over how many days", "free", "freeDays", "30").inputMode = "numeric";
+          datesEl = ui.note(body, "", "s"); datesEl.id = "swap-lock-dates";
+          sw(body, "swap-drip-on", "Sell it slowly as it frees", "drip", flipped);
+          if (LK.drip) {
+            bound(body, "never below this price, in " + coin(baseIn).sym + " per " + coin(!baseIn).sym, "floor", "floor", "the lowest you accept").inputMode = "decimal";
+            nowEl = ui.note(body, "", "s"); nowEl.id = "swap-drip-now";
+            bound(body, "at most this much " + coin(!baseIn).sym + " per sale", "most", "most", "a tenth of what arrives").inputMode = "decimal";
+            ui.note(body, "anyone may press a sale, once a block; it pays only you", "s");
+          }
+          sw(body, "swap-gift-on", "Give it as a gift", "gift", flipped);
+          if (LK.gift) {
+            bound(body, "to this address", "to", "giftTo", "0x…");
+            bound(body, "with a message on its card (280 bytes at most)", "note", "giftNote", "", 1);
+          }
+        }, flipped = function () { draw(); quoteNow(); };
+        sw(b, "swap-lock-on", "Lock what I receive", "on", function () { syncClock().then(summary); flipped(); });
+        b.append(body);
+        whyEl = ui.note(b, "", "warn"); whyEl.id = "swap-lock-why"; whyEl.hidden = true;
+        (drawLock = draw)();
+      }
+      /* "Write a memory of this trade": only the holder writes a token's journal */
+      function memPart(o) {
+        if (!(ui.rights() & R.HOLD)) return;
+        var b = ui.el("div"); b.id = "swap-memory"; o.append(b);
+        if (!part(b, "journal")) return;
+        memLive = true;
+        var t = bound(b, "Write a memory of this trade (optional)", "mem", "memory", "what you were thinking", 1);
+        var n = ui.el("p", "s"); n.id = "swap-memory-count"; b.append(n);
+        var count = function () { var len = u8(t.value.trim()).length; n.textContent = len + " of 1,024 bytes · public, written after the swap lands"; n.classList.toggle("bad", len > 1024); };
+        t.addEventListener("input", count); count();
+      }
+      /* the button's word and the approval's spender follow the lock: the Keepsake pulls what the lock pays */
+      var locked = function () { return LK.on && !!host.querySelector("#swap-lock-on"); };
+      var label = function () { return locked() ? (LK.gift ? "Swap and give" : "Swap and lock") : "Swap"; };
 
       function quoteNow() {
         var IN = coin(baseIn), OUT = coin(!baseIn), typedCoin = exactOut ? OUT : IN, quotedCoin = exactOut ? IN : OUT;
-        pending = null; qseq++;
+        pending = null; qseq++; sayEl = null;
         out.textContent = ""; delete out.dataset.raw; det.replaceChildren();
-        if (go) { go.disabled = true; go.textContent = "Swap"; }
+        if (go) { go.disabled = true; go.textContent = label(); }
+        summary();
         var raw = inp.value;
         if (!String(raw).trim()) return;
         if (typedCoin.dec == null || quotedCoin.dec == null) return ui.note(det, "the decimals of " + (typedCoin.dec == null ? typedCoin.sym : quotedCoin.sym) + " did not answer; the point is not guessed", "warn");
@@ -196,18 +418,21 @@
           var q = r.w(0), slip = q * 50n / 10000n;
           pending = exactOut ? { a: a, q: q, lim: q + slip } : { a: a, q: q, lim: q - slip };
           out.dataset.raw = String(q); out.textContent = amt(q, quotedCoin.dec) + " " + quotedCoin.sym;
-          /* the rate from the two amounts themselves, in BigInt: out per one in */
+          /* the one breath first: what the slab will say, the floor in it (V2 §2) */
+          sayEl = ui.el("p", "v"); sayEl.id = "swap-say"; det.append(sayEl);
+          /* the rate from the two amounts themselves, in BigInt, both ways: out per one in, and in per one out */
           var inAmt = exactOut ? q : a, outAmt = exactOut ? a : q;
-          ui.kv(det, "rate", "1 " + IN.sym + " ≈ " + amt(outAmt * (10n ** BigInt(IN.dec)) / inAmt, OUT.dec) + " " + OUT.sym);
+          ui.kv(det, "rate", "1 " + IN.sym + " ≈ " + approx(outAmt * (10n ** BigInt(IN.dec)) / inAmt, OUT.dec) + " " + OUT.sym + " · 1 " + OUT.sym + " ≈ " + approx(inAmt * (10n ** BigInt(OUT.dec)) / outAmt, IN.dec) + " " + IN.sym);
           var owned = ui.kv(det, "its own market", amt(q, quotedCoin.dec) + " " + quotedCoin.sym);
           owned.id = "swap-quote-owned"; owned.classList.add("quote"); owned.lastChild.dataset.raw = String(q);
           ui.kv(det, exactOut ? "pay at most" : "no less than", amt(pending.lim, quotedCoin.dec) + " " + quotedCoin.sym + (exactOut ? " — or nothing moves" : " — or nothing moves"));
-          ui.kv(det, "fee", M.fee + " bps to whoever holds #" + ID + (M.snBps && M.snUntil > chainNow() ? ", plus the sniper fee while it runs" : ""));
+          ui.kv(det, "fee", pct(M.fee) + " to whoever holds #" + ID + (M.snBps && M.snUntil > chainNow() ? ", plus the sniper fee while it runs" : ""));
+          summary();
           var payCoin = IN, pay = exactOut ? pending.lim : a;
           if (go) {
             go.disabled = false;
-            if (isEth(payCoin.addr)) go.textContent = "Swap";
-            else ui.read(payCoin.addr, "erc20.allowance", [ui.account(), S.pool]).then(function (al) {
+            if (isEth(payCoin.addr)) go.textContent = label();
+            else ui.read(payCoin.addr, "erc20.allowance", [ui.account(), locked() ? S.keepsake : S.pool]).then(function (al) {
               if (seq === qseq && al.w(0) < pay) go.textContent = "Approve " + amt(pay, payCoin.dec) + " " + payCoin.sym + " — the current step";
             }, function () {});
           }
@@ -226,14 +451,41 @@
       function press() {
         var IN = coin(baseIn), OUT = coin(!baseIn), P = pending;
         if (!P) return ui.say("an amount first", "err");
+        /* V2: the memory and the lock are refused in words before anything is asked of the chain */
+        var mem = memText(), lock = locked(), t = lock && terms(P.q);
+        if (mem === false) return;
+        if (typeof t === "string") return ui.say(t, "err");
         var pay = exactOut ? P.lim : P.a, payCoin = IN;
-        var steps = isEth(payCoin.addr) ? [] : [{ token: payCoin.addr, spender: S.pool, amount: pay, symbol: payCoin.sym, decimals: payCoin.dec }];
+        /* a locked swap is pulled by the Keepsake, and its approval's line says so (the shell's default is the market) */
+        var steps = isEth(payCoin.addr) ? [] : [{ token: payCoin.addr, spender: lock ? S.keepsake : S.pool, amount: pay, symbol: payCoin.sym, decimals: payCoin.dec, who: lock && "the Keepsake" }];
         ui.approveExactThen(steps, function () {
           return ui.read(S.pool, exactOut ? "pool.quoteExactOut" : "pool.quote", [ID, baseIn, P.a]).then(function (r) {
             var q = r.w(0), slip = q * 50n / 10000n, lim = exactOut ? q + slip : q - slip, to = ui.account();
             if (exactOut && lim > pay) return ui.say("the price moved: it now asks " + amt(q, IN.dec) + " " + IN.sym + " — review again", "err"), quoteNow();
+            /* at the press the market is asked once more: a floor the curve no longer meets is a sentence here, not a Slippage revert after the signature */
+            var recheck = function () { return ui.read(S.pool, exactOut ? "pool.quoteExactOut" : "pool.quote", [ID, baseIn, P.a]).then(function (r) { return (exactOut ? r.w(0) > lim : r.w(0) < lim) ? "the price moved past the floor — review again" : null; }, function () { return "the market could not be re-quoted at the press — review again"; }); };
             return ui.clock().then(function (now) {
               var dl = now + 900n, value = isEth(payCoin.addr) ? (exactOut ? lim : P.a) : 0n;
+              /*  V2: lock what arrives — Keepsake.swapAndWrap, the schedule from the chain's clock, the drip's
+                  floor raw in the calldata and in words in the lines (a tuple: every field is a line, and the
+                  shell draws its row from the calldata beside them); the keepsake's id comes from the receipt's Wrapped log */
+              if (lock) {
+                t = terms(q); if (typeof t === "string") return ui.say(t, "err");
+                var start = t.L ? now + t.L * 86400n : 0n, end = now + (t.L + t.F) * 86400n, info = { gift: t.to, start: start || now, end: end };
+                return ui.propose({
+                  to: S.keepsake, key: "keepsake.swapAndWrap", value: value, need: 0, spend: true, recheck: recheck,
+                  args: [[ID, baseIn, P.a, lim, dl, [start, 0n, end], t.to || to, t.note, t.P ? [0n, ID, t.floor, t.most] : [0n, 0n, 0n, 0n]]],
+                  lines: [["Token", "#" + ID], ["You pay", "exactly " + amt(P.a, IN.dec) + " " + IN.sym + (value ? ", sent as value" : ", pulled exactly by the Keepsake")],
+                          ["About", amt(q, OUT.dec) + " " + OUT.sym], ["No less than", amt(lim, OUT.dec) + " " + OUT.sym + " — or nothing moves"],
+                          ["Held as", "a keepsake, an NFT nothing opens early"],
+                          ["Frees from", start ? date(start) : "now"], ["All free by", date(end) + (t.F ? ", along a straight line" : ", at once")],
+                          t.to ? ["A gift to", t.to] : ["Kept by", "you, " + ui.short(to)], ["Message", t.note || "none"],
+                          ["Sells", t.P ? "slowly as it frees: never below " + amt(t.P, IN.dec) + " " + IN.sym + " per " + OUT.sym + ", at most " + amt(t.most, OUT.dec) + " " + OUT.sym + " a sale, through #" + ID + "'s market; anyone may press it, and it pays only you" : "never by itself"],
+                          ["Dies", "in fifteen minutes"]],
+                  sentence: words({ a: P.a, lim: lim }, t) + ".",
+                  then: function (r) { kept(r, info, mem); return after().then(offer(r.transactionHash)); }
+                });
+              }
               var lines = exactOut
                 ? [["Token", "#" + ID], ["Receive exactly", amt(P.a, OUT.dec) + " " + OUT.sym], ["Costs about", amt(q, IN.dec) + " " + IN.sym],
                    ["Pay at most", amt(lim, IN.dec) + " " + IN.sym + " — or nothing moves"], ["To", ui.short(to)], ["Dies", "in fifteen minutes"]]
@@ -241,15 +493,13 @@
                    ["No less than", amt(lim, OUT.dec) + " " + OUT.sym + " — or nothing moves"], ["To", ui.short(to)], ["Dies", "in fifteen minutes"]];
               return ui.propose({
                 to: S.pool, key: exactOut ? "pool.swapExactOut" : "pool.swapExactIn", args: [ID, baseIn, P.a, lim, to, dl], value: value, need: 0, spend: true, lines: lines,
-                /* at the press the market is asked once more: a floor the curve no longer meets is a sentence here, not a Slippage revert after the signature */
-                recheck: function () { return ui.read(S.pool, exactOut ? "pool.quoteExactOut" : "pool.quote", [ID, baseIn, P.a]).then(function (r) { return (exactOut ? r.w(0) > lim : r.w(0) < lim) ? "the price moved past the floor — review again" : null; }, function () { return "the market could not be re-quoted at the press — review again"; }); },
-                sentence: exactOut
-                  ? "buys exactly " + amt(P.a, OUT.dec) + " " + OUT.sym + " through #" + ID + "'s market for at most " + amt(lim, IN.dec) + " " + IN.sym + ", or nothing moves; dies in fifteen minutes"
-                  : "swaps exactly " + amt(P.a, IN.dec) + " " + IN.sym + " through #" + ID + "'s market for no less than " + amt(lim, OUT.dec) + " " + OUT.sym + ", or nothing moves; dies in fifteen minutes",
-                then: function () {
-                  var wasExactOut = exactOut, spent = payCoin;
+                recheck: recheck,
+                /* the card's one breath, through #ID's market, and the deadline */
+                sentence: words({ a: P.a, lim: lim }) + "; it goes through #" + ID + "'s market and dies in fifteen minutes.",
+                then: function (r) {
+                  var f = kept(r, null, mem), wasExactOut = exactOut, spent = payCoin;
                   return syncClock().then(syncMarket).then(function (changed) {
-                    if (changed) paint();
+                    if (changed || f) paint();
                     /* D19: an exact-out pull is inUsed ≤ maxIn; what is left approved is offered back to zero */
                     if (!wasExactOut || isEth(spent.addr) || !card) return;
                     return ui.read(spent.addr, "erc20.allowance", [to, S.pool]).then(function (al) {
@@ -263,7 +513,7 @@
                       }, { spend: true });
                       card.append(box);
                     }, function () {});
-                  });
+                  }).then(offer(r.transactionHash));
                 }
               });
             }, function () { ui.say("the chain's clock could not be read", "err"); if (go) go.disabled = true; ui.note(det, "the chain's clock could not be read; no deadline is guessed", "warn"); });
@@ -323,6 +573,9 @@
       if (why) return ui.note(elseBox, "the Reach is sealed until " + date(reachSeal) + ": " + why, "warn");
       ui.act(elseBox, "swapElsewhere", "swap through the Router, from the Reach", R.HOLD, function () {
         var P = pending; if (!P || exactOut) return ui.say(exactOut ? "the Router swaps exact-in only; switch the mode" : "an amount first", "err");
+        /* V2: a lock goes through the token's own market; a memory follows this swap as it follows that one */
+        if (LK.on && host.querySelector("#swap-lock-on")) return ui.say("a lock goes through #" + ID + "'s own market: turn it off to swap through the Router", "err");
+        var mem = memText(); if (mem === false) return;
         var a = P.a, ask = function () { return ui.simulate(S.router, S.sel["router.quoteExactIn"] + swapReq(0, IN.addr, OUT.addr, a, 0n, 0n), { from: S.reach }); };
         /* quoted again at this press, by the Router itself */
         return ask().then(function (r) {
@@ -340,7 +593,7 @@
                       ["Spend", "at most " + amt(a, IN.dec) + " " + IN.sym + (value ? ", sent as value" : "")], ["Receive at least", amt(minOut, OUT.dec) + " " + OUT.sym + " — or nothing moves"],
                       ["About", amt(q, OUT.dec) + " " + OUT.sym], ["Allowance after", "zero, proved"], ["Dies", "in fifteen minutes"]],
               sentence: "the Reach swaps exactly " + amt(a, IN.dec) + " " + IN.sym + " through the Router for no less than " + amt(minOut, OUT.dec) + " " + OUT.sym + ", or nothing moves; no allowance survives; dies in fifteen minutes",
-              then: after
+              then: function (r) { kept(r, null, mem); return after().then(offer(r.transactionHash)); }
             });
           }, function () { ui.say("the chain's clock could not be read", "err"); });
         }, function (e) { ui.say(unread(e), "err"); });
@@ -364,7 +617,7 @@
         return st;
       };
       var two = function (box, verb) {
-        var fb = ui.field(box, verb + " " + Bc.sym, "0.0"), fq = ui.field(box, "and " + Qc.sym, "0.0");
+        var fb = fld(box, verb + " " + Bc.sym, "0.0"), fq = fld(box, "and " + Qc.sym, "0.0");
         return function () {
           if (Bc.dec == null || Qc.dec == null) return ui.say("a coin's decimals did not answer; nothing is guessed", "err"), null;
           var ab, aq;
@@ -392,7 +645,7 @@
             sentence: "withdraws " + amt(v[0], Bc.dec) + " " + Bc.sym + " and " + amt(v[1], Qc.dec) + " " + Qc.sym + " from #" + ID + "'s market to " + ui.account(), then: after });
         });
         var fee = ui.el("div"); y.append(fee); y.append(ui.el("h3", "", "the fee"));
-        var fIn = ui.field(fee, "set it to, in bps (≤ 500)", String(M.fee)); fIn.name = "feeBps";
+        var fIn = fld(fee, "set it to, in bps (≤ 500)", String(M.fee)); fIn.name = "feeBps";
         ui.act(fee, "setFee", "review the fee", R.HOLD, function () {
           var f = digits(fIn.value, 500n, "the fee"); if (f == null) return;
           return ui.propose({ to: S.pool, key: "pool.setFee", args: [ID, f], need: R.HOLD,
@@ -414,7 +667,7 @@
       ui.note(sl, "a seal promises the inventory stays: no withdrawal, no fee change, no re-anchoring until it lapses. It only ever lengthens, and it survives sale.");
       if (M.seal) ui.kv(sl, "sealed until", date(M.seal) + (sealed ? "" : " (lapsed)"));
       if (!sealed) {
-        var days = ui.field(sl, "seal for how many days (≤ 365)", "7");
+        var days = fld(sl, "seal for how many days (≤ 365)", "7");
         ui.act(sl, "sealMarket", "review the seal", R.HOLD, function () {
           var d = digits(days.value, 365n, "the number of days"); if (d == null) return; if (!d) return ui.say("at least one day", "err");
           return ui.clock().then(function (now) {
@@ -444,11 +697,11 @@
     function openForm(y) {
       var f = ui.el("div"); f.id = "swap-open-form"; y.append(f);
       ui.note(f, "no market is open. The holder opens one; the fee is paid to whoever holds the token. The sniper fee is set here and nowhere else, and falls to nothing over its window.");
-      var oB = ui.field(f, "base coin (0x0 for ETH)", "0x…"), oQ = ui.field(f, "quote coin (0x0 for ETH)", "0x…");
-      var oF = ui.field(f, "fee, in bps (≤ 500)", "30"); oF.name = "feeBps";
-      var oC = ui.field(f, "curve, in bps (≤ 80000; 0 = constant product)", "0"); oC.name = "curveBps";
-      var oS = ui.field(f, "sniper fee at open, in bps (≤ 9000)", "0"); oS.name = "sniperBps";
-      var oT = ui.field(f, "sniper window, in seconds (≤ 5880)", "0"); oT.name = "sniperSeconds";
+      var oB = fld(f, "base coin (0x0 for ETH)", "0x…"), oQ = fld(f, "quote coin (0x0 for ETH)", "0x…");
+      var oF = fld(f, "fee, in bps (≤ 500)", "30"); oF.name = "feeBps";
+      var oC = fld(f, "curve, in bps (≤ 80000; 0 = constant product)", "0"); oC.name = "curveBps";
+      var oS = fld(f, "sniper fee at open, in bps (≤ 9000)", "0"); oS.name = "sniperBps";
+      var oT = fld(f, "sniper window, in seconds (≤ 5880)", "0"); oT.name = "sniperSeconds";
       ui.act(f, "openMarket", "review the opening", R.HOLD, function () {
         /* "0x0 for ETH", as the labels say: an empty field, 0x0 or any run of zeros is the native coin */
         var eth0 = function (s) { s = String(s).trim(); return /^(0x0*)?$/i.test(s) ? ZERO : s; };
@@ -472,7 +725,7 @@
       var Bc = coin(true), Qc = coin(false);
       ui.kv(f, "pair", Bc.sym + " / " + Qc.sym);
       ui.kv(f, "reserves", amt(M.rB, Bc.dec) + " " + Bc.sym + " · " + amt(M.rQ, Qc.dec) + " " + Qc.sym);
-      ui.kv(f, "fee", M.fee + " bps");
+      ui.kv(f, "fee", pct(M.fee));
       ui.kv(f, "curve", M.curve + " bps");
       ui.kv(f, "seal", M.seal ? (M.seal > chainNow() ? "sealed until " : "lapsed ") + date(M.seal) : "none");
       clearTimeout(snT);
@@ -481,7 +734,7 @@
         var tick = function () {
           var left = M.snUntil - chainNow();
           if (left <= 0) { sn.remove(); return; }
-          sn.lastChild.textContent = M.snBps + " bps at open, decaying — " + left + " s left";
+          sn.lastChild.textContent = M.snBps + " bps at open, falling to nothing — " + plain(left) + " left";
           snT = setTimeout(tick, 1000);
         };
         tick();
@@ -521,6 +774,7 @@
     /*═══════════ paint ═══════════*/
     function paint() {
       host.replaceChildren(); card = null; elseOut = null; elseBox = null; requote = null; pending = null; qseq++; clearTimeout(snT);
+      memLive = false; sayEl = whyEl = datesEl = nowEl = drawLock = null;
       seenBits = ui.rights(); seenAcct = ui.account();
       if (!(S.reported & S.bits.pool) || !M) {
         ui.note(host, S.absent & S.bits.pool ? "the market contract is not deployed on this chain" : "the market could not be read at block " + S.block + " — not the same fact as having no market", "warn");

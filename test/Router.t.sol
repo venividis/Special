@@ -136,7 +136,8 @@ contract RouterTest is IntactFixture {
             band: BAND, bandLo: LO, bandHi: HI,
             steward: address(steward), market: market, roles: address(roles), pool: address(pool),
             parley: parley, launchpad: address(launchpad), locks: address(locks),
-            renderer: address(renderer), catalog: catalog, premises: premises, timelock: timelock
+            renderer: address(renderer), catalog: catalog, premises: premises, timelock: timelock,
+            keepsake: address(0), journal: address(0)
         });
     }
 

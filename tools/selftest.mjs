@@ -35,6 +35,7 @@ import vm from "node:vm";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { keccak256 } from "ethereum-cryptography/keccak.js";
+import { encodeParams as refParams, enc as refCall } from "./evm.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SHELL = path.join(ROOT, "engine/app.html");
@@ -154,6 +155,31 @@ eq("uint256[] array",
    "0000000000000000000000000000000000000000000000000000000000000002" +
    "0000000000000000000000000000000000000000000000000000000000000001" +
    "0000000000000000000000000000000000000000000000000000000000000002");
+/* V2: tuples and nested arrays, the head/tail rule the decoder already read, held
+   against tools/evm.mjs's encoder (written apart from this one) on the shapes the V2
+   lanes send: a keepsake, a collection spec, a Seaport order, and fixed arrays */
+const A1 = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed", A2 = "0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359";
+const ZERO = "0x0000000000000000000000000000000000000000";
+const same = (name, types, values) => eq(name, X.encodeParams(types, values).replace(/^0x/, ""),
+  refParams(types.join(","), values).replace(/^0x/, ""));
+same("an array of (address,uint256), as a bundle's assets", ["(address,uint256)[]"], [[[A1, 5n], [A2, 7n]]]);
+same("a keepsake's Wrap: assets, a schedule, a recipient, a message, a drip",
+  ["((address,uint256)[],(uint64,uint64,uint64),address,string,(uint8,uint256,uint256,uint256))"],
+  [[[[ZERO, 10n ** 17n], [A1, 20n]], [0n, 100n, 200n], A2, "for you \u2726", [0n, 5n, 10n ** 18n, 1000n]]]);
+same("dynamic tuples in an array beside a fixed array", ["(string,bytes)[]", "uint256[2]"],
+  [[["a", "0x0102"], ["bc", "0x"]], [3n, 4n]]);
+same("a fixed array of dynamic tuples", ["(string,uint8)[2]"], [[["x", 1n], ["yz", 2n]]]);
+same("a Seaport order, as validate takes it",
+  ["((address,address,(uint8,address,uint256,uint256,uint256)[],(uint8,address,uint256,uint256,uint256,address)[],uint8,uint256,uint256,bytes32,uint256,bytes32,uint256),bytes)[]"],
+  [[[[A1, A2, [[2n, A2, 7n, 1n, 1n]], [[0n, ZERO, 0n, 10n ** 18n, 10n ** 18n, A1], [0n, ZERO, 0n, 5n * 10n ** 16n, 5n * 10n ** 16n, A2]],
+     2n, 1000n, 2000n, "0x" + "ab".repeat(32), 42n, "0x" + "00".repeat(32), 2n], "0x"]]]);
+{
+  const sig = "launch(uint256,(string,string,string,uint32,uint128,uint64,uint64,uint32,uint16,uint16,bytes,bytes),bytes32)";
+  const args = [ (BigInt(A1) << 96n) | 1n, ["Moonlit", "MOON", "a room", 100n, 10n ** 16n, 0n, 0n, 0n, 500n, 250n, "0x3c703e7b7b69647d7d3c2f703e", "0x"], "0x" + "11".repeat(32) ];
+  eq("a tuple signature's calldata: a Studio launch", X.encodeCall(sig, args).data, refCall(sig, args));
+}
+throws("a tuple given the wrong number of fields is refused", () => X.encodeParams(["(uint256,uint256)"], [[1n]]));
+throws("a fixed array given the wrong length is refused", () => X.encodeParams(["uint256[2]"], [[1n]]));
 /* the session grant is the one call the instrument builds with two arrays
    and a left-aligned bytes4 in it, so it is checked against a hand-written
    expectation rather than trusted to the encoder that produced it */

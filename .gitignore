@@ -19,3 +19,7 @@ dist/
 # deploy journals: a crashed run resumes from one; the record is what is committed
 deployments/*.journal.json
 deployments/*.journal.*.json
+
+# unit agents' git worktrees, made by the harness inside the checkout; each
+# is another branch's checkout and is merged by branch, never committed here
+/.claude/worktrees/

@@ -16,7 +16,13 @@
       address all fail here, by name);
     · the PositionManager naming this PoolManager and this Permit2;
     · the PositionManager and SwapRouter02 naming the same WETH, the row's;
-    · SwapRouter02 naming the v3 factory Uniswap's feed names.
+    · SwapRouter02 naming the v3 factory Uniswap's feed names;
+    · and, on a row that names Seaport (V2, W6: 84532, from
+      tools/fixtures/seaport-1.6/probe.json), Seaport, its
+      ConduitController and OpenSea's conduit holding the codehashes the
+      row's `seaportProbed` recorded, `information()` saying 1.6 and naming
+      that controller, the controller naming that conduit for OpenSea's
+      key, and the conduit's channel to Seaport open.
 
   Every read is pinned to one block (tools/rpc.mjs), so the sentences are
   about one state of the chain. It needs the network, so it is not a step

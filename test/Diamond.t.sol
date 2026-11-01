@@ -45,7 +45,7 @@ contract DiamondTest is IntactFixture {
 
     function test_partitionsTheMonolithAbiEveryFunctionRoutedOnce() public {
         bytes4[] memory all = allSelectors();
-        assertEq(all.length, 93, "IIntact declares 93 functions");
+        assertEq(all.length, 96, "IIntact declares 96 functions");
         bytes4[][4] memory parts = _parts();
 
         // every function of the interface is routed, to the facet the design assigns it
@@ -252,6 +252,7 @@ contract DiamondTest is IntactFixture {
         steward.set(LO, keccak256("plan"));
         assertEq(mono.getStateFingerprint(LO), dia.getStateFingerprint(LO), "byte-identical across builds");
         assertEq(fps[0], fps[1]);
+        assertEq(mono.residueOf(LO), dia.residueOf(LO), "and so is the residue a zone reads after a sale's transfers");
         // they diverge together: one more move on one side only
         vm.prank(alice);
         mono.setTrait(LO, Traits.CURVE, bytes32(uint256(1235)));

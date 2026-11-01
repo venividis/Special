@@ -12,8 +12,8 @@ import {LibNum} from "./lib/LibNum.sol";
 
   Origin: IPSEITY src/Premises.sol, adapted for INTACT U7 (DESIGN.md §3
   row 11, §5.3). The twenty-three page contracts are gone — the site is
-  one document and six panels now — and what remains is the part the
-  donor said it would never give up.
+  one document and its panels now (six in V1, seven with V2's Gallery) —
+  and what remains is the part the donor said it would never give up.
 
   Every token in this collection is already a website. `tokenURI` returns
   the console, held in contract code and handed back as a `data:` URI.
@@ -294,8 +294,9 @@ contract Premises {
 
     /// @notice Every hash a client pins, over route TEMPLATES rather than
     ///         4,096 ids. Each route names the keccak a client checks that
-    ///         route's bytes against: the engine for the documents, the six
-    ///         panel hashes (as one keccak over them) for the panels, the
+    ///         route's bytes against: the engine for the documents, the
+    ///         panel hashes of the lanes the Engine holds (as one keccak
+    ///         over them, in slot order) for the panels, the
     ///         catalog for the JSON routes, the Crest's own code for the
     ///         image, and zero for the two routes that are only a hash or a
     ///         redirect.
@@ -310,11 +311,15 @@ contract Premises {
         }
         bytes memory panelList;
         bytes memory panelsPacked;
-        for (uint256 i; i < 6; ++i) {
+        /*  The lanes the Engine holds — its loaded prefix, seven in V2 with
+            the Gallery — each by the Catalog's word for it (W8).         */
+        uint256 np = e.panelCount();
+        for (uint256 i; i < np; ++i) {
+            string memory w = ICatalog(CATALOG).verbWord(uint8(i + 2));
+            if (bytes(w).length == 0) break;
             bytes32 ph = e.panelHash(i);
             panelsPacked = abi.encodePacked(panelsPacked, ph);
-            panelList = abi.encodePacked(panelList, i == 0 ? "" : ",",
-                '"', ICatalog(CATALOG).verbWord(uint8(i + 2)), '":"', LibNum.hex32(ph), '"');
+            panelList = abi.encodePacked(panelList, i == 0 ? "" : ",", '"', w, '":"', LibNum.hex32(ph), '"');
         }
         bytes32 panelsHash = keccak256(panelsPacked);
         bytes32 crestHash = CREST.codehash;
@@ -410,10 +415,14 @@ contract Premises {
         return keccak256(bytes(a)) == keccak256(bytes(b));
     }
 
-    /// @dev `<name>.js` → the panel's index, by the Catalog's own words.
+    /// @dev `<name>.js` → the panel's index, by the Catalog's own words,
+    ///      among the lanes the Engine holds (its loaded prefix, W8).
     function _panelIndex(string memory s) private view returns (bool ok, uint256 i) {
-        for (i = 0; i < 6; ++i) {
-            if (_eq(s, string.concat(ICatalog(CATALOG).verbWord(uint8(i + 2)), ".js"))) return (true, i);
+        uint256 n = IEngine(ENGINE).panelCount();
+        for (i = 0; i < n; ++i) {
+            string memory w = ICatalog(CATALOG).verbWord(uint8(i + 2));
+            if (bytes(w).length == 0) break;
+            if (_eq(s, string.concat(w, ".js"))) return (true, i);
         }
         return (false, 0);
     }

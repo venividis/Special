@@ -173,3 +173,166 @@ rights were rerun on both builds after the hub's one-line change (Rights
 | `IKiln.sol` | unchanged; `deployHook(1, salt, bytes32(uint160(coin)))` and `recipeHash(1, bytes32(uint160(coin)))` are the kind-1 recipe | — |
 
 No error was added to `Launchpad`'s or `Kiln`'s ABI (the Catalog's error table, `tools/verify.mjs`'s drift gate, is untouched); the custodian's and the hook's errors are new contracts' and need Catalog rows only when the Catalog learns the custodian (below).
+
+## V2 wave 0 — eight new interfaces and two shared files (2026-10-19)
+
+docs/V2.md is V2's specification. Nothing below changes a V1 signature:
+every file is new, and the one shared library that changed (`Transient`)
+only gained registry rows. These eight interfaces and two libraries are
+frozen from here as V1's were: an addition is a row in a new section of
+this file, and a change that is not additive is a new file.
+
+| File | What it declares | Unit |
+|---|---|---|
+| `src/interfaces/IKeepsake.sol` | `Asset`, `Schedule`, `DripTerms`, `Wrap`, `SwapAndWrap`, `KeepsakeView`; `wrap`, `swapAndWrap`, `claim`, `claimable`, `extend`, `setDrip`, `clearDrip`, `drip`, `keepsakeOf`, `commitmentOf`, `keepsakeCount`; ERC-721 metadata | W1 |
+| `src/interfaces/IJournal.sol` | `inscribe(collection, id, kind, body, ref)`, `countOf`, `rootOf`, `mayInscribe`; kinds NOTE..SEALED; `Inscribed` | W2 |
+| `src/interfaces/ISeaport.sol` | Seaport 1.6's structs and enums field for field, the calls INTACT makes (`validate`, `fulfillOrder`, `fulfillAdvancedOrder`, `cancel`, `getOrderHash`, `getOrderStatus`, `getCounter`, `information`) and `ISeaportZone` | W3 |
+| `src/interfaces/IBazaar.sol` | `publish(order, floors)`, `pinHash`, `pinOf`, `check`; the zone; `Published`, `Pinned` | W3 |
+| `src/interfaces/IBridges.sol` | `endpointOf`, `setEndpoint` (Timelock), `names` | W3 |
+| `src/interfaces/ICollection.sol` | `CollectionSpec`; `mint(to, via)`, `claim(persona)`, `owed`, `custodyEpoch`, `seedOf`, `spec`, `creator`, `room`; ERC-721 metadata and ERC-2981 | W4 |
+| `src/interfaces/IStudio.sol` | `launch(creator, spec, salt)`, `predict`, `isCollection`, `parentOf`, the registry reads | W4 |
+| `src/interfaces/IAgora.sol` | Parley's surface over personas, plus `collectionKey`, `react` (tipped), `follow`, `isRegistered` | W5 |
+| `src/lib/Persona.sol` | `pack`/`split` (`collection << 96 \| id`), `holderOf`, `actsFor`, `payeeOf`, `epochOf`, `stampOf` | shared: W4, W5 |
+| `src/lib/ERC721Base.sol` | the one ERC-721 the V2 satellites inherit, with `_beforeMove` before every change of owner | shared: W1, W4 |
+| `src/lib/Transient.sol` | six registry rows: `KEEPSAKE_LOCK`, `JOURNAL_LOCK`, `BAZAAR_LOCK`, `STUDIO_LOCK`, `COLLECTION_LOCK`, `AGORA_LOCK` (14 → 20; `test/Transient.t.sol` walks the registry, so it covers them unchanged) | shared |
+
+Where wave 0 departed from the plan's first draft, and why:
+
+- **Keepsake takes one struct per entry** (`Wrap`, `SwapAndWrap`). This
+  avoids stack-too-deep, and it lets the drip ride in the same call as the
+  swap. The draft's `bytes32 note` became `string message`, printed on the
+  keepsake's face; a Journal memory names a keepsake by
+  `ref = keccak(Keepsake, id)`.
+- **`claim` is anyone's and pays only the holder**, as `Locks.release`
+  does.
+- **`commitmentOf` moves only on the holder's own acts**: a keepsake
+  leaving the account, or a term change on one it holds. It never moves on
+  anything a stranger can do. The draft folded every keepsake an account
+  held, and then a stranger could break any INTACT listing by gifting
+  dust to its Reach.
+- **A drip needs a floor**: `floor == 0` means "no drip". A drip can be
+  set at `wrap` only on a keepsake you keep.
+- **Journal takes any ERC-721**, not only registered collections. A
+  collection that lies about `ownerOf` can pollute only its own
+  namespace, and memories on every NFT are the provenance §5.6 is about.
+- **IntactZone and the order publisher are one contract, the Bazaar**, so
+  the zone an INTACT order names is the contract that pinned its floors.
+- **Identity is a persona**: `collection << 96 | id`. It reverses with no
+  registry and no hash. Ids at or above 2^96 are refused by name.
+
+## V2 wave 1 integration (2026-10-19)
+
+The five wave-1 units are merged (docs/v2/INTEGRATION.md). Each change
+below is additive or names-only, and no selector moved. The Bazaar's two
+(I1, I2) and the hub's `residueOf` land with W6, which owns those files.
+
+| File | Change | Why | From |
+|---|---|---|---|
+| `IAgora.sol` | `evict(uint256,uint256,uint256)`, `heads(uint256[]) → uint64[]`, `roomsOf(uint256) → (uint256[], bool[])`, `roomCount(uint256)`, `topics() → seven bytes32` | Agora serves each, and each carries a guarantee Parley's suite asserts: eviction, the one-call poll, the room list, and topics a page cannot hash. The Catalog's drift gate and the console name functions through the interface | W5 report, request 1 |
+| `IStudio.sol` | `error SaltUsed(address collection)`, was `address at` | solc warns that `at` will become a keyword; a parameter's name is not in the selector | W4 report §6.3 |
+| `ICollection.sol` | the struct comment states "≤ 256 holes" for `page` and `art` | the Studio refuses more (`BadPage`, `BadArt`): without the cap the widest admitted templates rendered for 38.3 M gas, past the 2^24 transaction cap; with it, 4.78 M | W4 report §2, §6.1 |
+
+Surface the contracts serve beyond their interfaces, recorded so a reader
+of the interfaces knows it exists:
+
+- `Keepsake`: the constructor is `(hub, pool, art)`, all non-zero
+  (`error ZeroAddress()`), and `ART()` names the renderer. `KeepsakeArt`
+  serves `render(uint256, KeepsakeView, Asset[], uint256)`. `claim` pays
+  every freed amount its token will move, and an asset whose token
+  refuses stays owed while the others are paid. That refines
+  IKeepsake's "pays the keepsake's holder every freed amount".
+- `Collection`: `HUB()`, `JOURNAL()`, `AGORA()`, `pageOf(uint256)` and
+  `imageOf(uint256)` (the filled site and art, one `eth_call` each), and a
+  constructor that takes `CollectionInit` from the Studio alone.
+- `Studio`: `CODE()` and `CODE_HASH()` (the Collection's creation code,
+  one SSTORE2 shard its constructor writes), `PROXY_INITCODE_HASH()`, ten
+  `MAX_*` constants, and `error ZeroAddress()`.
+- `Bazaar`: `error Unpriced()` and SIP-5's
+  `event SeaportCompatibleContractDeployed()`, declared locally until I1
+  moves them into `IBazaarEvents`.
+
+Declined:
+- `IAgoraEvents.NoSuchPersona(uint256)`: `NotAPersona` is already in the
+  ABI and says the same.
+- `src/lib/Rights.sol` reading an over-wide `ownerOf` word as no holder:
+  every V1 satellite compiles this library, so the change would move their
+  codehashes against the live records, and the write is refused either way.
+
+## V2 wave 2 — W6: the hub's two V2 terms, `residueOf`, the Bazaar's interface rows (additive)
+
+docs/v2/INTEGRATION.md rows H1, H2, I1 and I2; the unit's report is
+docs/v2/W6-hub.md. Every row below adds; nothing frozen is renamed or
+removed, and the Bazaar's compiled ABI is the same set of entries before
+and after (its two local declarations moved into the interface).
+
+| File | Change | Why | Where it came from |
+|---|---|---|---|
+| `IIntact.sol` | `function residueOf(uint256 id) external view returns (bytes32);` | keccak of every fingerprint term a sale does not move — Core's `lockCount`, `transferSealUntil`, `createdAt`, `launchCount`, `curve`, `nameHash`; the Reach's `state`, `sealedUntil`, `openApprovalsRoot`; `Pool.marketHash(id)`; `Locks.commitmentOf(reach)`; `Launchpad.launchRoot(id)`; `Keepsake.commitmentOf(reach)`; `Journal.rootOf(hub, id)`, in that order, the eight satellite words read once for both hashes. A zone compares it after a sale's transfers; reverts `NoSuchToken` for an unminted id. Served by SiteFacet. | H2 (W3 §8 request 3) |
+| `IIntact.sol` | `function KEEPSAKE() external view returns (address);`, `function JOURNAL() external view returns (address);` | the two new pins, read back like every other (`tools/deploy.mjs` PINS, from record schema 3). Served by CoreFacet. IIntact now declares 96 functions. | H1 |
+| `IBazaar.sol` (`IBazaarEvents`) | `error Unpriced();`, `event SeaportCompatibleContractDeployed();` | were declared in `src/Bazaar.sol` (the Market's `ZeroAddress` precedent); moved, so the interface carries what the contract's ABI already did | I1 (W3 §8 request 1) |
+| `ISeaport.sol` | `interface ISeaportZoneInterface is IERC165` — Seaport 1.6's own `ZoneInterface` mirrored, with `supportsInterface` re-declared, ERC-165 id `0x39dd6933` (computed by solc, asserted in test/Bazaar.t.sol), beside `ISeaportZone` (`0x3822a094`) | the id a Seaport integrator computes; the Bazaar answers both and now names this one from the interface instead of its local copy | I2 (W3 §8 request 2) |
+
+Outside `src/interfaces/`, recorded because a deployer and a reader meet them:
+
+- **`IntactConfig`** (`src/hub/IntactBase.sol`) appends `address keepsake;
+  address journal;` after `timelock`, and `_CONFIG_HASH` covers both: the
+  facets' and the monolith's constructor tuple is 18 fields
+  (`tools/hub.mjs`, `tools/site.mjs` `CONFIG_TYPE`). A V2 hub is a new
+  deployment; no V1 record's hub is touched.
+- **`getStateFingerprint`** appends two terms after `planHash`, each through
+  the existing guarded read: `Keepsake.commitmentOf(account(id))` and
+  `Journal.rootOf(address(this), id)`. An absent satellite contributes zero.
+- **The Bazaar** stores `residueOf(id)` in the pin at `publish` and requires
+  it unchanged in `validateOrder` (after the transfers), beside every floor
+  again; its own two-term `_residue` is gone.
+- **The Catalog** (not an interface; `tools/verify.mjs` holds it to the
+  ABIs): a third rows contract, `CatalogRowsV2(address[7])`, rendered in its
+  own transaction under the letters V keepsake, J journal, B bazaar,
+  b bridges, Z studio, c a collection, F agora; `CatalogText(rows, post, v2)`
+  and its `ROWS_V2()`; `CatalogConfig` appends `keepsake, journal, bazaar,
+  bridges, studio, agora, seaport`; the Catalog's getters of the same names;
+  `World.h` grows to fourteen (KEEPSAKE 12, JOURNAL 13) and `World` gains the
+  other five; `agrees()` reads the hub's two new pins; `stateOf` probes the
+  six satellites under bits 8192 keepsake, 16384 journal, 32768 bazaar,
+  65536 studio, 131072 agora, 262144 bridges (`TokenState.reported` and
+  `absent` are uint32 and hold them); the state block's world names all
+  seven addresses (seaport, a venue, has no bit). `CatalogRows` and
+  `CatalogRowsPost` keep their runtime bytes exactly and render the same
+  shards; `RowTable._index` and `word` are now virtual so the third table
+  names its own letters. The shared hex writer (`Templated._writeHex`)
+  writes an address or a word sixteen bytes at a time, which makes every
+  table's construction cheaper and the state block's world about half
+  what it cost; `CatalogText` joins the three `sel` maps once, at
+  construction, and `services()` no longer copies the rows into a joined
+  buffer first. The documents' bytes are unchanged by both.
+
+## V2 integration — W15: `panelCount` is `view`, and the Catalog's third table grows (2026-10-19)
+
+docs/v2/INTEGRATION.md rows L5 and L8 and W6's open requests; the unit's
+report is docs/v2/W15-deploy.md. One declaration in `src/interfaces/`
+changes its mutability, and nothing is renamed or removed.
+
+| File | Change | Why | Where it came from |
+|---|---|---|---|
+| `Site.sol` (`IEngine`) | `function panelCount() external view returns (uint256);` was `pure`; its comment names the loaded prefix ("six in V1, seven with V2's Gallery, at most the Engine's PANELS (8)") instead of `// 6` | the Engine counts the slots it holds, which reads its storage: the declaration was wrong since the Gallery made the count a prefix. The selector is the same, every caller already made the call with STATICCALL from a `view`, and the Engine does not inherit `IEngine`. Measured (W15's compile, against cd5ef1f's): the three contracts that call it through the interface, CatalogState, Premises and Renderer, compile to the same runtime bytes as before | L8 (W8 report §8, request 1) |
+| `Site.sol` (`TokenState`) | the `reported` bit comment runs to 262144: "8192 keepsake, 16384 journal, 32768 bazaar, 65536 studio, 131072 agora, 262144 bridges" | the six V2 bits W6 added; the field is `uint32` and holds them. A comment only | W6 report §7, request 4 |
+
+Outside `src/interfaces/`, recorded because a deployer and a reader meet them:
+
+- **`CatalogRowsV2(address[9])`**, was `address[7]`: the letters are
+  `VJBbZcFse` — `s` Seaport, whose rows carry the venue table's address (the
+  Catalog's `SEAPORT`, zero where the table names none), and `e` any
+  ERC-721, zero as `E` is. The table gains 23 rows (48 → 71): the
+  Keepsake's `ownerOf` and `tokenURI`; Agora's `followerCount`,
+  `followingCount`, `follows`, `isRegistered`, `collectionKey`, `homeKey`
+  and `persona`; a collection's `totalSupply` and `room`; Seaport's
+  `getCounter`, `getOrderHash`, `getOrderStatus`, `validate`,
+  `fulfillOrder` and `cancel`; and an ERC-721's `ownerOf`, `tokenURI`,
+  `getApproved`, `isApprovedForAll`, `approve` and `setApprovalForAll`.
+  `tools/verify.mjs`'s drift gate holds the `seaport` rows to `ISeaport` and
+  the `erc721` rows to `IERC721Metadata`.
+- **`Catalog.stateOf`** asks the agent card its `HUB()` (an immutable, through
+  a local `IAgentCardProbe` beside `INameplateProbe`) instead of
+  `manifestHash(id)`, which rendered the card's whole registration to say it
+  answers. Bit 4096 means what it meant; the state block carries no card
+  datum either way.

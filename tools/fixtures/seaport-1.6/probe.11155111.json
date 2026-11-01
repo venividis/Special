@@ -1,0 +1,30 @@
+{
+  "probed": "2026-10-25",
+  "chainId": 11155111,
+  "block": 11987924,
+  "blockHash": "0x7350506dc3a5eac742e2a3ae5e1a13806cda90d6f71421e3af4695baa917fe17",
+  "blockTimestamp": 1792895340,
+  "address": "0x0000000000000068F116a894984e2DB1123eB395",
+  "codehash": "0xd3c20b1b63b44e7a392b8b95b710186b79cc494f440e07a01545e2fb14901f5a",
+  "bytes": 23981,
+  "version": "1.6",
+  "name": "Seaport",
+  "domainSeparator": "0xabe6fa56e16aecdc0a81f712b3c41518e063f22fb475c9f802a8265c782f7beb",
+  "conduitController": {
+    "address": "0x00000000F9490004C11Cef243f5400493c00Ad63",
+    "codehash": "0x880348b652e7cce91216153a4d0107e70c77b92192f3d7a127ff1f1351961948",
+    "bytes": 8820,
+    "conduitCreationCodeHash": "0x023d904f2503c37127200ca07b976c3a53cc562623f67023115bf311f5805059",
+    "conduitRuntimeCodeHash": "0x069efdc9b946a332dce9951324fa197268e3ff0e00e44c6bf36049fc53113a41"
+  },
+  "opensea": {
+    "conduitKey": "0x0000007b02230091a7ed01230072f7006a004d60a8d4e71d599b8104250f0000",
+    "conduit": "0x1E0049783F008A0085193E00003D00cd54003c71",
+    "codehash": "0x069efdc9b946a332dce9951324fa197268e3ff0e00e44c6bf36049fc53113a41",
+    "bytes": 3190,
+    "owner": "0x939c8d89ebc11fa45e576215e2353673ad0ba18a",
+    "totalChannels": 2,
+    "seaportChannelOpen": true
+  },
+  "how": "node tools/verify-bazaar-fork.mjs --probe: eth_getCode and eth_call at the pinned block; the runtimes beside this file are the bytes eth_getCode returned"
+}

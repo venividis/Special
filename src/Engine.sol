@@ -7,7 +7,7 @@ import {SSTORE2} from "./lib/SSTORE2.sol";
   ENGINE — the document, held as bytecode
 
   Origin: IPSEITY src/Engine.sol, verbatim in shape (INTACT U7), plus the
-  six panel shards DESIGN.md §5.1–5.2 adds. The load-bearing comments are
+  panel shards DESIGN.md §5.1–5.2 adds (six then, up to eight since V2). The load-bearing comments are
   kept; what changed is listed at the bottom of this header.
 
   The interface is stored in two runs of shards with a gap between them.
@@ -28,14 +28,20 @@ import {SSTORE2} from "./lib/SSTORE2.sol";
     is part of the platform, like the JSON parser.
 
   Panels
-    Six more shards, one per lane of the console (swap, social, launch,
-    vault, identity, agent), each gzip ≤ 8 KB. They are not part of the
-    document: the shell fetches `/panel/<name>.js` (or `eth_call`s
-    `panel(i)` in the data: viewer), inflates it, keccaks the result and
-    compares it with the hash baked into the state gap before injecting
-    it as a Blob script. The hash is pinned HERE, by the curator, at load
-    time: a contract cannot inflate gzip, so `tools/verify.mjs` is what
-    proves the pinned hash is the keccak of what the shard inflates to.
+    Up to eight more shards, one per lane of the console, each gzip
+    ≤ 12 KB: V1's six (swap, social, launch, vault, identity, agent),
+    then V2's Gallery, the seventh (docs/V2.md §2, §4: "the Engine's
+    six-panel constant becomes an array of up to eight"). They are not
+    part of the document: the shell fetches `/panel/<name>.js` (or
+    `eth_call`s `panel(i)` in the data: viewer), inflates it, keccaks
+    the result and compares it with the hash baked into the state gap
+    before injecting it as a Blob script. The hash is pinned HERE, by the
+    curator, at load time: a contract cannot inflate gzip, so
+    `tools/verify.mjs` is what proves the pinned hash is the keccak of
+    what the shard inflates to. The lanes are the loaded PREFIX:
+    `freeze` refuses a gap, so `panelCount()` lanes are each loaded and
+    no slot after them is, and the Catalog's state gap and the Premises'
+    router name exactly those.
 
   Sealing
     freeze() is one way. After it, no shard can be added, replaced or
@@ -46,7 +52,10 @@ import {SSTORE2} from "./lib/SSTORE2.sol";
   — DESIGN §5.1 names one shape and the renderer carries one loader);
   `loadPanel`, `panel`, `panelHash`, `panelCount`, `setEngineHash`,
   `engineHash` are new; `setCurator` is kept so a deployer may hand the
-  loading role to a script key and back. Budget ≤ 4,000 B.
+  loading role to a script key and back. Budget ≤ 4,000 B. V2 (W8): the
+  six-slot arrays became eight, `panelCount()` is the loaded prefix
+  (`view`, where it was a `pure` six), and `shardHashes()` lists the
+  loaded panels only.
 ───────────────────────────────────────────────────────────────────────────*/
 contract Engine {
     address public curator;
@@ -55,9 +64,10 @@ contract Engine {
     address[] public head;
     address[] public body;
 
-    /// @dev One pointer per lane, zero until loaded. Six is the number of
-    ///      lanes in DESIGN §1 and the number `/panel/<name>.js` routes.
-    uint256 public constant PANELS = 6;
+    /// @dev One pointer per lane, zero until loaded: room for eight. Six
+    ///      were the lanes of DESIGN §1; V2's Gallery is the seventh and
+    ///      the eighth is room. `/panel/<name>.js` routes the loaded prefix.
+    uint256 public constant PANELS = 8;
     address[PANELS] private _panel;
     bytes32[PANELS] private _panelHash;
 
@@ -129,12 +139,16 @@ contract Engine {
     }
 
     /// @notice Irreversible. Nothing about the document can change afterwards.
-    /// @dev    Every panel must be present: a shell whose state gap names
-    ///         six hashes and whose router can serve only five is a site
-    ///         with a dead lane that no later transaction can revive.
+    /// @dev    The panels must be a prefix with no gap, and at least one: a
+    ///         shell whose state gap names a lane its router cannot serve is
+    ///         a site with a dead lane that no later transaction can revive,
+    ///         and the gap and the router both name exactly `panelCount()`
+    ///         lanes, so a slot loaded past an empty one is refused here.
     function freeze() external onlyCurator open {
         if (head.length == 0 || body.length == 0 || engineHash == 0) revert NothingLoaded();
-        for (uint256 i; i < PANELS; ++i) if (_panel[i] == address(0)) revert BadPanel();
+        uint256 n = panelCount();
+        if (n == 0) revert BadPanel();
+        for (uint256 i = n; i < PANELS; ++i) if (_panel[i] != address(0)) revert BadPanel();
         frozen = true;
         (uint256 h, uint256 b) = sizes();
         emit Frozen(h, b);
@@ -171,8 +185,10 @@ contract Engine {
         return _panelHash[i];
     }
 
-    function panelCount() external pure returns (uint256) {
-        return PANELS;
+    /// @notice The lanes this document has: the loaded prefix — six in V1,
+    ///         seven with V2's Gallery, never more than PANELS.
+    function panelCount() public view returns (uint256 n) {
+        while (n < PANELS && _panel[n] != address(0)) ++n;
     }
 
     function sizes() public view returns (uint256 headSize, uint256 bodySize) {
@@ -187,15 +203,15 @@ contract Engine {
     }
 
     /// @notice keccak256 of each run's stored (gzip) bytes, shard by shard,
-    ///         for `/manifest` and the deployment record.
+    ///         for `/manifest` and the deployment record: the head, the
+    ///         body, then the panels of the loaded prefix.
     function shardHashes() external view returns (bytes32[] memory h) {
         uint256 nh = head.length;
         uint256 nb = body.length;
-        h = new bytes32[](nh + nb + PANELS);
+        uint256 np = panelCount();
+        h = new bytes32[](nh + nb + np);
         for (uint256 i; i < nh; ++i) h[i] = keccak256(SSTORE2.read(head[i]));
         for (uint256 i; i < nb; ++i) h[nh + i] = keccak256(SSTORE2.read(body[i]));
-        for (uint256 i; i < PANELS; ++i) {
-            h[nh + nb + i] = _panel[i] == address(0) ? bytes32(0) : keccak256(SSTORE2.read(_panel[i]));
-        }
+        for (uint256 i; i < np; ++i) h[nh + nb + i] = keccak256(SSTORE2.read(_panel[i]));
     }
 }

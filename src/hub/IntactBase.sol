@@ -27,19 +27,21 @@ import {LibNum} from "../lib/LibNum.sol";
   moves, in either build, and no facet can opt out of it even by accident:
   the compiler refuses the attempt rather than a reviewer having to notice.
 
-  The sixteen pinned addresses are `immutable`, per facet, rather than
-  storage: under delegatecall an immutable is inlined into the facet's own
-  code, so `account(id)` — called by every satellite on every settlement
-  path — reads no storage at all. The hazard of per-facet immutables is
-  facets deployed disagreeing; `IntactDiamond` refuses to construct unless
-  every facet reports the same `intactConfigHash()`.
+  The pinned addresses are `immutable`, per facet, rather than storage:
+  under delegatecall an immutable is inlined into the facet's own code, so
+  `account(id)` — called by every satellite on every settlement path —
+  reads no storage at all. The hazard of per-facet immutables is facets
+  deployed disagreeing; `IntactDiamond` refuses to construct unless every
+  facet reports the same `intactConfigHash()`. V2 (wave 2, W6) appends two
+  pins, the Keepsake and the Journal, whose terms the fingerprint reads.
 ───────────────────────────────────────────────────────────────────────────*/
 
 /// @notice Everything a facet is pinned to for its whole life, as one
-///         struct so sixteen values cannot be passed in the wrong order.
+///         struct so eighteen values cannot be passed in the wrong order.
 ///         The ERC-6551 registry and the two salts are not here: they are
 ///         constants of the collection (AccountBinding), the same on every
 ///         band, and the registry's runtime hash is checked at construction.
+///         Append-only: V2 added `keepsake` and `journal` after `timelock`.
 struct IntactConfig {
     address reachImpl;
     address gripImpl;
@@ -57,6 +59,11 @@ struct IntactConfig {
     address catalog;
     address premises;
     address timelock;
+    /// @dev V2 (W6): the Keepsake, whose `commitmentOf(account(id))` the
+    ///      fingerprint and the residue read; a prediction, codeless until it lands
+    address keepsake;
+    /// @dev V2 (W6): the Journal, whose `rootOf(hub, id)` they read likewise
+    address journal;
 }
 
 abstract contract IntactBase is IIntactEvents {
@@ -87,9 +94,11 @@ abstract contract IntactBase is IIntactEvents {
     address internal immutable _CATALOG;
     address internal immutable _PREMISES;
     address internal immutable _TIMELOCK;
+    address internal immutable _KEEPSAKE;
+    address internal immutable _JOURNAL;
     /// @dev keccak256 of every pinned value, computed once at construction
     ///      so the diamond's check reads one word per facet rather than
-    ///      re-encoding nineteen (measured: ~650 bytes per facet).
+    ///      re-encoding twenty-one (measured: ~650 bytes per facet at nineteen).
     bytes32 internal immutable _CONFIG_HASH;
 
     constructor(IntactConfig memory c) {
@@ -116,11 +125,13 @@ abstract contract IntactBase is IIntactEvents {
         _CATALOG = c.catalog;
         _PREMISES = c.premises;
         _TIMELOCK = c.timelock;
+        _KEEPSAKE = c.keepsake;
+        _JOURNAL = c.journal;
         _CONFIG_HASH = keccak256(abi.encode(
             AccountBinding.REGISTRY, AccountBinding.REACH_SALT, AccountBinding.GRIP_SALT,
             c.reachImpl, c.gripImpl, c.band, c.bandLo, c.bandHi,
             c.steward, c.market, c.roles, c.pool, c.parley, c.launchpad, c.locks,
-            c.renderer, c.catalog, c.premises, c.timelock
+            c.renderer, c.catalog, c.premises, c.timelock, c.keepsake, c.journal
         ));
     }
 
@@ -128,7 +139,7 @@ abstract contract IntactBase is IIntactEvents {
     ///         facet at the diamond's construction; every facet must agree.
     ///         The only external function the base itself declares — every
     ///         other shared getter lives in CoreLogic, so the three
-    ///         specialised facets do not each carry sixteen getters.
+    ///         specialised facets do not each carry eighteen getters.
     function intactConfigHash() external view returns (bytes32) {
         return _CONFIG_HASH;
     }

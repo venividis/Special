@@ -51,7 +51,7 @@ contract GasTest is IntactFixture {
             hs[b].setGuardian(LO, guardian);
         }
 
-        uint256 n = 21;
+        uint256 n = 22;
         string[] memory names = new string[](n);
         bytes[] memory calls = new bytes[](n);
         address[] memory froms = new address[](n);
@@ -71,6 +71,7 @@ contract GasTest is IntactFixture {
         names[i] = "feeSink";              calls[i] = abi.encodeCall(IIntact.feeSink, (LO));                       froms[i++] = alice;
         names[i] = "rightsOf";             calls[i] = abi.encodeCall(IIntact.rightsOf, (LO, alice));               froms[i++] = alice;
         names[i] = "getStateFingerprint";  calls[i] = abi.encodeCall(IIntact.getStateFingerprint, (LO));           froms[i++] = alice;
+        names[i] = "residueOf";            calls[i] = abi.encodeCall(IIntact.residueOf, (LO));                     froms[i++] = alice;   // V2 (W6)
         names[i] = "coreOf";               calls[i] = abi.encodeCall(IIntact.coreOf, (LO));                        froms[i++] = alice;
         // writes, including the two that touch the most storage
         names[i] = "setApprovalForAll";    calls[i] = abi.encodeCall(IIntact.setApprovalForAll, (bob, true));      froms[i++] = alice;
@@ -86,7 +87,7 @@ contract GasTest is IntactFixture {
         // Warm every address the views touch on both builds first: the mocks
         // are shared, so whichever build is measured second would otherwise
         // find the Roles, delegate and renderer addresses already warm.
-        for (uint256 k; k < 13; ++k) {
+        for (uint256 k; k < 14; ++k) {
             _gas(mono, froms[k], calls[k], 0);
             _gas(dia, froms[k], calls[k], 0);
         }
