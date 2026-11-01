@@ -467,6 +467,13 @@ for (const key of present) {
   }
   const again = await deploySatellite(ad1, landed, key, { out });
   eq(`${key}: running it again sends nothing and keeps the record`, JSON.stringify(again.contracts) + again.gasTotal, JSON.stringify(landed.contracts) + landed.gasTotal);
+  /* a landing whose record was never written (Sepolia, 2026-11-01: the execute landed, then the run's own
+     recovery could not read a week-old log and refused to write): the next run, on the stale record, adopts it */
+  const adopted = await deploySatellite(ad1, q.record, key, { out });
+  const xA = adopted.satellites[key].executed || {}, xL = landed.satellites[key].executed;
+  ok(`${key}: a landing whose record was never written is adopted on the next run from the factory's Deployed event, with the landing's own transaction, block, gas and sender, and the record recovers`,
+     xA.tx === xL.tx && xA.block === xL.block && xA.gas === xL.gas && low(xA.by) === low(xL.by) && xA.adopted === true && adopted.gasTotal === landed.gasTotal &&
+     (await recover(ad1, adopted, { out })).disagreements.length === 0, `${JSON.stringify(xA)} vs ${JSON.stringify(xL)}`);
   follow = landed;
 }
 if (present.length) {

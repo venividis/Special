@@ -49,8 +49,11 @@ const fetcher = async (url) => {
     That is not the node failing — retry on transport errors only, never on
     an RPC error, which is an answer.                                    */
 /// What a replica behind the pin says: lag, retried. Anything else the node
-/// says ("Method not found", a revert) is an answer and thrown at once.
-const LAG = /header not found|unknown block|block not found|missing trie node|missing block/i;
+/// says ("Method not found", a revert) is an answer and thrown at once. A
+/// replica that pruned the history is the same: another draw of the balancer
+/// may hold it. On Sepolia (2026-11-01) publicnode answered a week-old
+/// block's logs 2 times in 6 and "pruned history unavailable" the other 4.
+const LAG = /header not found|unknown block|block not found|missing trie node|missing block|pruned history|history unavailable|historical state/i;
 const call = async (url, method, params = []) => {
   let last, lagged = 0;
   for (let attempt = 0; attempt < 7; attempt++) {
@@ -332,6 +335,12 @@ export class RpcChain {
   }
 
   getLogs(filter) { return this.rpc("eth_getLogs", [filter]); }
+
+  /// A transaction's receipt: { gas, from, block }, or null while it is unknown.
+  async receiptOf(hash) {
+    const r = await this.rpc("eth_getTransactionReceipt", [hash]);
+    return r ? { gas: BigInt(r.gasUsed), from: String(r.from).toLowerCase(), block: BigInt(r.blockNumber) } : null;
+  }
 
   async as(keyHex) {
     const other = new RpcChain(this.url, keyHex, this.chainId);

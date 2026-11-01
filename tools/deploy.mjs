@@ -486,6 +486,8 @@ export function adapt(c) {
     /// whether the chain meters state creation as its own gas (EIP-8037, measured by tools/rpc.mjs);
     /// the in-process chain is Cancun and never does
     stateGas: async () => (inProcess || !c.stateGas ? false : c.stateGas()),
+    /// a transaction's receipt { gas, from, block }, or null, from either chain
+    receiptOf: async (hash) => c.receiptOf(hash),
     codeAt: async (addr) => inProcess
       ? bytesToHex(await c.vm.stateManager.getCode(createAddressFromString(addr)))
       : low(await c.rpc("eth_getCode", [addr, await c.tag()])),   // pinned: a replica behind the receipt answers "header not found" and is retried, never 0x
@@ -1241,6 +1243,23 @@ export async function deployIntact(ad, opts = {}) {
 /*═══════════════════ landing a post-MVB satellite ═══════════════════*/
 
 /// The chain's clock, for the Timelock's eta.
+/// The factory's Deployed event for one salt, as { tx, block }, or null:
+/// searched back from the head in windows of 5,000 blocks, which a public
+/// endpoint answers, down to the block the op was queued in when the record
+/// knows it (else 50,000 blocks). Two events for one salt are a contradiction.
+async function deployedEvent(ad, factory, salt, since) {
+  const head = BigInt(await ad.blockNumber());
+  const floor = since != null ? BigInt(since) : (head > 50_000n ? head - 50_000n : 0n);
+  for (let hi = head; hi >= floor; hi -= 5_000n) {
+    const lo = hi - 4_999n > floor ? hi - 4_999n : floor;
+    const logs = await ad.getLogs({ address: factory, fromBlock: "0x" + lo.toString(16), toBlock: "0x" + hi.toString(16), topics: [DEPLOYED_TOPIC, salt] });
+    if (logs.length > 1) throw new Error(`the factory emitted ${logs.length} Deployed events for salt ${salt}: a contradiction`);
+    if (logs.length === 1) return { tx: low(logs[0].transactionHash), block: BigInt(logs[0].blockNumber) };
+    if (lo === floor) break;
+  }
+  return null;
+}
+
 async function chainTime(ad) {
   if (!ad.timestamp) throw new Error("the adapter cannot read the chain's clock");
   return BigInt(await ad.timestamp());
@@ -1309,6 +1328,21 @@ export async function deploySatellite(ad, rec, key, opts = {}) {
     /// adopted only if every immutable it pins reads back as the record's.
     if (!landed) landed = { via: "unrecorded", op, queued: null, eta: null, executed: null };
     log(`  ${key.padEnd(13)} ${want}  already has code${rec.contracts?.[key] ? " (recorded)" : " — adopted if its pins read back"}`);
+    /// a landing this record never saw: a run stopped between the execute and
+    /// the write, as one did on Sepolia (2026-11-01), when its own recovery
+    /// could not read a week-old log. The factory's Deployed event for this
+    /// salt names the transaction, and its receipt says who sent it and what
+    /// it cost. Both are adopted, and the recovery below holds them to the
+    /// event. The gas is counted now, the first time a record carries it.
+    if (!landed.executed) {
+      const ev = await deployedEvent(ad, factory, salt, landed.queued?.block);
+      const rc = ev ? await ad.receiptOf(ev.tx) : null;
+      if (ev && rc) {
+        landed = { ...landed, executed: { tx: ev.tx, block: ev.block.toString(), gas: rc.gas.toString(), by: rc.from, adopted: true } };
+        spent += rc.gas;
+        log(`  ${key.padEnd(13)} landed in block ${ev.block} by ${rc.from} (${(Number(rc.gas) / 1e6).toFixed(2)}M gas): adopted from the factory's Deployed event`);
+      }
+    }
   } else {
     const admin = low(decAddr(await ad.read(timelock, "admin()")));
     let eta = decUint(await ad.read(timelock, "eta(bytes32)", [op]));

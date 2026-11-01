@@ -260,6 +260,8 @@ export class Chain {
     /*  Shared with every actor `as()` mints, because a conversation with
         two people in it is one archive and not two.                     */
     this.log = [];
+    /// each transaction's receipt as a node keeps it (gas, sender, block), by hash: `receiptOf`
+    this.receipts = {};
   }
 
   /**
@@ -305,6 +307,7 @@ export class Chain {
     const other = new Chain(this.vm, hexToBytes(keyHex));
     other.gas = this.gas;
     other.log = this.log;
+    other.receipts = this.receipts;
     await this.fund(other.from.toString(), wei);
     return other;
   }
@@ -421,6 +424,7 @@ export class Chain {
   _record(res, tx) {
     const n = BLOCK.header.number;
     const hex = (u) => "0x" + Buffer.from(u).toString("hex");
+    this.receipts[hex(tx.hash())] = { gas: res.totalGasSpent, from: tx.getSenderAddress().toString().toLowerCase(), block: n };
     for (const l of res.execResult.logs || []) {
       const [addr, topics, data] = l;
       this.log.push({
@@ -433,6 +437,9 @@ export class Chain {
       });
     }
   }
+
+  /// A transaction's receipt, as `eth_getTransactionReceipt` gives a node's: { gas, from, block }, or null.
+  receiptOf(hash) { return this.receipts[String(hash).toLowerCase()] || null; }
 
   getLogs({ address, fromBlock, toBlock, topics } = {}) {
     const at = (v, d) => (v == null || v === "latest" || v === "pending" ? d : BigInt(v));
