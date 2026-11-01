@@ -266,13 +266,18 @@ cost 1,530 gas. The record holds:
   (hub `0x12c0…297f`, Premises `0x6cb5…6142`, Timelock `0x8469…3c63`);
 - the recovery in-run, with 479 fields and 0 disagreeing;
 - in `satellites`, V2's seven `executed` by the burner, and the card, the
-  custodian, the Market, the Roles and the Nameplate QUEUED on the
-  Timelock (`queued`, `op`, `eta`).
+  custodian, the Market, the Roles and the Nameplate queued on the
+  Timelock that day (`queued`, `op`, `eta`) and landed on 2026-11-01
+  (`executed`).
 
-The five ripen from 2026-11-01 03:58:36 UTC and stay executable for
-fourteen days. `tools/deploy.mjs --chain 11155111 --satellite all`, run by
-any funded key from a tree whose `src/` is this one's, writes `executed`
-and recovers the record.
+The landing ran `tools/deploy.mjs --chain 11155111 --satellite all` from
+the worktree pinned at 65ac462, whose `src/` is 3e76a46's, under a separate
+funded key `0xc79e…8f02`: 69,917,700 gas in all. The card's entry carries
+`adopted: true`. Its execute landed on the first try, whose own recovery
+then could not read a week-old log on a pruned replica and wrote nothing.
+The next run took the transaction, block, gas and sender from the
+factory's Deployed event and its receipt. The record now names 41
+contracts and recovers with 515 fields and 0 disagreeing.
 
 Its campaign record walks 53 steps for 56,149,989 gas, the V2 family on
 Sepolia's own Seaport included. The run was resumed twice from its

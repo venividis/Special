@@ -93,7 +93,12 @@
   "bazaar": "0xe911b5973bca9de19e46130c3b714f847b93cad6",
   "bridges": "0x1182a05727a2610920c95f18978a66e66967c3f3",
   "studio": "0x04e6d5a1c81341c7aab2978032bc660f99cc33f4",
-  "agora": "0xc442fc8bfc17682af5c441255f5c8ed58bb1d6b8"
+  "agora": "0xc442fc8bfc17682af5c441255f5c8ed58bb1d6b8",
+  "agentCard": "0xa5996235b4766388eea7e5940be47f29989dabe6",
+  "custodian": "0x61f5a26d330c21b66a9a7fb7db18d5f2f1660357",
+  "market": "0xa6b7dece810b071519a327ec63030a731a7135d7",
+  "roles": "0x9f6935cb7d2ec925d21f22180d98595fc8b05376",
+  "nameplate": "0xc0dbb8bab48a8bdbafcb75a946d04e5e020b0186"
  },
  "codehashes": {
   "factory": "0x66fb2423faf4edd733d75d7c8002fc4a9e848ca205ecc8a3f1ac4830c32618fa",
@@ -131,7 +136,12 @@
   "bazaar": "0xa5ebffee2fbc66b1b8c04aaa186e26957ef383a1434f883439748aac1701f9ba",
   "bridges": "0x3dc4ce1d20278b559c856f04f74068ce26effc282acbe057d2d6912e064102a3",
   "studio": "0xa4961386d4d44cedd9d99181895085cfc6073cbec45cd2d53ece2b452717567e",
-  "agora": "0xfe5e783b0c2c6d5639d4329d1d0c27e0652c7af7e81fb51ffaebdb0ac8ac754f"
+  "agora": "0xfe5e783b0c2c6d5639d4329d1d0c27e0652c7af7e81fb51ffaebdb0ac8ac754f",
+  "agentCard": "0x56d19d145fb9695989f46fe089df105969c8a78b0fbcc64ea3f68f4c77318151",
+  "custodian": "0xfd070a7b1bff6289e65e80dc470ca3747b6e00f76defe4d0057db622935999ae",
+  "market": "0xbfaec7caae122759fea8e8245b40830df60e0452bd8f10f7a7c2d479e071a975",
+  "roles": "0x1bf44cb3d452fc5acc60e844339e7b9f082fea5fbec2da0b3186e24b2e65e2e9",
+  "nameplate": "0x0e70bb2835e08ddfd6abd54120d3f521fc51412a3b8eae4247b0ac7dbd8ebc05"
  },
  "reproducible": {
   "factory": false,
@@ -169,7 +179,12 @@
   "bazaar": false,
   "bridges": false,
   "studio": false,
-  "agora": false
+  "agora": false,
+  "agentCard": false,
+  "custodian": false,
+  "market": false,
+  "roles": false,
+  "nameplate": false
  },
  "placeholders": {
   "market": "0xa6b7dece810b071519a327ec63030a731a7135d7",
@@ -535,8 +550,8 @@
   "disposition": "the burner holds the admin; rotation or renunciation only through the Timelock's own 7-day queue"
  },
  "burner": {
-  "nonceAfter": "47",
-  "balanceAfter": "29999849944268278"
+  "nonceAfter": "83",
+  "balanceAfter": "3099838985082994"
  },
  "venues": {
   "swapRouter02": "0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E",
@@ -669,7 +684,13 @@
     "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
    },
    "eta": "1793505516",
-   "executed": null
+   "executed": {
+    "tx": "0xba9bfa3dc07ee83123cab904923bb9bc7eb19ece4e967c43874177f594d7d25a",
+    "block": "12038503",
+    "gas": "18387928",
+    "by": "0xc79e8f31d50727a6c5ca30e297964874f2598f02",
+    "adopted": true
+   }
   },
   "custodian": {
    "via": "timelock",
@@ -681,7 +702,12 @@
     "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
    },
    "eta": "1793505528",
-   "executed": null
+   "executed": {
+    "tx": "0x0fcb189a0144a29a92c1cda660f9dad19bc1f2554446a2792103241a522471ae",
+    "block": "12038562",
+    "gas": "21577583",
+    "by": "0xc79e8f31d50727a6c5ca30e297964874f2598f02"
+   }
   },
   "market": {
    "via": "timelock",
@@ -693,7 +719,12 @@
     "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
    },
    "eta": "1793505540",
-   "executed": null
+   "executed": {
+    "tx": "0x7c909bd84c794c3c010e9c14c876432a4ab027c49fc06052e057f6390054c53d",
+    "block": "12038566",
+    "gas": "9665668",
+    "by": "0xc79e8f31d50727a6c5ca30e297964874f2598f02"
+   }
   },
   "roles": {
    "via": "timelock",
@@ -705,7 +736,12 @@
     "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
    },
    "eta": "1793505552",
-   "executed": null
+   "executed": {
+    "tx": "0xeaba3b48d55e72c3ca4b8f5cdd6968b2578f34e185d5c0cad0d35ec9840bebb8",
+    "block": "12038570",
+    "gas": "8941639",
+    "by": "0xc79e8f31d50727a6c5ca30e297964874f2598f02"
+   }
   },
   "nameplate": {
    "via": "timelock",
@@ -717,7 +753,12 @@
     "by": "0x760025730429523d70ef99d9332c28fcf5686a11"
    },
    "eta": "1793505564",
-   "executed": null
+   "executed": {
+    "tx": "0x3f47ae10cce3649f90cb513d535c75d4b655488d377ebc26786710b903ce8388",
+    "block": "12038573",
+    "gas": "11344882",
+    "by": "0xc79e8f31d50727a6c5ca30e297964874f2598f02"
+   }
   }
  },
  "gas": {
@@ -762,13 +803,13 @@
   "loadPanel": "117048243",
   "setEngineHash": "238497",
   "freeze": "65090",
-  "agentCard": "793496",
-  "custodian": "947096",
-  "market": "435096",
-  "roles": "398232",
-  "nameplate": "576408"
+  "agentCard": "19181424",
+  "custodian": "22524679",
+  "market": "10100764",
+  "roles": "9339871",
+  "nameplate": "11921290"
  },
- "gasTotal": "845712135",
+ "gasTotal": "915629835",
  "gasThisRun": "635060507",
  "toolchain": {
   "solc": "0.8.36+commit.8a079791.Emscripten.clang",
@@ -780,10 +821,10 @@
  },
  "confirmToken": "DEPLOY_INTACT_TO_SEPOLIA",
  "journal": "deployments/11155111.journal.json",
- "writtenAt": "2026-10-25T03:59:25.753Z",
- "block": "11988358",
+ "writtenAt": "2026-11-01T04:26:36.546Z",
+ "block": "12038597",
  "recovered": {
-  "checked": 479,
+  "checked": 515,
   "disagreeing": 0
  }
 }

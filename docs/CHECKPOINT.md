@@ -199,12 +199,11 @@ holds every request and its state. The ones that shape the whole:
 
 ## What remains
 
-- **Sepolia's five post-MVB satellites** (the card, the custodian, the Market, the Roles, the Nameplate)
-  ripen from 2026-11-01 03:58:36 UTC and stay executable for fourteen days. Landing them takes any key with a
-  little Sepolia ETH, running `tools/deploy.mjs --chain 11155111 --satellite all` from a tree whose `src/`
-  is this one's: a queued op is the hash of the initcode.
-- **V2 is live on Sepolia** since 2026-10-25 (`deployments/11155111.json`, 36 contracts, 842,561,807 gas;
-  `docs/DEPLOYMENT.md`, "V2 live on Sepolia"). The next live V2 deployment, a band, needs a fresh nonce-0
+- **V2 is live on Sepolia, all of it.** It deployed on 2026-10-25, and its five post-MVB satellites (the
+  card, the custodian, the Market, the Roles, the Nameplate) landed on 2026-11-01 for 69,917,700 gas.
+  `deployments/11155111.json` names 41 contracts and recovers with 515 fields, 0 disagreeing;
+  `docs/DEPLOYMENT.md` has "V2 live on Sepolia". Nothing on Sepolia is pending. The next live V2
+  deployment, a band, needs a fresh nonce-0
   burner funded per the preflight. The deploy budget is 140 M gas with V2 on a chain without EIP-8037, and
   ×8 where state gas is metered.
 - **Open requests**: L14 (`tools/mutations.mjs` adopting a JavaScript mode, W17's driver as its shape) and
